@@ -40,5 +40,6 @@ export function setupSimClient(worker: Worker) {
     get buffers() {
       return { pos, color, alive, count };
     },
+    worker, // Expose the worker for direct access
   };
 }

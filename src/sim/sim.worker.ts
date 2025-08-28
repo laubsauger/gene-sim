@@ -3,20 +3,23 @@ import { createRng } from './random';
 import { clampGene, mutate, defaultGenes } from './genes';
 import { SpatialHash } from './spatialHash';
 import { efficientMovement } from './spatialBehaviors';
-import type { SimInit, WorkerMsg, MainMsg, SimStats, GeneSpec } from './types';
+import type { WorkerMsg, MainMsg, SimStats, GeneSpec, TribeStats, SimInit } from './types';
 
 // Simulation state
 let pos!: Float32Array, vel!: Float32Array, color!: Uint8Array, alive!: Uint8Array, tribeId!: Uint16Array;
-let genes!: Float32Array; // packed [speed, vision, metabolism, repro]
+let genes!: Float32Array; // packed [speed, vision, metabolism, repro, aggression, cohesion]
 let energy!: Float32Array; // energy level per entity
+let age!: Float32Array; // age in simulation time units
 let count = 0, cap = 0;
 let rand = Math.random;
-let t = 0, speedMul = 1, paused = false;
+let t = 0, speedMul = 1, paused = true; // Start paused
+let renderFps = 0; // Track render FPS from main thread
 let grid!: SpatialHash;
 let tribeNames: string[] = [];
 let tribeColors: number[] = [];
 let birthsByTribe: Uint32Array, deathsByTribe: Uint32Array;
-let world = { width: 1000, height: 1000 };
+let killsByTribe: Uint32Array, starvedByTribe: Uint32Array;
+const world = { width: 1000, height: 1000 };
 
 // Food grid
 let foodGrid!: Float32Array;
@@ -43,7 +46,7 @@ function hueToRgb(h: number, s = 1.0, v = 1.0): [number, number, number] {
   return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
 }
 
-function spawnEntity(i: number, x: number, y: number, g: GeneSpec, tribeIx: number, initialEnergy = 50) {
+function spawnEntity(i: number, x: number, y: number, g: GeneSpec, tribeIx: number, initialEnergy = 50, initialAge = 0) {
   pos[i * 2] = x;
   pos[i * 2 + 1] = y;
   
@@ -55,6 +58,7 @@ function spawnEntity(i: number, x: number, y: number, g: GeneSpec, tribeIx: numb
   alive[i] = 1;
   tribeId[i] = tribeIx;
   energy[i] = initialEnergy;
+  age[i] = initialAge;
   
   const base = i * G;
   genes[base] = g.speed;
@@ -106,13 +110,37 @@ function step(dt: number) {
     
     const base = i * G;
     const sp = genes[base];
-    const vision = genes[base + 1];
+    // const vision = genes[base + 1]; // unused but kept for future use
     const metab = genes[base + 2];
     const repro = genes[base + 3];
     
-    // Faster energy consumption - starvation is a real threat
-    const moveCost = sp * 0.02; // Double movement cost
-    energy[i] -= (metab * 2 + moveCost) * dt; // Double metabolism drain
+    // Age entity
+    age[i] += dt;
+    
+    // Update color brightness based on age (0-20s bright, 20-40s normal, 40-60s darker, 60+ very dark)
+    const ageInDays = age[i] / 10; // 10 sim seconds = 1 "day"
+    let brightness = 1.0;
+    if (ageInDays < 2) {
+      brightness = 1.2; // Young - brighter
+    } else if (ageInDays < 4) {
+      brightness = 1.0; // Adult - normal
+    } else if (ageInDays < 6) {
+      brightness = 0.7; // Old - darker
+    } else {
+      brightness = 0.5; // Very old - very dark
+    }
+    
+    // Get base color from tribe
+    const tribeHue = tribeColors[tribeId[i]] || 0;
+    const [r, g, b] = hueToRgb(tribeHue);
+    color[i * 3] = Math.min(255, (r * brightness) | 0);
+    color[i * 3 + 1] = Math.min(255, (g * brightness) | 0);
+    color[i * 3 + 2] = Math.min(255, (b * brightness) | 0);
+    
+    // Energy consumption increases with age
+    const ageFactor = 1 + (age[i] / 100); // Older entities consume more energy
+    const moveCost = sp * 0.02;
+    energy[i] -= (metab * 2 + moveCost) * dt * ageFactor;
     
     // Check food at current position
     const fx = Math.floor((pos[i * 2] / world.width) * foodCols);
@@ -131,7 +159,8 @@ function step(dt: number) {
     // Use spatial hashing for efficient movement and combat
     efficientMovement(
       i, pos, vel, alive, energy, tribeId, genes, grid,
-      foodGrid, foodCols, foodRows, world, rand, dt
+      foodGrid, foodCols, foodRows, world, rand, dt,
+      killsByTribe, deathsByTribe, color, birthsByTribe
     );
     
     // Clamp speed
@@ -166,10 +195,15 @@ function step(dt: number) {
       vel[i * 2 + 1] = -Math.abs(vel[i * 2 + 1]); // Reverse Y velocity
     }
     
-    // Death from starvation
-    if (energy[i] <= 0) {
+    // Death from starvation or old age
+    if (energy[i] <= 0 || age[i] > 80) { // Die at 80 seconds (~8 days)
       alive[i] = 0;
       deathsByTribe[tribeId[i]]++;
+      if (energy[i] <= 0) {
+        starvedByTribe[tribeId[i]]++;
+      }
+      // Reset age for reuse
+      age[i] = 0;
       continue;
     }
     
@@ -202,42 +236,119 @@ function step(dt: number) {
 }
 
 function stats(): SimStats {
-  const byTribe: SimStats['byTribe'] = {};
-  let aliveCount = 0, meanS = 0, meanV = 0, meanM = 0, meanA = 0;
+  const byTribe: Record<string, TribeStats> = {};
+  const tribeData: Record<string, number[][]> = {}; // Store gene values per tribe
   
+  let aliveCount = 0;
+  const globalGenes: number[][] = [[], [], [], [], [], []]; // speed, vision, metab, repro, aggro, cohesion
+  
+  // Collect data
   for (let i = 0; i < count; i++) {
     if (alive[i]) {
       aliveCount++;
       const base = i * G;
-      meanS += genes[base];
-      meanV += genes[base + 1];
-      meanM += genes[base + 2];
-      meanA += genes[base + 4];
+      const tribeName = tribeNames[tribeId[i]] || 'Unknown';
       
-      const name = tribeNames[tribeId[i]] || 'Unknown';
-      if (!byTribe[name]) {
-        const [r, g, b] = hueToRgb(tribeColors[tribeId[i]] || 0);
-        byTribe[name] = {
-          count: 0,
-          births: birthsByTribe[tribeId[i]] || 0,
-          deaths: deathsByTribe[tribeId[i]] || 0,
-          color: `rgb(${r},${g},${b})`,
-        };
+      // Initialize tribe data if needed
+      if (!tribeData[tribeName]) {
+        tribeData[tribeName] = [[], [], [], [], [], []];
       }
-      byTribe[name].count++;
+      
+      // Collect gene values (speed, vision, metabolism, reproChance, aggression, cohesion)
+      tribeData[tribeName][0].push(genes[base]);        // speed
+      tribeData[tribeName][1].push(genes[base + 1]);    // vision
+      tribeData[tribeName][2].push(genes[base + 2]);    // metabolism
+      tribeData[tribeName][3].push(genes[base + 3]);    // reproChance
+      tribeData[tribeName][4].push(genes[base + 4]);    // aggression
+      tribeData[tribeName][5].push(genes[base + 5]);    // cohesion
+      
+      globalGenes[0].push(genes[base]);
+      globalGenes[1].push(genes[base + 1]);
+      globalGenes[2].push(genes[base + 2]);
+      globalGenes[3].push(genes[base + 3]);
+      globalGenes[4].push(genes[base + 4]);
+      globalGenes[5].push(genes[base + 5]);
     }
   }
   
-  const inv = 1 / Math.max(1, aliveCount);
+  // Helper to calculate statistics
+  const calcStats = (values: number[]) => {
+    if (values.length === 0) return { min: 0, max: 0, mean: 0, std: 0 };
+    
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+    const std = Math.sqrt(variance);
+    
+    return { mean, min, max, std };
+  };
+  
+  // Process each tribe
+  for (const [tribeName, geneArrays] of Object.entries(tribeData)) {
+    const tribeIndex = tribeNames.indexOf(tribeName);
+    const [r, g, b] = hueToRgb(tribeColors[tribeIndex] || 0);
+    
+    const speedStats = calcStats(geneArrays[0]);
+    const visionStats = calcStats(geneArrays[1]);
+    const metabStats = calcStats(geneArrays[2]);
+    const reproStats = calcStats(geneArrays[3]);
+    const aggroStats = calcStats(geneArrays[4]);
+    const cohesionStats = calcStats(geneArrays[5]);
+    
+    byTribe[tribeName] = {
+      count: geneArrays[0].length,
+      births: birthsByTribe[tribeIndex] || 0,
+      deaths: deathsByTribe[tribeIndex] || 0,
+      color: `rgb(${r},${g},${b})`,
+      mean: {
+        speed: speedStats.mean,
+        vision: visionStats.mean,
+        metabolism: metabStats.mean,
+        aggression: aggroStats.mean,
+        cohesion: cohesionStats.mean,
+        reproChance: reproStats.mean,
+      },
+      distribution: {
+        speed: { min: speedStats.min, max: speedStats.max, std: speedStats.std },
+        vision: { min: visionStats.min, max: visionStats.max, std: visionStats.std },
+        metabolism: { min: metabStats.min, max: metabStats.max, std: metabStats.std },
+        aggression: { min: aggroStats.min, max: aggroStats.max, std: aggroStats.std },
+        cohesion: { min: cohesionStats.min, max: cohesionStats.max, std: cohesionStats.std },
+        reproChance: { min: reproStats.min, max: reproStats.max, std: reproStats.std },
+      },
+    };
+  }
+  
+  // Calculate global statistics
+  const globalSpeed = calcStats(globalGenes[0]);
+  const globalVision = calcStats(globalGenes[1]);
+  const globalMetab = calcStats(globalGenes[2]);
+  const globalRepro = calcStats(globalGenes[3]);
+  const globalAggro = calcStats(globalGenes[4]);
+  const globalCohesion = calcStats(globalGenes[5]);
+  
   return {
     t,
     population: aliveCount,
     byTribe,
-    mean: {
-      speed: meanS * inv,
-      vision: meanV * inv,
-      metabolism: meanM * inv,
-      aggression: meanA * inv,
+    global: {
+      mean: {
+        speed: globalSpeed.mean,
+        vision: globalVision.mean,
+        metabolism: globalMetab.mean,
+        aggression: globalAggro.mean,
+        cohesion: globalCohesion.mean,
+        reproChance: globalRepro.mean,
+      },
+      distribution: {
+        speed: { min: globalSpeed.min, max: globalSpeed.max, std: globalSpeed.std },
+        vision: { min: globalVision.min, max: globalVision.max, std: globalVision.std },
+        metabolism: { min: globalMetab.min, max: globalMetab.max, std: globalMetab.std },
+        aggression: { min: globalAggro.min, max: globalAggro.max, std: globalAggro.std },
+        cohesion: { min: globalCohesion.min, max: globalCohesion.max, std: globalCohesion.std },
+        reproChance: { min: globalRepro.min, max: globalRepro.max, std: globalRepro.std },
+      },
     },
   };
 }
@@ -260,6 +371,7 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
     const sabTribe = new SharedArrayBuffer(Uint16Array.BYTES_PER_ELEMENT * cap);
     const sabGenes = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap * G);
     const sabEnergy = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap);
+    const sabAge = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap);
     
     pos = new Float32Array(sabPos);
     vel = new Float32Array(sabVel);
@@ -268,6 +380,7 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
     tribeId = new Uint16Array(sabTribe);
     genes = new Float32Array(sabGenes);
     energy = new Float32Array(sabEnergy);
+    age = new Float32Array(sabAge);
     
     // Initialize food grid
     foodCols = init.world.foodGrid?.cols || 64;
@@ -282,6 +395,8 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
     
     birthsByTribe = new Uint32Array(init.tribes.length);
     deathsByTribe = new Uint32Array(init.tribes.length);
+    killsByTribe = new Uint32Array(init.tribes.length);
+    starvedByTribe = new Uint32Array(init.tribes.length);
     tribeNames = init.tribes.map(t => t.name);
     tribeColors = [];
     
@@ -319,18 +434,35 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
     };
     self.postMessage(payload);
     
-    // Main simulation loop
+    // Main simulation loop with performance tracking
     let last = performance.now();
     let lastStatsTime = 0;
+    let lastPerfTime = 0;
+    let simSteps = 0;
+    
     const tick = () => {
       const now = performance.now();
-      let dt = Math.min(0.1, (now - last) / 1000); // cap large pause
+      const dt = Math.min(0.1, (now - last) / 1000); // cap large pause
       last = now;
       
       if (!paused && speedMul > 0) {
         // Simple fixed timestep for smooth movement
         const simDt = dt * speedMul * 3; // Triple effective speed
         step(simDt);
+        simSteps++;
+      }
+      
+      // Send performance metrics (4Hz)
+      if (now - lastPerfTime > 250) {
+        const elapsed = (now - lastPerfTime) / 1000;
+        const perf: PerfStats = {
+          fps: renderFps, // Use the render FPS from main thread
+          simSpeed: Math.round(simSteps / elapsed),
+          speedMul
+        };
+        self.postMessage({ type: 'perf', payload: perf } as MainMsg);
+        lastPerfTime = now;
+        simSteps = 0;
       }
       
       // Send stats periodically (2Hz for performance)
@@ -346,5 +478,7 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
     speedMul = msg.payload.speedMul;
   } else if (msg.type === 'pause') {
     paused = msg.payload.paused;
+  } else if (msg.type === 'renderFps') {
+    renderFps = msg.payload.fps;
   }
 };

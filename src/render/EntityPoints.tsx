@@ -65,24 +65,25 @@ export function EntityPoints({
   useEffect(() => {
     if (!pos || !color || !alive) return;
     
-    // Only create attributes if they don't exist yet
-    if (!geom.getAttribute('aPos')) {
-      // Create attributes directly with the typed arrays
-      const posAttr = new THREE.BufferAttribute(pos, 2);
-      const colAttr = new THREE.BufferAttribute(color, 3, true); // normalized for colors
-      const aliveAttr = new THREE.BufferAttribute(alive, 1);
-      
-      // Set usage to dynamic since data changes every frame
-      posAttr.usage = THREE.DynamicDrawUsage;
-      colAttr.usage = THREE.DynamicDrawUsage;
-      aliveAttr.usage = THREE.DynamicDrawUsage;
-      
-      geom.setAttribute('aPos', posAttr);
-      geom.setAttribute('aCol', colAttr);
-      geom.setAttribute('aAlive', aliveAttr);
-    }
+    // Always recreate attributes when buffers change to ensure updates
+    const posAttr = new THREE.BufferAttribute(pos, 2);
+    const colAttr = new THREE.BufferAttribute(color, 3, true); // normalized for colors
+    const aliveAttr = new THREE.BufferAttribute(alive, 1);
     
+    // Set usage to dynamic since data changes every frame
+    posAttr.usage = THREE.DynamicDrawUsage;
+    colAttr.usage = THREE.DynamicDrawUsage;
+    aliveAttr.usage = THREE.DynamicDrawUsage;
+    
+    geom.setAttribute('aPos', posAttr);
+    geom.setAttribute('aCol', colAttr);
+    geom.setAttribute('aAlive', aliveAttr);
     geom.setDrawRange(0, count);
+    
+    // Force immediate update
+    geom.attributes.aPos.needsUpdate = true;
+    geom.attributes.aCol.needsUpdate = true;
+    geom.attributes.aAlive.needsUpdate = true;
   }, [geom, pos, color, alive, count]);
 
   // Update every frame to reflect SharedArrayBuffer changes

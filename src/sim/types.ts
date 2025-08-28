@@ -30,11 +30,53 @@ export type SimInit = {
   cap: number; // max entities
 };
 
+export type TribeStats = {
+  count: number;
+  births: number;
+  deaths: number;
+  kills: number;    // deaths caused by combat
+  starved: number;  // deaths caused by starvation
+  color: string;
+  mean: {
+    speed: number;
+    vision: number;
+    metabolism: number;
+    aggression: number;
+    cohesion: number;
+    reproChance: number;
+  };
+  distribution: {
+    speed: { min: number; max: number; std: number };
+    vision: { min: number; max: number; std: number };
+    metabolism: { min: number; max: number; std: number };
+    aggression: { min: number; max: number; std: number };
+    cohesion: { min: number; max: number; std: number };
+    reproChance: { min: number; max: number; std: number };
+  };
+};
+
 export type SimStats = {
   t: number; // sim time in seconds
   population: number;
-  byTribe: Record<string, { count: number; births: number; deaths: number; color: string }>;
-  mean: { speed: number; vision: number; metabolism: number; aggression: number };
+  byTribe: Record<string, TribeStats>;
+  global: {
+    mean: {
+      speed: number;
+      vision: number;
+      metabolism: number;
+      aggression: number;
+      cohesion: number;
+      reproChance: number;
+    };
+    distribution: {
+      speed: { min: number; max: number; std: number };
+      vision: { min: number; max: number; std: number };
+      metabolism: { min: number; max: number; std: number };
+      aggression: { min: number; max: number; std: number };
+      cohesion: { min: number; max: number; std: number };
+      reproChance: { min: number; max: number; std: number };
+    };
+  };
 };
 
 export type WorkerMsg =
@@ -42,7 +84,14 @@ export type WorkerMsg =
   | { type: 'setSpeed'; payload: { speedMul: number } }
   | { type: 'pause'; payload: { paused: boolean } }
   | { type: 'requestSnapshot' }
-  | { type: 'setViewport'; payload: { x: number; y: number; w: number; h: number; zoom: number } };
+  | { type: 'setViewport'; payload: { x: number; y: number; w: number; h: number; zoom: number } }
+  | { type: 'renderFps'; payload: { fps: number } };
+
+export type PerfStats = {
+  fps: number;      // render frame rate
+  simSpeed: number; // simulation Hz
+  speedMul: number; // current speed multiplier
+};
 
 export type MainMsg =
   | { type: 'ready'; payload: { 
@@ -53,4 +102,5 @@ export type MainMsg =
       };
       meta: { count: number } 
     }}
-  | { type: 'stats'; payload: SimStats };
+  | { type: 'stats'; payload: SimStats }
+  | { type: 'perf'; payload: PerfStats };

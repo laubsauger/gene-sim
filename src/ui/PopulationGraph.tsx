@@ -160,11 +160,11 @@ export function PopulationGraph({ client, maxHistory = 100 }: PopulationGraphPro
     ctx.fillText(`Time: ${minTime.toFixed(0)}s - ${maxTime.toFixed(0)}s`, width / 2, height - 5);
     
     // Y-axis label
-    ctx.save();
-    ctx.translate(12, height / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText('Population', 0, 0);
-    ctx.restore();
+    // ctx.save();
+    // ctx.translate(12, height / 2);
+    // ctx.rotate(-Math.PI / 2);
+    // ctx.fillText('Pop', 0, 0);
+    // ctx.restore();
     
     // Legend
     const legendY = padding.top + 5;

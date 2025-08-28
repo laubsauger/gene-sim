@@ -15,7 +15,11 @@ export function efficientMovement(
   foodRows: number,
   world: { width: number; height: number },
   rand: () => number,
-  dt: number
+  dt: number,
+  killsByTribe?: Uint32Array,
+  deathsByTribe?: Uint32Array,
+  color?: Uint8Array,
+  birthsByTribe?: Uint32Array
 ): void {
   const G = 6;
   const base = i * G;
@@ -155,32 +159,65 @@ export function efficientMovement(
       if (energy[target] <= 0) {
         alive[target] = 0;
         energy[i] += Math.max(0, energy[target] + 10);
+        // Track kill stats
+        if (killsByTribe && deathsByTribe) {
+          killsByTribe[myTribe]++;
+          deathsByTribe[tribeId[target]]++;
+        }
       }
-    } else if (interactionRoll < totalChance && potentialMate >= 0 && energy[i] > 60) {
-      // MATE - rare but creates hybrid offspring
-      if (rand() < 0.3) { // 30% success rate for cross-tribe mating
+    } else if (interactionRoll < totalChance && potentialMate >= 0 && energy[i] > 60 && energy[potentialMate] > 60) {
+      // MATE - rare but creates hybrid offspring between different tribes
+      if (rand() < 0.2) { // 20% success rate for cross-tribe mating
         // Find a free slot for hybrid baby
         for (let k = 0; k < 100; k++) { // Limited search
-          const j = Math.floor(rand() * grid.buckets.length);
-          if (j < alive.length && !alive[j]) {
+          const j = Math.floor(rand() * alive.length);
+          if (!alive[j]) {
             // Create hybrid with mixed genes
             const mateBase = potentialMate * G;
-            const hybridGenes = {
-              speed: (genes[base] + genes[mateBase]) / 2,
-              vision: (genes[base + 1] + genes[mateBase + 1]) / 2,
-              metabolism: (genes[base + 2] + genes[mateBase + 2]) / 2,
-              reproChance: (genes[base + 3] + genes[mateBase + 3]) / 2,
-              aggression: (genes[base + 4] + genes[mateBase + 4]) / 2 * 0.8, // Hybrids less aggressive
-              cohesion: (genes[base + 5] + genes[mateBase + 5]) / 2,
-              colorHue: (rand() < 0.5) ? tribeId[i] * 120 : tribeId[potentialMate] * 120
-            };
             
-            // Spawn hybrid (inherits random parent's tribe)
+            // Spawn hybrid entity at parents' location
+            pos[j * 2] = (pos[i * 2] + pos[potentialMate * 2]) / 2;
+            pos[j * 2 + 1] = (pos[i * 2 + 1] + pos[potentialMate * 2 + 1]) / 2;
+            
+            const ang = rand() * Math.PI * 2;
+            const hybridSpeed = (genes[base] + genes[mateBase]) / 2;
+            vel[j * 2] = Math.cos(ang) * hybridSpeed * 0.5;
+            vel[j * 2 + 1] = Math.sin(ang) * hybridSpeed * 0.5;
+            
+            alive[j] = 1;
+            energy[j] = 40; // Start with decent energy
+            
+            // Inherit tribe from random parent
             const hybridTribe = rand() < 0.5 ? myTribe : tribeId[potentialMate];
-            // Note: would need to expose spawnEntity or inline it here
-            // For now, just reduce energy cost
-            energy[i] -= 20;
-            energy[potentialMate] -= 20;
+            tribeId[j] = hybridTribe;
+            
+            // Set hybrid genes (average with some variation)
+            const jBase = j * G;
+            genes[jBase] = hybridSpeed * (0.9 + rand() * 0.2);
+            genes[jBase + 1] = (genes[base + 1] + genes[mateBase + 1]) / 2 * (0.9 + rand() * 0.2);
+            genes[jBase + 2] = (genes[base + 2] + genes[mateBase + 2]) / 2 * (0.9 + rand() * 0.2);
+            genes[jBase + 3] = (genes[base + 3] + genes[mateBase + 3]) / 2 * (0.9 + rand() * 0.2);
+            genes[jBase + 4] = (genes[base + 4] + genes[mateBase + 4]) / 2 * 0.7; // Hybrids less aggressive
+            genes[jBase + 5] = (genes[base + 5] + genes[mateBase + 5]) / 2 * 1.2; // Hybrids more cohesive
+            
+            // Set hybrid color (blend of parents)
+            if (color) {
+              const r1 = color[i * 3], g1 = color[i * 3 + 1], b1 = color[i * 3 + 2];
+              const r2 = color[potentialMate * 3], g2 = color[potentialMate * 3 + 1], b2 = color[potentialMate * 3 + 2];
+              // Create a unique hybrid color (purple-ish blend)
+              color[j * 3] = Math.min(255, (r1 + r2) / 2 + 50);
+              color[j * 3 + 1] = Math.min(255, (g1 + g2) / 2);
+              color[j * 3 + 2] = Math.min(255, (b1 + b2) / 2 + 50);
+            }
+            
+            // Track birth
+            if (birthsByTribe) {
+              birthsByTribe[hybridTribe]++;
+            }
+            
+            // Energy cost for parents
+            energy[i] -= 25;
+            energy[potentialMate] -= 25;
             break;
           }
         }
