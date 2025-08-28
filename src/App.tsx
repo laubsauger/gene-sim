@@ -27,12 +27,12 @@ export default function App() {
         world: {
           width: WORLD_WIDTH,
           height: WORLD_HEIGHT,
-          foodGrid: { cols: 256, rows: 256, regen: 0.1, capacity: 1 }
+          foodGrid: { cols: 256, rows: 256, regen: 0.08, capacity: 3 }
         },
         tribes: [
           {
             name: 'Warmongers',
-            count: 2000,
+            count: 1000,
             spawn: { x: 1000, y: 1000, radius: 200 },
             genes: {
               speed: 90,
@@ -46,7 +46,7 @@ export default function App() {
           },
           {
             name: 'Swarm',
-            count: 2000,
+            count: 1000,
             spawn: { x: 3000, y: 1000, radius: 200 },
             genes: {
               speed: 25,
@@ -60,7 +60,7 @@ export default function App() {
           },
           {
             name: 'Survivors',
-            count: 2000,
+            count: 1000,
             spawn: { x: 2000, y: 3000, radius: 200 },
             genes: {
               speed: 65,
@@ -111,7 +111,11 @@ export default function App() {
           left: '16px',
           zIndex: 10,
         }}>
-          <Controls client={client} />
+          <Controls 
+            client={client} 
+            isRunning={isRunning}
+            onStart={handleStart}
+          />
         </div>
       </div>
       
@@ -130,26 +134,32 @@ export default function App() {
         ) : (
           <StatsPanel client={client} />
         )}
-        {isRunning && (
+        {/* {isRunning && (
           <button
             onClick={() => setShowSetup(!showSetup)}
             style={{
-              position: 'fixed',
-              bottom: '16px',
-              right: '16px',
+              position: 'sticky',
+              bottom: 0,
+              width: '100%',
               padding: '8px 12px',
-              background: '#3b82f6',
+              background: 'rgba(255, 255, 255, 0.05)',
               border: 'none',
-              borderRadius: '4px',
-              color: '#fff',
+              borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+              color: '#999',
               cursor: 'pointer',
               fontSize: '12px',
-              zIndex: 100,
+              transition: 'background 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
             }}
           >
-            {showSetup ? 'Show Stats' : 'Show Setup'}
+            {showSetup ? '← Back to Stats' : '⚙ Setup'}
           </button>
-        )}
+        )} */}
       </div>
     </div>
   );

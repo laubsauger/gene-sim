@@ -34,23 +34,27 @@ function FPSTracker({ client }: { client: SimClient }) {
 
 function FoodLayer({ client, world }: { client: SimClient; world: { width: number; height: number } }) {
   const [foodGrid, setFoodGrid] = useState<Float32Array | null>(null);
-  const foodCols = 64;
-  const foodRows = 64;
+  const [foodCols, setFoodCols] = useState(256);
+  const [foodRows, setFoodRows] = useState(256);
   
   useEffect(() => {
     const unsubscribe = client.onMessage((msg) => {
       if (msg.type === 'foodUpdate' && msg.payload.foodGrid) {
-        // Convert array to Float32Array
+        // Convert ArrayBuffer to Float32Array
         const newFoodGrid = new Float32Array(msg.payload.foodGrid);
         setFoodGrid(newFoodGrid);
+      } else if (msg.type === 'ready' && msg.payload.foodMeta) {
+        // Get grid dimensions from worker
+        setFoodCols(msg.payload.foodMeta.cols);
+        setFoodRows(msg.payload.foodMeta.rows);
       }
     });
     
-    // Initialize with full food
-    setFoodGrid(new Float32Array(foodCols * foodRows).fill(1));
+    // Initialize with empty grid until we get actual data
+    setFoodGrid(new Float32Array(foodCols * foodRows).fill(0));
     
     return unsubscribe;
-  }, [client]);
+  }, [client, foodCols, foodRows]);
   
   if (!foodGrid) return null;
   
@@ -119,8 +123,9 @@ function EntitiesLayer({ client }: { client: SimClient }) {
       pos={buffers.pos}
       color={buffers.color}
       alive={buffers.alive}
+      age={buffers.age}
       count={buffers.count}
-      pointSize={10}
+      pointSize={20}
     />
   );
 }

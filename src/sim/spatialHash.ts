@@ -53,4 +53,38 @@ export class SpatialHash {
       }
     }
   }
+  
+  // Optimized version that allows early exit
+  forNeighborsWithLimit(x: number, y: number, radius: number, limit: number, fn: (i: number) => boolean): number {
+    const r = radius;
+    const x0 = Math.max(0, Math.floor((x - r) / this.cell));
+    const y0 = Math.max(0, Math.floor((y - r) / this.cell));
+    const x1 = Math.min(this.cols - 1, Math.floor((x + r) / this.cell));
+    const y1 = Math.min(this.rows - 1, Math.floor((y + r) / this.cell));
+    
+    let checked = 0;
+    
+    // Check cells in expanding rings for better spatial locality
+    const centerCx = Math.floor(x / this.cell);
+    const centerCy = Math.floor(y / this.cell);
+    const maxRing = Math.max(Math.abs(x1 - centerCx), Math.abs(x0 - centerCx), 
+                              Math.abs(y1 - centerCy), Math.abs(y0 - centerCy));
+    
+    for (let ring = 0; ring <= maxRing && checked < limit; ring++) {
+      for (let cy = Math.max(y0, centerCy - ring); cy <= Math.min(y1, centerCy + ring) && checked < limit; cy++) {
+        for (let cx = Math.max(x0, centerCx - ring); cx <= Math.min(x1, centerCx + ring) && checked < limit; cx++) {
+          // Only process cells on the current ring
+          if (ring > 0 && Math.abs(cx - centerCx) < ring && Math.abs(cy - centerCy) < ring) continue;
+          
+          let idx = this.buckets[cy * this.cols + cx];
+          while (idx !== -1 && checked < limit) {
+            if (fn(idx)) checked++;
+            idx = this.next[idx];
+          }
+        }
+      }
+    }
+    
+    return checked;
+  }
 }

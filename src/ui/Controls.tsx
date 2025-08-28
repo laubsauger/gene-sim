@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { SimClient } from '../client/setupSimClient';
 
 export interface ControlsProps {
   client: SimClient;
+  isRunning: boolean;
+  onStart: () => void;
 }
 
-export function Controls({ client }: ControlsProps) {
+export function Controls({ client, isRunning, onStart }: ControlsProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [speed, setSpeed] = useState(1);
 
@@ -23,6 +25,25 @@ export function Controls({ client }: ControlsProps) {
       client.pause(false);
     }
   };
+  
+  // Add spacebar pause/play or start
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && e.target === document.body) {
+        e.preventDefault();
+        if (!isRunning) {
+          onStart();
+        } else {
+          const newPaused = !isPaused;
+          setIsPaused(newPaused);
+          client.pause(newPaused);
+        }
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, [isPaused, isRunning, onStart, client]);
 
   return (
     <div style={{
@@ -35,17 +56,29 @@ export function Controls({ client }: ControlsProps) {
     }}>
       <button
         onClick={handlePause}
+        disabled={!isRunning}
         style={{
           padding: '8px 16px',
           fontSize: '16px',
-          background: isPaused ? '#22c55e' : '#ef4444',
+          lineHeight: '16px',
+          height: '36px',
+          background: !isRunning ? '#4b5563' : (isPaused ? '#22c55e' : '#ef4444'),
           color: 'white',
           border: 'none',
           borderRadius: '4px',
-          cursor: 'pointer',
+          cursor: isRunning ? 'pointer' : 'not-allowed',
+          opacity: isRunning ? 1 : 0.5,
+          minWidth: '50px',
+          width: '50px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxSizing: 'border-box',
         }}
       >
-        {isPaused ? '▶️' : '⏸'}
+        <span style={{ fontSize: '16px', lineHeight: '16px', display: 'block' }}>
+          {isPaused ? '▶' : '⏸'}
+        </span>
       </button>
       
       <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>

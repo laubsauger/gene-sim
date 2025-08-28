@@ -24,9 +24,9 @@ const fragmentShader = `
   void main() {
     float food = texture2D(foodTexture, vUv).r;
     
-    // Subtle gradient from dark to slightly lighter
-    vec3 depleted = vec3(0.05, 0.05, 0.05);  // Almost black
-    vec3 full = vec3(0.12, 0.12, 0.14);      // Dark gray with slight blue tint
+    // Brighter gradient for better visibility
+    vec3 depleted = vec3(0.08, 0.08, 0.08);  // Very dark gray
+    vec3 full = vec3(0.20, 0.22, 0.25);      // Medium gray with blue-green tint
     
     vec3 color = mix(depleted, full, food);
     gl_FragColor = vec4(color, 1.0);

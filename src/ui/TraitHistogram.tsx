@@ -11,14 +11,16 @@ export function TraitHistogram({ stats }: TraitHistogramProps) {
   
   if (!stats || !stats.byTribe) return null;
 
-  const traits = ['speed', 'vision', 'metabolism', 'reproChance', 'aggression', 'cohesion'];
+  const traits = ['speed', 'vision', 'metabolism', 'reproChance', 'aggression', 'cohesion', 'foodStandards', 'diet'];
   const traitLabels: Record<string, string> = {
     speed: 'Speed',
     vision: 'Vision',
     metabolism: 'Metabolism',
     reproChance: 'Reproduction',
     aggression: 'Aggression',
-    cohesion: 'Cohesion'
+    cohesion: 'Cohesion',
+    foodStandards: 'Food Pickiness',
+    diet: 'Diet (Herb←→Carn)'
   };
 
   // Get distribution data for selected trait and tribe

@@ -6,6 +6,7 @@ import { RadarChart } from './RadarChart';
 import { TraitHistogram } from './TraitHistogram';
 import { PopulationDominance } from './PopulationDominance';
 import { CollapsibleSection } from './CollapsibleSection';
+import { PerformancePanel } from './PerformancePanel';
 
 export interface StatsPanelProps {
   client: SimClient;
@@ -157,12 +158,14 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
                 <tr>
                   <th style={{ textAlign: 'left', color: '#888', padding: '4px' }}>Tribe</th>
                   <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Pop</th>
-                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Spd</th>
-                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Vis</th>
-                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Met</th>
-                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Rep</th>
-                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Agg</th>
-                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>KD</th>
+                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Speed</th>
+                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Vision</th>
+                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Metab</th>
+                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Repro</th>
+                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Aggr</th>
+                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Pick</th>
+                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Diet</th>
+                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>K/S</th>
                 </tr>
               </thead>
               <tbody>
@@ -193,6 +196,12 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
                       <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
                         {tribe.mean.aggression.toFixed(1)}
                       </td>
+                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
+                        {tribe.mean.foodStandards?.toFixed(1) || '0.3'}
+                      </td>
+                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
+                        {tribe.mean.diet?.toFixed(1) || '-0.5'}
+                      </td>
                       <td style={{ textAlign: 'center', color: '#999', padding: '2px', fontSize: '10px' }}>
                         {tribe.kills || 0}/{tribe.starved || 0}
                       </td>
@@ -220,6 +229,12 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
                   </td>
                   <td style={{ textAlign: 'center', color: '#bbb', padding: '2px' }}>
                     {stats.global.mean.aggression.toFixed(1)}
+                  </td>
+                  <td style={{ textAlign: 'center', color: '#bbb', padding: '2px' }}>
+                    {stats.global.mean.foodStandards?.toFixed(1) || '0.3'}
+                  </td>
+                  <td style={{ textAlign: 'center', color: '#bbb', padding: '2px' }}>
+                    {stats.global.mean.diet?.toFixed(1) || '-0.5'}
                   </td>
                   <td style={{ textAlign: 'center', color: '#999', padding: '2px', fontSize: '10px' }}>
                     -
@@ -249,12 +264,21 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
                   </summary>
                 <div style={{ padding: '4px 8px', fontSize: '10px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', color: '#bbb' }}>
-                    <div>Spd: {tribe.mean.speed.toFixed(1)}</div>
-                    <div>Vis: {tribe.mean.vision.toFixed(1)}</div>
-                    <div>Met: {tribe.mean.metabolism.toFixed(3)}</div>
-                    <div>Rep: {tribe.mean.reproChance.toFixed(3)}</div>
-                    <div>Agg: {tribe.mean.aggression.toFixed(2)}</div>
-                    <div>Coh: {tribe.mean.cohesion.toFixed(2)}</div>
+                    <div>Speed: {tribe.mean.speed.toFixed(1)}</div>
+                    <div>Vision: {tribe.mean.vision.toFixed(1)}</div>
+                    <div>Metabolism: {tribe.mean.metabolism.toFixed(3)}</div>
+                    <div>Reproduce: {tribe.mean.reproChance.toFixed(3)}</div>
+                    <div>Aggression: {tribe.mean.aggression.toFixed(2)}</div>
+                    <div>Cohesion: {tribe.mean.cohesion.toFixed(2)}</div>
+                    <div>Pickiness: {tribe.mean.foodStandards?.toFixed(2) || '0.30'}</div>
+                    <div>Diet: {(() => {
+                      const diet = tribe.mean.diet || -0.5;
+                      if (diet < -0.7) return 'Herbivore';
+                      if (diet < -0.3) return 'Herb-lean';
+                      if (diet < 0.3) return 'Omnivore';
+                      if (diet < 0.7) return 'Carn-lean';
+                      return 'Carnivore';
+                    })()}</div>
                   </div>
                   <div style={{ marginTop: '4px', color: '#888' }}>
                     Kills: {tribe.kills || 0} | Starved: {tribe.starved || 0}
@@ -278,6 +302,8 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
       <CollapsibleSection title="Population History" defaultOpen={false}>
         <PopulationGraph client={client} />
       </CollapsibleSection>
+      
+      <PerformancePanel client={client} />
     </div>
   );
 });

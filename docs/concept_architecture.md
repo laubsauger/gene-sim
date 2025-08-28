@@ -86,7 +86,7 @@ export const clampGene = (g: GeneSpec): GeneSpec => ({
   speed: Math.min(100, Math.max(2, g.speed)),
   vision: Math.min(50, Math.max(2, g.vision)),
   metabolism: Math.min(2, Math.max(0.01, g.metabolism)),
-  reproChance: Math.min(0.2, Math.max(0, g.reproChance)),
+  reproChance: Math.min(0.05, Math.max(0, g.reproChance)),
   colorHue: ((g.colorHue % 360) + 360) % 360,
 });
 

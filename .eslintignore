@@ -1,0 +1,14 @@
+# Yarn and PnP files
+.yarn/**
+.pnp.*
+.yarnrc.yml
+
+# Build output
+dist/**
+build/**
+
+# Dependencies
+node_modules/**
+
+# Vite
+vite.config.ts.timestamp-*

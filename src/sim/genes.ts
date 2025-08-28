@@ -8,21 +8,29 @@ export const clampGene = (g: GeneSpec): GeneSpec => ({
   colorHue: ((g.colorHue % 360) + 360) % 360,
   aggression: Math.min(1, Math.max(0, g.aggression || 0.3)),
   cohesion: Math.min(1, Math.max(0, g.cohesion || 0.5)),
+  foodStandards: Math.min(1, Math.max(0, g.foodStandards || 0.3)), // Default 0.3 = moderately picky
+  diet: Math.min(1, Math.max(-1, g.diet || -0.5)), // Default -0.5 = mostly herbivore
 });
 
 export const mutate = (
   g: GeneSpec, 
   rand: () => number, 
-  intensity = 0.05
+  intensity = 0.12  // Increased from 0.05 to 0.12 for more diversity
 ): GeneSpec => {
+  // Occasionally have larger mutations for breakthrough evolution
+  const mutationBoost = rand() < 0.05 ? 2.5 : 1;  // 5% chance of major mutation
+  const actualIntensity = intensity * mutationBoost;
+  
   const mutated = {
-    speed: g.speed * (1 + (rand() * 2 - 1) * intensity),
-    vision: g.vision * (1 + (rand() * 2 - 1) * intensity),
-    metabolism: g.metabolism * (1 + (rand() * 2 - 1) * intensity),
-    reproChance: Math.max(0, g.reproChance + (rand() * 2 - 1) * intensity * 0.01),
-    colorHue: g.colorHue + (rand() * 2 - 1) * intensity * 30,
-    aggression: g.aggression + (rand() * 2 - 1) * intensity,
-    cohesion: g.cohesion + (rand() * 2 - 1) * intensity,
+    speed: g.speed * (1 + (rand() * 2 - 1) * actualIntensity),
+    vision: g.vision * (1 + (rand() * 2 - 1) * actualIntensity),
+    metabolism: g.metabolism * (1 + (rand() * 2 - 1) * actualIntensity * 0.8), // Slightly less variation
+    reproChance: Math.max(0, g.reproChance + (rand() * 2 - 1) * actualIntensity * 0.015),
+    colorHue: g.colorHue + (rand() * 2 - 1) * actualIntensity * 40,
+    aggression: Math.min(1, Math.max(0, g.aggression + (rand() * 2 - 1) * actualIntensity * 1.2)),
+    cohesion: Math.min(1, Math.max(0, g.cohesion + (rand() * 2 - 1) * actualIntensity * 1.2)),
+    foodStandards: Math.min(1, Math.max(0, (g.foodStandards || 0.3) + (rand() * 2 - 1) * actualIntensity * 1.5)),
+    diet: Math.min(1, Math.max(-1, (g.diet || -0.5) + (rand() * 2 - 1) * actualIntensity * 2)), // Can shift diet significantly
   };
   return clampGene(mutated);
 };
@@ -35,4 +43,6 @@ export const defaultGenes: GeneSpec = {
   colorHue: 180,
   aggression: 0.3,
   cohesion: 0.5,
+  foodStandards: 0.3, // Moderate pickiness about food
+  diet: -0.5, // Mostly herbivore by default
 };

@@ -8,8 +8,8 @@ interface RadarChartProps {
 export function RadarChart({ stats }: RadarChartProps) {
   if (!stats || !stats.byTribe) return null;
 
-  const traits = ['speed', 'vision', 'metabolism', 'reproChance', 'aggression', 'cohesion'];
-  const traitLabels = ['Speed', 'Vision', 'Metab', 'Repro', 'Aggro', 'Cohesion'];
+  const traits = ['speed', 'vision', 'metabolism', 'reproChance', 'aggression', 'cohesion', 'foodStandards', 'diet'];
+  const traitLabels = ['Speed', 'Vision', 'Metabolism', 'Reproduce', 'Aggression', 'Cohesion', 'Pickiness', 'Diet'];
   
   // Calculate max values for normalization
   const maxValues = useMemo(() => {
@@ -17,11 +17,17 @@ export function RadarChart({ stats }: RadarChartProps) {
     traits.forEach(trait => {
       maxes[trait] = 0;
       Object.values(stats.byTribe).forEach(tribe => {
-        const value = tribe.mean[trait as keyof typeof tribe.mean];
-        if (value > maxes[trait]) maxes[trait] = value;
+        const value = tribe.mean[trait as keyof typeof tribe.mean] || (trait === 'foodStandards' ? 0.3 : trait === 'diet' ? -0.5 : 0);
+        // For diet, use absolute value since it ranges from -1 to 1
+        const normalizedValue = trait === 'diet' ? Math.abs(value) : value;
+        if (normalizedValue > maxes[trait]) maxes[trait] = normalizedValue;
       });
-      // Add some padding to max values
-      maxes[trait] = maxes[trait] * 1.2 || 1;
+      // Add some padding to max values, special case for diet
+      if (trait === 'diet') {
+        maxes[trait] = 1; // Diet ranges from -1 to 1
+      } else {
+        maxes[trait] = maxes[trait] * 1.2 || 1;
+      }
     });
     return maxes;
   }, [stats.byTribe]);
@@ -35,8 +41,10 @@ export function RadarChart({ stats }: RadarChartProps) {
   const getPolygonPoints = (tribe: typeof stats.byTribe[string]) => {
     return traits.map((trait, i) => {
       const angle = i * angleStep - Math.PI / 2;
-      const value = tribe.mean[trait as keyof typeof tribe.mean];
-      const normalized = Math.min(value / maxValues[trait], 1);
+      const value = tribe.mean[trait as keyof typeof tribe.mean] || (trait === 'foodStandards' ? 0.3 : trait === 'diet' ? -0.5 : 0);
+      // For diet, map -1 to 1 range to 0 to 1 range for visualization
+      const displayValue = trait === 'diet' ? (value + 1) / 2 : value;
+      const normalized = Math.min(displayValue / maxValues[trait], 1);
       const r = radius * normalized;
       const x = centerX + Math.cos(angle) * r;
       const y = centerY + Math.sin(angle) * r;

@@ -12,7 +12,7 @@ export function PopulationDominance({ stats }: PopulationDominanceProps) {
     // Calculate total population
     const totalPop = Object.values(stats.byTribe).reduce((sum, t) => sum + t.count, 0);
 
-    // Create sorted array with percentages
+    // Create array with percentages, maintaining consistent order by name
     return Object.entries(stats.byTribe)
       .map(([name, tribe]) => ({
         name,
@@ -20,7 +20,7 @@ export function PopulationDominance({ stats }: PopulationDominanceProps) {
         percentage: totalPop > 0 ? (tribe.count / totalPop) * 100 : 0,
         color: tribe.color,
       }))
-      .sort((a, b) => b.count - a.count); // Sort by population descending
+      .sort((a, b) => a.name.localeCompare(b.name)); // Sort alphabetically for consistency
   }, [stats]);
 
   const totalPopulation = useMemo(() =>

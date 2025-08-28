@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import React, { useMemo, useEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 
 interface EntityPointsProps {
   pos: Float32Array;
   color: Uint8Array;
   alive: Uint8Array;
+  age?: Float32Array | null;
   count: number;
   pointSize?: number;
 }
@@ -13,7 +14,8 @@ interface EntityPointsProps {
 export function EntityPoints({ 
   pos, 
   color, 
-  alive, 
+  alive,
+  age,
   count, 
   pointSize = 2 
 }: EntityPointsProps) {
@@ -27,6 +29,7 @@ export function EntityPoints({
       attribute vec2 aPos;
       attribute vec3 aCol;
       attribute float aAlive;
+      attribute float aAge;
       varying vec3 vColor;
       varying float vAlive;
       uniform float uSize;
@@ -36,7 +39,21 @@ export function EntityPoints({
         vColor = aCol;
         vAlive = aAlive;
         vec4 mvPosition = modelViewMatrix * vec4(aPos, 0.0, 1.0);
-        gl_PointSize = uSize;
+
+        // Scale point size based on age (young small, old larger)
+        float ageInDays = aAge / 10.0; // Convert to days
+        float ageFactor = 1.0;
+        if (ageInDays < 2.0) {
+          ageFactor = 0.8; // Young - smaller
+        } else if (ageInDays < 4.0) {
+          ageFactor = 1.0; // Adult - normal
+        } else if (ageInDays < 6.0) {
+          ageFactor = 1.1; // Old - larger
+        } else {
+          ageFactor = 1.2; // Very old - largest
+        }
+
+        gl_PointSize = uSize * ageFactor;
         gl_Position = projectionMatrix * mvPosition;
       }
     `,
@@ -70,6 +87,13 @@ export function EntityPoints({
     const colAttr = new THREE.BufferAttribute(color, 3, true); // normalized for colors
     const aliveAttr = new THREE.BufferAttribute(alive, 1);
     
+    // Add age attribute if available
+    if (age) {
+      const ageAttr = new THREE.BufferAttribute(age, 1);
+      ageAttr.usage = THREE.DynamicDrawUsage;
+      geom.setAttribute('aAge', ageAttr);
+    }
+
     // Set usage to dynamic since data changes every frame
     posAttr.usage = THREE.DynamicDrawUsage;
     colAttr.usage = THREE.DynamicDrawUsage;
@@ -84,19 +108,36 @@ export function EntityPoints({
     geom.attributes.aPos.needsUpdate = true;
     geom.attributes.aCol.needsUpdate = true;
     geom.attributes.aAlive.needsUpdate = true;
-  }, [geom, pos, color, alive, count]);
+    if (age) {
+      geom.attributes.aAge.needsUpdate = true;
+    }
+  }, [geom, pos, color, alive, age, count]);
 
   // Update every frame to reflect SharedArrayBuffer changes
+  const { camera } = useThree();
   useFrame(() => {
     const posAttr = geom.getAttribute('aPos') as THREE.BufferAttribute;
     const colAttr = geom.getAttribute('aCol') as THREE.BufferAttribute;
     const aliveAttr = geom.getAttribute('aAlive') as THREE.BufferAttribute;
+    const ageAttr = geom.getAttribute('aAge') as THREE.BufferAttribute;
     
     if (posAttr && colAttr && aliveAttr) {
       posAttr.needsUpdate = true;
       colAttr.needsUpdate = true;
       aliveAttr.needsUpdate = true;
+      if (ageAttr) {
+        ageAttr.needsUpdate = true;
+      }
       geom.setDrawRange(0, count);
+    }
+
+    // Scale point size based on camera zoom (for OrthographicCamera)
+    if (camera && 'zoom' in camera) {
+      const baseSize = 22; // Base size when at zoom level 1 (larger for better visibility)
+      const zoom = (camera as THREE.OrthographicCamera).zoom;
+      // Scale proportionally with zoom - entities maintain relative size to world
+      const scaledSize = baseSize * zoom;
+      mat.uniforms.uSize.value = Math.max(4, Math.min(80, scaledSize));
     }
   });
 

@@ -8,6 +8,8 @@ export type GeneSpec = {
   colorHue: number;     // phenotype base hue
   aggression: number;   // 0-1, likelihood to attack others
   cohesion: number;     // 0-1, tendency to stay with tribe
+  foodStandards?: number; // 0-1, pickiness about food density (0=desperate, 1=very picky)
+  diet?: number;        // -1 to 1, -1=pure herbivore, 0=omnivore, 1=pure carnivore
 };
 
 export type TribeInit = {
@@ -20,7 +22,17 @@ export type TribeInit = {
 export type WorldInit = {
   width: number;
   height: number;
-  foodGrid: { cols: number; rows: number; regen: number; capacity: number };
+  foodGrid: { 
+    cols: number; 
+    rows: number; 
+    regen: number; 
+    capacity: number;
+    distribution?: {
+      scale: number;      // Noise scale (5-50, lower = larger features)
+      threshold: number;  // Food threshold (0-1, higher = less food islands)
+      frequency?: number; // Noise frequency/octaves (1-5, higher = more detail)
+    };
+  };
 };
 
 export type SimInit = {
@@ -28,6 +40,12 @@ export type SimInit = {
   tribes: TribeInit[];
   world: WorldInit;
   cap: number; // max entities
+  energy?: {
+    start: number;    // Starting energy for new entities
+    max: number;      // Maximum energy capacity
+    repro: number;    // Energy required for reproduction
+  };
+  hybridization?: boolean; // Allow inter-tribe mating
 };
 
 export type TribeStats = {
@@ -44,6 +62,8 @@ export type TribeStats = {
     aggression: number;
     cohesion: number;
     reproChance: number;
+    foodStandards: number;
+    diet: number;
   };
   distribution: {
     speed: { min: number; max: number; std: number };
@@ -52,6 +72,8 @@ export type TribeStats = {
     aggression: { min: number; max: number; std: number };
     cohesion: { min: number; max: number; std: number };
     reproChance: { min: number; max: number; std: number };
+    foodStandards: { min: number; max: number; std: number };
+    diet: { min: number; max: number; std: number };
   };
 };
 
@@ -67,6 +89,8 @@ export type SimStats = {
       aggression: number;
       cohesion: number;
       reproChance: number;
+      foodStandards: number;
+      diet: number;
     };
     distribution: {
       speed: { min: number; max: number; std: number };
@@ -75,6 +99,8 @@ export type SimStats = {
       aggression: { min: number; max: number; std: number };
       cohesion: { min: number; max: number; std: number };
       reproChance: { min: number; max: number; std: number };
+      foodStandards: { min: number; max: number; std: number };
+      diet: { min: number; max: number; std: number };
     };
   };
 };
@@ -100,8 +126,9 @@ export type MainMsg =
         color: SharedArrayBuffer; 
         alive: SharedArrayBuffer 
       };
-      meta: { count: number } 
+      meta: { count: number };
+      foodMeta?: { cols: number; rows: number };
     }}
   | { type: 'stats'; payload: SimStats }
   | { type: 'perf'; payload: PerfStats }
-  | { type: 'foodUpdate'; payload: { foodGrid: number[] } };
+  | { type: 'foodUpdate'; payload: { foodGrid: ArrayBuffer } };

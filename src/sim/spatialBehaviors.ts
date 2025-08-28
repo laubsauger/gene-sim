@@ -19,17 +19,22 @@ export function efficientMovement(
   killsByTribe?: Uint32Array,
   deathsByTribe?: Uint32Array,
   color?: Uint8Array,
-  birthsByTribe?: Uint32Array
+  birthsByTribe?: Uint32Array,
+  allowHybrids?: boolean
 ): void {
-  const G = 6;
+  const G = 8; // Now includes foodStandards and diet genes
   const base = i * G;
   const px = pos[i * 2], py = pos[i * 2 + 1];
   const speed = genes[base];
   const vision = genes[base + 1];
   const aggression = genes[base + 4];
   const cohesion = genes[base + 5];
+  const foodStandards = genes[base + 6] || 0.3; // How picky about food density
+  const diet = genes[base + 7] || -0.5; // -1=herbivore, 0=omnivore, 1=carnivore
   const myTribe = tribeId[i];
   const myEnergy = energy[i];
+  
+  // Use actual position for lookup
   
   // Accumulate neighbor influences (limited to spatial cells)
   let alignX = 0, alignY = 0;
@@ -43,26 +48,35 @@ export function efficientMovement(
   let potentialMate = -1;
   let potentialMateDist = vision * 2;
   
-  // Use spatial hash to only check nearby entities
-  grid.forNeighbors(px, py, vision * 2, (j) => {
-    if (j === i || !alive[j]) return;
+  // Use spatial hash to check entities within vision
+  const visionSq = vision * vision;
+  
+  // Adaptive limit based on entity count but maintaining fidelity
+  const maxChecks = Math.max(25, Math.min(40, 600000 / alive.length)); // 25-40 checks adaptive
+  
+  // Use optimized neighbor search with early exit
+  grid.forNeighborsWithLimit(px, py, vision, maxChecks, (j) => {
+    if (j === i || !alive[j]) return false; // Don't count self or dead
     
     const dx = pos[j * 2] - px;
     const dy = pos[j * 2 + 1] - py;
-    const distSq = dx * dx + dy * dy; // Use squared distance to avoid sqrt
+    const distSq = dx * dx + dy * dy;
     
     // Skip if too far
-    if (distSq > vision * vision * 4) return;
+    if (distSq > visionSq) return false;
     
     totalNearby++;
     const otherTribe = tribeId[j];
     
     // Universal separation for crowding (stronger when very close)
     if (distSq < 900) { // 30 units squared - personal space
-      const dist = Math.sqrt(distSq) || 1;
-      const crowdForce = Math.max(0, 1 - dist / 30);
-      separateX -= (dx / dist) * crowdForce * 2;
-      separateY -= (dy / dist) * crowdForce * 2;
+      const dist = Math.sqrt(distSq) + 1; // Avoid division by zero
+      const crowdForce = (30 - dist) / 30; // Simplified calculation
+      if (crowdForce > 0) {
+        const factor = crowdForce * 2 / dist;
+        separateX -= dx * factor;
+        separateY -= dy * factor;
+      }
     }
     
     if (otherTribe === myTribe) {
@@ -84,18 +98,22 @@ export function efficientMovement(
       // Different tribe - could fight, mate, or ignore
       nearbyEnemies++;
       
-      // Track for potential interactions
-      if (distSq < nearestEnemyDist * nearestEnemyDist) {
+      // Track for potential interactions (use squared distances to avoid sqrt)
+      const nearestEnemyDistSq = nearestEnemyDist * nearestEnemyDist;
+      if (distSq < nearestEnemyDistSq) {
         nearestEnemyDist = Math.sqrt(distSq);
         nearestEnemy = j;
       }
       
       // Also consider as potential mate if healthy
-      if (energy[j] > 50 && distSq < potentialMateDist * potentialMateDist) {
+      const potentialMateDistSq = potentialMateDist * potentialMateDist;
+      if (energy[j] > 50 && distSq < potentialMateDistSq) {
         potentialMateDist = Math.sqrt(distSq);
         potentialMate = j;
       }
     }
+    
+    return true; // Count this as a valid neighbor check
   });
   
   // Apply flocking forces (but keep it light)
@@ -128,55 +146,150 @@ export function efficientMovement(
   vx += separateX * speed * 0.2;
   vy += separateY * speed * 0.2;
   
-  // Inter-tribe interactions: Fight, Mate, or Ignore
-  if (nearestEnemy >= 0 && nearestEnemyDist < vision * 1.5) {
-    const interactionRoll = rand();
+  // Calculate crowd stress for use in multiple behaviors
+  const crowdStress = Math.min(1, totalNearby / 15); // Crowding stress (15 is optimal max)
+  const reproductiveCrowdLimit = 0.7; // Above this crowd level, no reproduction
+  
+  // CARNIVORE HUNTING: Proactive hunting based on diet
+  const carnivoreLevel = Math.max(0, diet); // 0-1 for carnivorous tendency
+  const isHunter = carnivoreLevel > 0.2; // Even slightly carnivorous = hunter
+  
+  // Hunt proactively unless satiated
+  // Pure carnivores (1.0) hunt until 90% full, herbivores never hunt
+  const huntingThreshold = 90 - (carnivoreLevel * 60); // 90 to 30 based on carnivore level
+  const shouldHunt = isHunter && myEnergy < huntingThreshold;
+  
+  // Conservation instinct: Check if neighbors are well-fed to prevent overhunting
+  let neighborhoodSatiation = 0;
+  let satiatedNeighbors = 0;
+  if (shouldHunt && nearbyAllies > 0) {
+    grid.forNeighborsWithLimit(px, py, vision, 15, (j) => {
+      if (j !== i && alive[j] && tribeId[j] === myTribe) {
+        if (energy[j] > 70) satiatedNeighbors++;
+      }
+      return true;
+    });
+    neighborhoodSatiation = nearbyAllies > 0 ? satiatedNeighbors / nearbyAllies : 0;
+  }
+  
+  // Don't hunt if tribe is well-fed (prevents extinction of prey)
+  const conservationMode = neighborhoodSatiation > 0.7 && myEnergy > 40;
+  
+  if (shouldHunt && !conservationMode) {
+    // Actively seek best prey target
+    let bestPrey = -1;
+    let bestPreyScore = -1;
+    
+    grid.forNeighborsWithLimit(px, py, vision * 1.5, 30, (j) => {
+      if (j !== i && alive[j]) {
+        const dx = pos[j * 2] - px;
+        const dy = pos[j * 2 + 1] - py;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < vision * 1.5) {
+          const targetEnergy = energy[j];
+          const isAlly = tribeId[j] === myTribe;
+          
+          // Score prey: prefer enemies, weak targets, close targets
+          let preyScore = (100 - targetEnergy) / 100; // Prefer weak
+          preyScore += (1 - dist / (vision * 1.5)) * 0.5; // Prefer close
+          
+          if (!isAlly) {
+            preyScore += 1; // Strong preference for other tribes
+          } else {
+            // Cannibalism only when desperate or pure carnivore
+            const cannibalismWillingness = carnivoreLevel * 0.5 + (50 - myEnergy) / 100;
+            if (cannibalismWillingness < 0.6) return true; // Skip ally
+            preyScore *= 0.3; // Much lower score for cannibalism
+          }
+          
+          if (preyScore > bestPreyScore) {
+            bestPrey = j;
+            bestPreyScore = preyScore;
+          }
+        }
+      }
+      return true;
+    });
+    
+    // Override nearest enemy with best prey
+    if (bestPrey >= 0) {
+      nearestEnemy = bestPrey;
+      nearestEnemyDist = Math.sqrt(
+        Math.pow(pos[bestPrey * 2] - px, 2) + 
+        Math.pow(pos[bestPrey * 2 + 1] - py, 2)
+      );
+    }
+  }
+  
+  // Inter-tribe interactions with crowd stress
+  if (nearestEnemy >= 0 && nearestEnemyDist < vision) {
     const target = nearestEnemy;
     
     // Context affects interaction chances
     const stressFactor = (100 - myEnergy) / 100; // More stressed = more aggressive
-    const crowdStress = Math.min(1, totalNearby / 20); // Crowding increases aggression
     const groupSupport = nearbyAllies / Math.max(1, nearbyEnemies); // Safety in numbers
     
-    // Calculate interaction probabilities
-    const fightChance = aggression * (0.5 + stressFactor * 0.3 + crowdStress * 0.2) * (1 + groupSupport * 0.2);
-    const mateChance = (1 - aggression) * 0.15 * (myEnergy / 100); // Only mate when healthy
-    const totalChance = fightChance + mateChance;
+    // Diet influences combat behavior
+    // Carnivores (+1) are more likely to hunt, herbivores (-1) avoid combat
+    const huntingDrive = Math.max(0, diet); // 0-1 for carnivorous tendency
+    const dietFightBonus = huntingDrive * 0.5; // Up to 50% bonus for carnivores
     
-    if (interactionRoll < fightChance) {
-      // FIGHT - most common with different tribes
+    // Calculate fight chance with diet factor
+    const fightChance = (aggression + dietFightBonus) * (0.3 + stressFactor * 0.2 + crowdStress * 0.2) * Math.min(1.5, 1 + groupSupport * 0.1);
+    
+    if (rand() < fightChance) {
+      // PREDATION/FIGHT - carnivores get more energy from kills
       const targetEnergy = energy[target];
       
-      // Damage based on aggression and group support
-      const damage = (8 + nearbyAllies * 1.5) * aggression;
+      // Damage based on aggression, diet, and group support
+      const carnivoreBonus = 1 + huntingDrive * 0.5; // Carnivores deal more damage
+      const damage = (8 + nearbyAllies * 1.5) * aggression * carnivoreBonus;
       energy[target] -= damage;
       
-      // Steal energy
-      const stolen = Math.min(damage * 0.5, targetEnergy * 0.3);
-      energy[i] += stolen;
+      // Energy absorption based on diet
+      // Only carnivores and omnivores can get energy from kills
+      // Pure herbivores (diet=-1) get 0%, pure carnivores (diet=1) get 100%
+      const carnivoreLevel = Math.max(0, diet); // 0-1 for carnivorous tendency
+      if (carnivoreLevel > 0) {
+        const absorptionRate = carnivoreLevel; // 0-1 based on how carnivorous
+        const stolen = Math.min(damage * absorptionRate, targetEnergy * 0.5);
+        energy[i] += stolen;
+      }
       
       // Kill if target is weakened
       if (energy[target] <= 0) {
         alive[target] = 0;
-        energy[i] += Math.max(0, energy[target] + 10);
+        // Only carnivores and omnivores gain energy from kills
+        if (carnivoreLevel > 0) {
+          const corpseEnergy = Math.max(20, targetEnergy * 0.5);
+          energy[i] += corpseEnergy * carnivoreLevel; // Scale by how carnivorous
+        }
         // Track kill stats
         if (killsByTribe && deathsByTribe) {
           killsByTribe[myTribe]++;
           deathsByTribe[tribeId[target]]++;
         }
       }
-    } else if (interactionRoll < totalChance && potentialMate >= 0 && energy[i] > 60 && energy[potentialMate] > 60) {
-      // MATE - rare but creates hybrid offspring between different tribes
-      if (rand() < 0.2) { // 20% success rate for cross-tribe mating
+    } else if (allowHybrids && potentialMate >= 0 && energy[i] > 50 && energy[potentialMate] > 50 && crowdStress < reproductiveCrowdLimit) {
+      // Only allow hybrid mating if enabled
+      // NO REPRODUCTION if too crowded - prevents population explosions
+      // Mate chance affected by health and crowding
+      const mateChance = (1 - aggression) * 0.1 * (myEnergy / 100) * (1 - crowdStress);
+      if (rand() < mateChance && rand() < 0.2) { // Combined mate and success chance
         // Find a free slot for hybrid baby - search sequentially to avoid index issues
         for (let j = 0; j < alive.length; j++) {
           if (!alive[j]) {
             // Create hybrid with mixed genes
             const mateBase = potentialMate * G;
             
-            // Spawn hybrid entity at parents' location
-            pos[j * 2] = (pos[i * 2] + pos[potentialMate * 2]) / 2;
-            pos[j * 2 + 1] = (pos[i * 2 + 1] + pos[potentialMate * 2 + 1]) / 2;
+            // Spawn child NEAR parents with small offset, not at random location
+            const parentX = (pos[i * 2] + pos[potentialMate * 2]) / 2;
+            const parentY = (pos[i * 2 + 1] + pos[potentialMate * 2 + 1]) / 2;
+            const spawnOffset = 10 + rand() * 10; // 10-20 units away
+            const spawnAngle = rand() * Math.PI * 2;
+            pos[j * 2] = parentX + Math.cos(spawnAngle) * spawnOffset;
+            pos[j * 2 + 1] = parentY + Math.sin(spawnAngle) * spawnOffset;
             
             const ang = rand() * Math.PI * 2;
             const hybridSpeed = (genes[base] + genes[mateBase]) / 2;
@@ -186,8 +299,9 @@ export function efficientMovement(
             alive[j] = 1;
             energy[j] = 40; // Start with decent energy
             
-            // Inherit tribe from random parent
-            const hybridTribe = rand() < 0.5 ? myTribe : tribeId[potentialMate];
+            // Hybrids get special tribe ID (highest tribe ID + 1 for "Hybrids" tribe)
+            // This makes them visually distinct and tracks them separately
+            const hybridTribe = 999; // Special ID for hybrids
             tribeId[j] = hybridTribe;
             
             // Set hybrid genes (average with some variation)
@@ -199,14 +313,12 @@ export function efficientMovement(
             genes[jBase + 4] = (genes[base + 4] + genes[mateBase + 4]) / 2 * 0.7; // Hybrids less aggressive
             genes[jBase + 5] = (genes[base + 5] + genes[mateBase + 5]) / 2 * 1.2; // Hybrids more cohesive
             
-            // Set hybrid color (blend of parents)
+            // Set hybrid color - distinctive white/silver color for visibility
             if (color) {
-              const r1 = color[i * 3], g1 = color[i * 3 + 1], b1 = color[i * 3 + 2];
-              const r2 = color[potentialMate * 3], g2 = color[potentialMate * 3 + 1], b2 = color[potentialMate * 3 + 2];
-              // Create a unique hybrid color (purple-ish blend)
-              color[j * 3] = Math.min(255, (r1 + r2) / 2 + 50);
-              color[j * 3 + 1] = Math.min(255, (g1 + g2) / 2);
-              color[j * 3 + 2] = Math.min(255, (b1 + b2) / 2 + 50);
+              // Make hybrids bright white/silver for clear distinction
+              color[j * 3] = 220;     // R: bright
+              color[j * 3 + 1] = 220;  // G: bright  
+              color[j * 3 + 2] = 255;  // B: slightly more blue for silver tint
             }
             
             // Track birth
@@ -225,79 +337,231 @@ export function efficientMovement(
     // else IGNORE - no interaction
   }
   
-  // Food seeking - use vision to detect food
-  if (myEnergy < 70) {
+  // Food seeking with vision (optimized) - now with survival instinct, standards, and diet
+  // Herbivores seek plant food, pure carnivores ignore it completely
+  const herbivoreLevel = Math.max(0, -diet); // 0-1 for herbivorous tendency
+  const plantFoodInterest = herbivoreLevel; // 0 for pure carnivore, 1 for pure herbivore
+  
+  // Carnivores need to migrate if no prey available
+  if (carnivoreLevel > 0.5 && nearestEnemy < 0) {
+    // Strong carnivore with no prey nearby - need to migrate!
+    const preyMigrationUrge = carnivoreLevel * (80 - myEnergy) / 80;
+    
+    // Apply strong migration pressure - carnivores need to roam to find prey
+    const migrationAngle = rand() * Math.PI * 2;
+    vx += Math.cos(migrationAngle) * speed * preyMigrationUrge * 0.7;
+    vy += Math.sin(migrationAngle) * speed * preyMigrationUrge * 0.7;
+  }
+  
+  if (myEnergy < 70 && plantFoodInterest > 0.1) {
     const cellX = Math.floor((px / world.width) * foodCols);
-    const cellY = Math.floor((py / world.height) * foodRows); 
+    const cellY = Math.floor((py / world.height) * foodRows);
     
-    // Check food cells within vision range
-    const visionCells = Math.ceil(vision / (world.width / foodCols));
+    // Adaptive vision based on hunger - more desperate = look further
+    const hungerFactor = Math.max(0.3, 1 - myEnergy / 100);
+    // Pickier entities look further to find better food areas
+    const visionBonus = Math.floor(foodStandards * 2); // 0-2 extra cells for picky eaters
+    const visionCells = (myEnergy < 30 ? 2 : 1) + visionBonus;
+    
+    let bestFoodDx = 0, bestFoodDy = 0;
     let foundFood = false;
-    let bestFoodAmount = 0;
-    let bestDx = 0, bestDy = 0;
+    let totalFoodInArea = 0;
+    let cellsChecked = 0;
     
+    // Check food cells within vision - scan for both food and emptiness
     for (let dy = -visionCells; dy <= visionCells; dy++) {
       for (let dx = -visionCells; dx <= visionCells; dx++) {
         const fx = cellX + dx;
         const fy = cellY + dy;
         if (fx >= 0 && fx < foodCols && fy >= 0 && fy < foodRows) {
-          // Check distance is within actual vision range
-          const cellPx = (fx + 0.5) * (world.width / foodCols);
-          const cellPy = (fy + 0.5) * (world.height / foodRows);
-          const dist = Math.sqrt((cellPx - px) ** 2 + (cellPy - py) ** 2);
+          const foodIdx = fy * foodCols + fx;
+          const foodAmount = foodGrid[foodIdx];
+          totalFoodInArea += foodAmount;
+          cellsChecked++;
           
-          if (dist <= vision) {
-            const foodIdx = fy * foodCols + fx;
-            if (foodIdx >= 0 && foodIdx < foodGrid.length && foodGrid[foodIdx] > 0.2) {
-              // Track the best food source
-              if (foodGrid[foodIdx] > bestFoodAmount) {
-                bestFoodAmount = foodGrid[foodIdx];
-                bestDx = cellPx - px;
-                bestDy = cellPy - py;
-                foundFood = true;
-              }
-            }
+          if (foodAmount > 0.2) {
+            // Weight by food amount - prefer richer cells
+            bestFoodDx += dx * foodAmount;
+            bestFoodDy += dy * foodAmount;
+            foundFood = true;
           }
         }
       }
     }
     
-    const hungerFactor = Math.max(0.3, 1 - myEnergy / 100);
+    // Calculate local food density
+    const localFoodDensity = cellsChecked > 0 ? totalFoodInArea / cellsChecked : 0;
     
-    if (foundFood) {
-      // Move toward best food source
-      const dist = Math.sqrt(bestDx * bestDx + bestDy * bestDy) || 1;
-      vx += (bestDx / dist) * speed * hungerFactor * 0.4;
-      vy += (bestDy / dist) * speed * hungerFactor * 0.4;
-    } else if (myEnergy < 40) {
-      // Desperate - head toward central lush area
-      const centerX = world.width / 2;
-      const centerY = world.height / 2;
-      const toCenterX = centerX - px;
-      const toCenterY = centerY - py;
-      const dist = Math.sqrt(toCenterX * toCenterX + toCenterY * toCenterY) || 1;
+    // FOOD STANDARDS: Determine if area is good enough to settle
+    // Picky entities (high foodStandards) require higher food density
+    const minAcceptableDensity = foodStandards * 0.5; // 0-0.5 range
+    const isAreaAcceptable = localFoodDensity >= minAcceptableDensity;
+    
+    // If area is poor and entity is picky, add urgency to leave
+    let migrationUrge = 0;
+    if (!isAreaAcceptable && myEnergy > 20) { // Don't migrate if almost dead
+      migrationUrge = foodStandards * (1 - localFoodDensity) * 0.8;
+    }
+    
+    if (foundFood && isAreaAcceptable) {
+      // Normalize weighted food direction
+      const foodNorm = Math.sqrt(bestFoodDx * bestFoodDx + bestFoodDy * bestFoodDy) || 1;
+      bestFoodDx /= foodNorm;
+      bestFoodDy /= foodNorm;
       
-      // Strong pull to center when starving
-      vx += (toCenterX / dist) * speed * hungerFactor * 0.5;
-      vy += (toCenterY / dist) * speed * hungerFactor * 0.5;
+      // Convert grid direction to world coordinates
+      const cellWidth = world.width / foodCols;
+      const cellHeight = world.height / foodRows;
+      const worldDx = bestFoodDx * cellWidth;
+      const worldDy = bestFoodDy * cellHeight;
+      
+      // Move toward food with hunger urgency (reduced if picky and area is marginal)
+      const len = Math.sqrt(worldDx * worldDx + worldDy * worldDy) || 1;
+      const settlementFactor = isAreaAcceptable ? 0.4 : 0.2; // Less attraction if standards not met
+      vx += (worldDx / len) * speed * hungerFactor * settlementFactor;
+      vy += (worldDy / len) * speed * hungerFactor * settlementFactor;
+    } else if ((localFoodDensity < 0.1 || migrationUrge > 0.3) && myEnergy < 50) {
+      // SURVIVAL INSTINCT: Actively leave barren areas when hungry
+      // Scan wider area for ANY food to determine escape direction
+      const escapeCells = 3;
+      let escapeX = 0, escapeY = 0;
+      let foundEscape = false;
+      
+      for (let dy = -escapeCells; dy <= escapeCells; dy++) {
+        for (let dx = -escapeCells; dx <= escapeCells; dx++) {
+          // Skip cells we already checked
+          if (Math.abs(dx) <= visionCells && Math.abs(dy) <= visionCells) continue;
+          
+          const fx = cellX + dx;
+          const fy = cellY + dy;
+          if (fx >= 0 && fx < foodCols && fy >= 0 && fy < foodRows) {
+            const foodIdx = fy * foodCols + fx;
+            if (foodGrid[foodIdx] > 0.1) {
+              escapeX += dx;
+              escapeY += dy;
+              foundEscape = true;
+            }
+          }
+        }
+      }
+      
+      if (foundEscape) {
+        // Move toward detected food in wider area
+        const escapeNorm = Math.sqrt(escapeX * escapeX + escapeY * escapeY) || 1;
+        const cellWidth = world.width / foodCols;
+        const cellHeight = world.height / foodRows;
+        vx += (escapeX / escapeNorm) * cellWidth * speed * hungerFactor * 0.5;
+        vy += (escapeY / escapeNorm) * cellHeight * speed * hungerFactor * 0.5;
+      } else {
+        // No food detected anywhere - PANIC MODE
+        // Move in a consistent direction to escape barren region
+        const panicAngle = (i * 0.618033988749895) * Math.PI * 2; // Golden ratio for spread
+        vx += Math.cos(panicAngle) * speed * hungerFactor * 0.6;
+        vy += Math.sin(panicAngle) * speed * hungerFactor * 0.6;
+      }
+    } else if (myEnergy < 30) {
+      // Desperate wandering with bias away from current position
+      const wanderAngle = rand() * Math.PI * 2;
+      vx += Math.cos(wanderAngle) * speed * hungerFactor * 0.4;
+      vy += Math.sin(wanderAngle) * speed * hungerFactor * 0.4;
     }
   }
   
-  // Crowd avoidance - flee if way too crowded
-  if (totalNearby > 20) {
-    // Panic mode - get away from crowds
-    vx += separateX * speed * 0.5;
-    vy += separateY * speed * 0.5;
+  // CASCADING CROWD DYNAMICS - Prevent trapped cores
+  // Calculate pressure gradient from crowd density
+  let pressureX = 0, pressureY = 0;
+  if (crowdStress > 0.2) {
+    // Entities in crowds create "pressure waves" that propagate outward
+    // This helps trapped entities in the core push through outer layers
+    
+    // Calculate average movement direction of nearby same-tribe members
+    let tribeMovementX = 0, tribeMovementY = 0;
+    let movingAllies = 0;
+    
+    grid.forNeighborsWithLimit(px, py, vision * 1.5, 30, (j) => {
+      if (j === i || !alive[j] || tribeId[j] !== myTribe) return false;
+      
+      const vx = vel[j * 2];
+      const vy = vel[j * 2 + 1];
+      const speed = Math.sqrt(vx * vx + vy * vy);
+      
+      if (speed > 5) { // Only count moving entities
+        tribeMovementX += vx / speed;
+        tribeMovementY += vy / speed;
+        movingAllies++;
+      }
+      return true;
+    });
+    
+    // If many allies are trying to move in same direction, join the push
+    if (movingAllies > 3) {
+      const pushNorm = Math.sqrt(tribeMovementX * tribeMovementX + tribeMovementY * tribeMovementY) || 1;
+      pressureX = (tribeMovementX / pushNorm) * crowdStress * speed * 0.4;
+      pressureY = (tribeMovementY / pushNorm) * crowdStress * speed * 0.4;
+    }
+    
+    // Strong outward pressure when extremely crowded
+    if (crowdStress > 0.6) {
+      // Calculate center of mass of crowd
+      let crowdCenterX = 0, crowdCenterY = 0;
+      let crowdCount = 0;
+      
+      grid.forNeighborsWithLimit(px, py, vision, 20, (j) => {
+        if (j !== i && alive[j]) {
+          crowdCenterX += pos[j * 2];
+          crowdCenterY += pos[j * 2 + 1];
+          crowdCount++;
+        }
+        return true;
+      });
+      
+      if (crowdCount > 0) {
+        crowdCenterX /= crowdCount;
+        crowdCenterY /= crowdCount;
+        
+        // Push away from crowd center with exponential force
+        const awayX = px - crowdCenterX;
+        const awayY = py - crowdCenterY;
+        const awayDist = Math.sqrt(awayX * awayX + awayY * awayY) || 1;
+        
+        const pushForce = Math.pow(crowdStress, 3) * speed * 0.6; // Cubic for extreme crowds
+        pressureX += (awayX / awayDist) * pushForce;
+        pressureY += (awayY / awayDist) * pushForce;
+      }
+    }
   }
   
-  // Random wander component (reduced when in optimal group size)
-  const optimalGroup = 5;
-  const groupDeviation = Math.abs(nearbyAllies - optimalGroup) / optimalGroup;
-  const wanderFactor = Math.max(0.1, Math.min(1, groupDeviation * 0.3));
-  vx += (rand() * 2 - 1) * speed * 0.2 * wanderFactor;
-  vy += (rand() * 2 - 1) * speed * 0.2 * wanderFactor;
+  // Apply pressure forces
+  vx += pressureX;
+  vy += pressureY;
   
-  // Update velocity with damping
-  vel[i * 2] = vx * 0.95;
-  vel[i * 2 + 1] = vy * 0.95;
+  // Anti-complacency: Force movement when too stationary
+  const currentSpeed = Math.sqrt(vx * vx + vy * vy);
+  if (currentSpeed < speed * 0.2 && myEnergy > 30) {
+    // Entity is moving too slowly - add restlessness
+    // Use entity index and random value for unique movement patterns
+    const restlessAngle = (i * 1.618033988749895 + rand() * Math.PI) * 2;
+    const restlessForce = speed * 0.3 * (1 + crowdStress);
+    vx += Math.cos(restlessAngle) * restlessForce;
+    vy += Math.sin(restlessAngle) * restlessForce;
+  }
+  
+  // Crowd avoidance with separation forces
+  if (crowdStress > 0.15) {
+    // Progressive crowd avoidance that scales with stress
+    const crowdAvoidance = Math.pow(crowdStress * 1.5, 2); // Stronger quadratic response
+    vx += separateX * speed * crowdAvoidance * 0.8;
+    vy += separateY * speed * crowdAvoidance * 0.8;
+  }
+  
+  // Random wander component - INCREASED to prevent stagnation
+  const optimalGroup = 4;
+  const groupDeviation = Math.abs(nearbyAllies - optimalGroup) / optimalGroup;
+  const wanderFactor = Math.max(0.2, Math.min(1, groupDeviation * 0.4 + crowdStress * 0.3));
+  vx += (rand() * 2 - 1) * speed * 0.3 * wanderFactor;
+  vy += (rand() * 2 - 1) * speed * 0.3 * wanderFactor;
+  
+  // Update velocity with less damping for more dynamic movement
+  vel[i * 2] = vx * 0.92; // Reduced damping from 0.95
+  vel[i * 2 + 1] = vy * 0.92;
 }
