@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrthographicCamera, OrbitControls, Stats } from '@react-three/drei';
 import { EntityPoints } from './EntityPoints';
+import { FoodMesh } from './FoodMesh';
 import type { SimClient } from '../client/setupSimClient';
 
 // FPS tracking component
@@ -29,6 +30,38 @@ function FPSTracker({ client }: { client: SimClient }) {
   });
 
   return null;
+}
+
+function FoodLayer({ client, world }: { client: SimClient; world: { width: number; height: number } }) {
+  const [foodGrid, setFoodGrid] = useState<Float32Array | null>(null);
+  const foodCols = 64;
+  const foodRows = 64;
+  
+  useEffect(() => {
+    const unsubscribe = client.onMessage((msg) => {
+      if (msg.type === 'foodUpdate' && msg.payload.foodGrid) {
+        // Convert array to Float32Array
+        const newFoodGrid = new Float32Array(msg.payload.foodGrid);
+        setFoodGrid(newFoodGrid);
+      }
+    });
+    
+    // Initialize with full food
+    setFoodGrid(new Float32Array(foodCols * foodRows).fill(1));
+    
+    return unsubscribe;
+  }, [client]);
+  
+  if (!foodGrid) return null;
+  
+  return (
+    <FoodMesh
+      foodGrid={foodGrid}
+      cols={foodCols}
+      rows={foodRows}
+      world={world}
+    />
+  );
 }
 
 function EntitiesLayer({ client }: { client: SimClient }) {
@@ -99,19 +132,19 @@ export interface Scene2DProps {
 
 export function Scene2D({ client, world }: Scene2DProps) {
   // Calculate camera settings to show the full world centered
-  const padding = 200; // Padding to ensure all borders are visible
+  const padding = 200; // Less padding for closer view
   const viewWidth = world.width + padding * 2;
   const viewHeight = world.height + padding * 2;
   
   // Calculate zoom to fit the entire world in the viewport
-  // Account for the sidebar taking up space (320px from the grid layout)
-  const availableWidth = window.innerWidth - 320;
+  // Account for the sidebar taking up space (420px from the grid layout)
+  const availableWidth = window.innerWidth - 420;
   const availableHeight = window.innerHeight;
-  const zoom = Math.min(availableWidth / viewWidth, availableHeight / viewHeight) * 0.9; // Increased to 0.9 for better fit
+  const zoom = Math.min(availableWidth / viewWidth, availableHeight / viewHeight) * 0.85; // Closer initial zoom
   
-  // Center the camera on the world
+  // Center the camera on the world with slight vertical offset
   const centerX = world.width / 2;
-  const centerY = world.height / 2;
+  const centerY = world.height / 2 - 50; // Shift view down slightly for better vertical centering
   
   return (
     <Canvas
@@ -234,6 +267,7 @@ export function Scene2D({ client, world }: Scene2DProps) {
         })}
       </group>
       
+      <FoodLayer client={client} world={world} />
       <EntitiesLayer client={client} />
     </Canvas>
   );

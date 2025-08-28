@@ -168,9 +168,8 @@ export function efficientMovement(
     } else if (interactionRoll < totalChance && potentialMate >= 0 && energy[i] > 60 && energy[potentialMate] > 60) {
       // MATE - rare but creates hybrid offspring between different tribes
       if (rand() < 0.2) { // 20% success rate for cross-tribe mating
-        // Find a free slot for hybrid baby
-        for (let k = 0; k < 100; k++) { // Limited search
-          const j = Math.floor(rand() * alive.length);
+        // Find a free slot for hybrid baby - search sequentially to avoid index issues
+        for (let j = 0; j < alive.length; j++) {
           if (!alive[j]) {
             // Create hybrid with mixed genes
             const mateBase = potentialMate * G;
@@ -226,25 +225,38 @@ export function efficientMovement(
     // else IGNORE - no interaction
   }
   
-  // Food seeking - gravitate to central lush area when hungry
+  // Food seeking - use vision to detect food
   if (myEnergy < 70) {
     const cellX = Math.floor((px / world.width) * foodCols);
     const cellY = Math.floor((py / world.height) * foodRows); 
     
-    // Quick check nearby food cells
+    // Check food cells within vision range
+    const visionCells = Math.ceil(vision / (world.width / foodCols));
     let foundFood = false;
-    let foodDx = 0, foodDy = 0;
+    let bestFoodAmount = 0;
+    let bestDx = 0, bestDy = 0;
     
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -visionCells; dy <= visionCells; dy++) {
+      for (let dx = -visionCells; dx <= visionCells; dx++) {
         const fx = cellX + dx;
         const fy = cellY + dy;
         if (fx >= 0 && fx < foodCols && fy >= 0 && fy < foodRows) {
-          const foodIdx = fy * foodCols + fx;
-          if (foodGrid[foodIdx] > 0.2) {
-            foodDx += dx;
-            foodDy += dy;
-            foundFood = true;
+          // Check distance is within actual vision range
+          const cellPx = (fx + 0.5) * (world.width / foodCols);
+          const cellPy = (fy + 0.5) * (world.height / foodRows);
+          const dist = Math.sqrt((cellPx - px) ** 2 + (cellPy - py) ** 2);
+          
+          if (dist <= vision) {
+            const foodIdx = fy * foodCols + fx;
+            if (foodIdx >= 0 && foodIdx < foodGrid.length && foodGrid[foodIdx] > 0.2) {
+              // Track the best food source
+              if (foodGrid[foodIdx] > bestFoodAmount) {
+                bestFoodAmount = foodGrid[foodIdx];
+                bestDx = cellPx - px;
+                bestDy = cellPy - py;
+                foundFood = true;
+              }
+            }
           }
         }
       }
@@ -253,9 +265,10 @@ export function efficientMovement(
     const hungerFactor = Math.max(0.3, 1 - myEnergy / 100);
     
     if (foundFood) {
-      // Move toward local food
-      vx += foodDx * speed * hungerFactor * 0.4;
-      vy += foodDy * speed * hungerFactor * 0.4;
+      // Move toward best food source
+      const dist = Math.sqrt(bestDx * bestDx + bestDy * bestDy) || 1;
+      vx += (bestDx / dist) * speed * hungerFactor * 0.4;
+      vy += (bestDy / dist) * speed * hungerFactor * 0.4;
     } else if (myEnergy < 40) {
       // Desperate - head toward central lush area
       const centerX = world.width / 2;

@@ -35,12 +35,12 @@ export default function App() {
             count: 2000,
             spawn: { x: 1000, y: 1000, radius: 200 },
             genes: {
-              speed: 70,
-              vision: 35,
-              metabolism: 0.25,
-              reproChance: 0.01,
-              aggression: 0.9,
-              cohesion: 0.7,
+              speed: 90,
+              vision: 50,
+              metabolism: 0.35,
+              reproChance: 0.008,
+              aggression: 0.95,
+              cohesion: 0.4,
               colorHue: 0
             }
           },
@@ -49,12 +49,12 @@ export default function App() {
             count: 2000,
             spawn: { x: 3000, y: 1000, radius: 200 },
             genes: {
-              speed: 40,
-              vision: 30,
-              metabolism: 0.15,
-              reproChance: 0.012,
-              cohesion: 0.95,
-              aggression: 0.4,
+              speed: 25,
+              vision: 70,
+              metabolism: 0.05,
+              reproChance: 0.025,
+              cohesion: 0.98,
+              aggression: 0.1,
               colorHue: 120
             }
           },
@@ -63,12 +63,12 @@ export default function App() {
             count: 2000,
             spawn: { x: 2000, y: 3000, radius: 200 },
             genes: {
-              speed: 50,
-              vision: 40,
-              metabolism: 0.08,
-              reproChance: 0.02,
-              aggression: 0.2,
-              cohesion: 0.5,
+              speed: 65,
+              vision: 30,
+              metabolism: 0.12,
+              reproChance: 0.015,
+              aggression: 0.6,
+              cohesion: 0.3,
               colorHue: 210
             }
           },
@@ -94,7 +94,7 @@ export default function App() {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: '1fr 320px',
+      gridTemplateColumns: '1fr 420px',
       height: '100vh',
       width: '100vw',
       overflow: 'hidden',
@@ -117,6 +117,7 @@ export default function App() {
       
       <div style={{
         overflowY: 'auto',
+        overflowX: 'hidden',
         background: '#111',
         borderLeft: '1px solid #222',
       }}>

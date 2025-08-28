@@ -103,4 +103,5 @@ export type MainMsg =
       meta: { count: number } 
     }}
   | { type: 'stats'; payload: SimStats }
-  | { type: 'perf'; payload: PerfStats };
+  | { type: 'perf'; payload: PerfStats }
+  | { type: 'foodUpdate'; payload: { foodGrid: number[] } };

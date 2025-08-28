@@ -49,7 +49,7 @@ export function Controls({ client }: ControlsProps) {
       </button>
       
       <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-        {[0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128].map(s => (
+        {[0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128].map(s => (
           <button
             key={s}
             onClick={() => handleSpeed(s)}

@@ -52,7 +52,6 @@ export function RadarChart({ stats }: RadarChartProps) {
       padding: '10px',
       background: 'rgba(0, 0, 0, 0.7)',
       borderRadius: '6px',
-      marginTop: '10px',
     }}>
       <h4 style={{ 
         margin: '0 0 10px 0', 
@@ -137,27 +136,6 @@ export function RadarChart({ stats }: RadarChartProps) {
           );
         })}
         
-        {/* Legend */}
-        {Object.entries(stats.byTribe).map(([name, tribe], i) => (
-          <g key={name}>
-            <rect
-              x={10}
-              y={10 + i * 15}
-              width={10}
-              height={10}
-              fill={tribe.color}
-              opacity={0.8}
-            />
-            <text
-              x={25}
-              y={19 + i * 15}
-              fill="#ccc"
-              fontSize="11"
-            >
-              {name}
-            </text>
-          </g>
-        ))}
       </svg>
     </div>
   );

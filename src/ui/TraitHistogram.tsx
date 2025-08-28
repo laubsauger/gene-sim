@@ -76,9 +76,9 @@ export function TraitHistogram({ stats }: TraitHistogramProps) {
   return (
     <div style={{
       padding: '10px',
+      paddingTop: '0px',
       background: 'rgba(0, 0, 0, 0.7)',
       borderRadius: '6px',
-      marginTop: '10px',
     }}>
       <h4 style={{
         margin: '0 0 10px 0',

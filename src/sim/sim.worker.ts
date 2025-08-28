@@ -3,7 +3,7 @@ import { createRng } from './random';
 import { clampGene, mutate, defaultGenes } from './genes';
 import { SpatialHash } from './spatialHash';
 import { efficientMovement } from './spatialBehaviors';
-import type { WorkerMsg, MainMsg, SimStats, GeneSpec, TribeStats, SimInit } from './types';
+import type { WorkerMsg, MainMsg, SimStats, GeneSpec, TribeStats, PerfStats } from './types';
 
 // Simulation state
 let pos!: Float32Array, vel!: Float32Array, color!: Uint8Array, alive!: Uint8Array, tribeId!: Uint16Array;
@@ -23,8 +23,10 @@ const world = { width: 1000, height: 1000 };
 
 // Food grid
 let foodGrid!: Float32Array;
+let foodRegrowTimer!: Float32Array; // Timer for each cell's regrowth
 let foodCols = 0, foodRows = 0;
-let foodRegen = 0.1, foodCapacity = 1;
+let foodRegen = 0.05, foodCapacity = 1;
+const FOOD_REGROW_TIME = 10; // Time in seconds for food to fully regrow
 
 const G = 6; // floats per entity in genes array (speed, vision, metabolism, repro, aggression, cohesion)
 
@@ -83,24 +85,23 @@ function step(dt: number) {
   // Rebuild spatial grid for efficient neighbor queries
   grid.rebuild(pos, alive, count);
   
-  // Regenerate food with central lush area
-  const centerX = foodCols / 2;
-  const centerY = foodRows / 2;
-  const lushRadius = foodCols / 4; // Central quarter is lush
-  
-  for (let y = 0; y < foodRows; y++) {
-    for (let x = 0; x < foodCols; x++) {
-      const i = y * foodCols + x;
-      const distFromCenter = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+  // Regenerate food based on timers
+  for (let i = 0; i < foodGrid.length; i++) {
+    // If food is depleted, start/continue regrow timer
+    if (foodGrid[i] < foodCapacity) {
+      foodRegrowTimer[i] += dt;
       
-      // Central area regenerates faster and has higher capacity
-      const isLush = distFromCenter < lushRadius;
-      const localCap = isLush ? foodCapacity * 2 : foodCapacity * 0.5;
-      const localRegen = isLush ? foodRegen * 3 : foodRegen * 0.5;
-      
-      if (foodGrid[i] < localCap) {
-        foodGrid[i] = Math.min(localCap, foodGrid[i] + localRegen * dt);
+      // Once timer reaches regrow time, restore food
+      if (foodRegrowTimer[i] >= FOOD_REGROW_TIME) {
+        foodGrid[i] = foodCapacity;
+        foodRegrowTimer[i] = 0;
+      } else {
+        // Gradual regrowth based on timer
+        foodGrid[i] = (foodRegrowTimer[i] / FOOD_REGROW_TIME) * foodCapacity;
       }
+    } else {
+      // Food is full, reset timer
+      foodRegrowTimer[i] = 0;
     }
   }
   
@@ -137,21 +138,28 @@ function step(dt: number) {
     color[i * 3 + 1] = Math.min(255, (g * brightness) | 0);
     color[i * 3 + 2] = Math.min(255, (b * brightness) | 0);
     
-    // Energy consumption increases with age
+    // Energy consumption based on metabolism, speed, and age
     const ageFactor = 1 + (age[i] / 100); // Older entities consume more energy
-    const moveCost = sp * 0.02;
-    energy[i] -= (metab * 2 + moveCost) * dt * ageFactor;
+    const currentSpeed = Math.hypot(vel[i * 2], vel[i * 2 + 1]);
+    const moveCost = currentSpeed * 0.001 * sp / 50; // Movement cost scales with actual speed and speed trait
+    const baseCost = metab * 3; // Base metabolic cost
+    energy[i] -= (baseCost + moveCost) * dt * ageFactor;
     
     // Check food at current position
-    const fx = Math.floor((pos[i * 2] / world.width) * foodCols);
-    const fy = Math.floor((pos[i * 2 + 1] / world.height) * foodRows);
-    if (fx >= 0 && fx < foodCols && fy >= 0 && fy < foodRows) {
+    const px = pos[i * 2];
+    const py = pos[i * 2 + 1];
+    
+    // Only check food if entity is within world bounds
+    if (px >= 0 && px < world.width && py >= 0 && py < world.height) {
+      const fx = Math.min(foodCols - 1, Math.max(0, Math.floor((px / world.width) * foodCols)));
+      const fy = Math.min(foodRows - 1, Math.max(0, Math.floor((py / world.height) * foodRows)));
+      
       const foodIdx = fy * foodCols + fx;
-      if (foodGrid[foodIdx] > 0) {
-        // Eat food
-        const eaten = Math.min(foodGrid[foodIdx], 1.0 * dt);
-        foodGrid[foodIdx] -= eaten;
-        energy[i] += eaten * 20; // Convert food to energy
+      if (foodGrid[foodIdx] > 0.5) { // Only eat if food is substantial
+        // Consume the entire cell's food
+        foodGrid[foodIdx] = 0;
+        foodRegrowTimer[foodIdx] = 0; // Start regrow timer
+        energy[i] += 15; // Fixed energy gain per food cell
         energy[i] = Math.min(energy[i], 100); // Max energy cap
       }
     }
@@ -222,10 +230,10 @@ function step(dt: number) {
             colorHue: tribeColors[tribeId[i]],
           };
           
-          const mutatedGenes = mutate(childGenes, rand, 0.02);
+          const mutatedGenes = mutate(childGenes, rand, 0.05);
           // Parent gives energy to child
           energy[i] -= 30;
-          spawnEntity(j, pos[i * 2], pos[i * 2 + 1], mutatedGenes, tribeId[i], 30);
+          spawnEntity(j, pos[i * 2], pos[i * 2 + 1], mutatedGenes, tribeId[i], 30, rand() * 10);
           birthsByTribe[tribeId[i]]++;
           if (j >= count) count = j + 1;
           break;
@@ -300,6 +308,8 @@ function stats(): SimStats {
       count: geneArrays[0].length,
       births: birthsByTribe[tribeIndex] || 0,
       deaths: deathsByTribe[tribeIndex] || 0,
+      kills: killsByTribe[tribeIndex] || 0,
+      starved: starvedByTribe[tribeIndex] || 0,
       color: `rgb(${r},${g},${b})`,
       mean: {
         speed: speedStats.mean,
@@ -385,12 +395,15 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
     // Initialize food grid
     foodCols = init.world.foodGrid?.cols || 64;
     foodRows = init.world.foodGrid?.rows || 64;
-    foodRegen = init.world.foodGrid?.regen || 0.1;
+    foodRegen = init.world.foodGrid?.regen || 0.05;
     foodCapacity = init.world.foodGrid?.capacity || 1;
     foodGrid = new Float32Array(foodCols * foodRows);
-    // Start with some food
+    foodRegrowTimer = new Float32Array(foodCols * foodRows);
+    
+    // Start with food evenly distributed across the entire map
     for (let i = 0; i < foodGrid.length; i++) {
-      foodGrid[i] = foodCapacity * 0.5;
+      foodGrid[i] = foodCapacity; // Start with full food everywhere
+      foodRegrowTimer[i] = 0;
     }
     
     birthsByTribe = new Uint32Array(init.tribes.length);
@@ -418,7 +431,9 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
         const r = Math.sqrt(rand()) * tribe.spawn.radius;
         const x = tribe.spawn.x + Math.cos(ang) * r;
         const y = tribe.spawn.y + Math.sin(ang) * r;
-        spawnEntity(count++, x, y, baseGenes, ix);
+        const initialAge = rand() * 30; // Random age between 0-30 seconds
+        const initialEnergy = 40 + rand() * 40; // Random energy between 40-80
+        spawnEntity(count++, x, y, baseGenes, ix, initialEnergy, initialAge);
       }
     });
     
@@ -469,6 +484,14 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
       if (now - lastStatsTime > 500) {
         lastStatsTime = now;
         self.postMessage({ type: 'stats', payload: stats() } as MainMsg);
+        
+        // Send food grid update (send as array, not transferable)
+        const foodCopy = Array.from(foodGrid);
+        const foodUpdate: MainMsg = {
+          type: 'foodUpdate',
+          payload: { foodGrid: foodCopy }
+        };
+        self.postMessage(foodUpdate);
       }
       
       requestAnimationFrame(tick);

@@ -1,9 +1,11 @@
-import React, { useEffect, useState, memo } from 'react';
+import React, { useEffect, useState, memo, useRef } from 'react';
 import type { SimClient } from '../client/setupSimClient';
-import type { SimStats } from '../sim/types';
+import type { SimStats, TribeStats } from '../sim/types';
 import { PopulationGraph } from './PopulationGraph';
 import { RadarChart } from './RadarChart';
 import { TraitHistogram } from './TraitHistogram';
+import { PopulationDominance } from './PopulationDominance';
+import { CollapsibleSection } from './CollapsibleSection';
 
 export interface StatsPanelProps {
   client: SimClient;
@@ -11,13 +13,32 @@ export interface StatsPanelProps {
 
 export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) {
   const [stats, setStats] = useState<SimStats | null>(null);
-  const [viewMode, setViewMode] = useState<'details' | 'compare'>('compare');
+  const [viewMode, setViewMode] = useState<'dominance' | 'compare' | 'details'>('dominance');
   const [simPerf, setSimPerf] = useState({ fps: 0, simSpeed: 0, speedMul: 1 });
+  const tribeOrderRef = useRef<string[]>([]);
+  const lastKnownDataRef = useRef<Record<string, TribeStats>>({});
 
   useEffect(() => {
     const unsubscribe = client.onMessage(m => {
       if (m.type === 'stats') {
-        setStats(m.payload);
+        const newStats = m.payload;
+
+        // Update tribe order and last known data
+        if (newStats.byTribe) {
+          // Add new tribes to order
+          Object.keys(newStats.byTribe).forEach(name => {
+            if (!tribeOrderRef.current.includes(name)) {
+              tribeOrderRef.current.push(name);
+            }
+          });
+
+          // Update last known data for all tribes
+          Object.entries(newStats.byTribe).forEach(([name, tribe]) => {
+            lastKnownDataRef.current[name] = tribe;
+          });
+        }
+
+        setStats(newStats);
       } else if (m.type === 'perf') {
         setSimPerf(m.payload);
       }
@@ -40,9 +61,10 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
       borderRadius: '6px',
       backdropFilter: 'blur(10px)',
       fontSize: '12px',
+      maxHeight: '100vh',
       lineHeight: '1.4',
     }}>
-      <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: 'bold' }}>
+      <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 'bold' }}>
         Simulation Stats
       </h3>
       <div style={{ display: 'grid', gap: '6px' }}>
@@ -80,6 +102,21 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
 
         <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
           <button
+            onClick={() => setViewMode('dominance')}
+            style={{
+              flex: 1,
+              padding: '4px',
+              background: viewMode === 'dominance' ? '#3b82f6' : 'rgba(255,255,255,0.1)',
+              border: 'none',
+              borderRadius: '3px',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: '11px',
+            }}
+          >
+            Dominance
+          </button>
+          <button
             onClick={() => setViewMode('compare')}
             style={{
               flex: 1,
@@ -111,7 +148,9 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
           </button>
         </div>
 
-        {viewMode === 'compare' ? (
+        {viewMode === 'dominance' ? (
+          <PopulationDominance stats={stats} />
+        ) : viewMode === 'compare' ? (
           <div style={{ fontSize: '11px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -127,34 +166,39 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(stats.byTribe).map(([name, tribe]) => (
-                  <tr key={name}>
-                    <td style={{ color: tribe.color, fontWeight: 'bold', padding: '4px' }}>
-                      {name}
-                    </td>
-                    <td style={{ textAlign: 'center', color: '#fff', padding: '2px' }}>
-                      {tribe.count}
-                    </td>
-                    <td style={{ textAlign: 'center', color: '#bbb', padding: '2px' }}>
-                      {tribe.mean.speed.toFixed(0)}
-                    </td>
-                    <td style={{ textAlign: 'center', color: '#bbb', padding: '2px' }}>
-                      {tribe.mean.vision.toFixed(0)}
-                    </td>
-                    <td style={{ textAlign: 'center', color: '#bbb', padding: '2px' }}>
-                      {tribe.mean.metabolism.toFixed(2)}
-                    </td>
-                    <td style={{ textAlign: 'center', color: '#bbb', padding: '2px' }}>
-                      {tribe.mean.reproChance.toFixed(2)}
-                    </td>
-                    <td style={{ textAlign: 'center', color: '#bbb', padding: '2px' }}>
-                      {tribe.mean.aggression.toFixed(1)}
-                    </td>
-                    <td style={{ textAlign: 'center', color: '#999', padding: '2px', fontSize: '10px' }}>
-                      {tribe.kills || 0}/{tribe.starved || 0}
-                    </td>
-                  </tr>
-                ))}
+                  {tribeOrderRef.current.map(name => {
+                    const tribe = stats.byTribe[name] || lastKnownDataRef.current[name];
+                    if (!tribe) return null;
+                    const isExtinct = !stats.byTribe[name];
+                    return (
+                      <tr key={name} style={{ opacity: isExtinct ? 0.4 : 1 }}>
+                        <td style={{ color: tribe.color, fontWeight: 'bold', padding: '4px' }}>
+                        {name} {isExtinct && '†'}
+                      </td>
+                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#fff', padding: '2px' }}>
+                        {tribe.count}
+                      </td>
+                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
+                        {tribe.mean.speed.toFixed(0)}
+                      </td>
+                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
+                        {tribe.mean.vision.toFixed(0)}
+                      </td>
+                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
+                        {tribe.mean.metabolism.toFixed(2)}
+                      </td>
+                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
+                        {tribe.mean.reproChance.toFixed(2)}
+                      </td>
+                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
+                        {tribe.mean.aggression.toFixed(1)}
+                      </td>
+                      <td style={{ textAlign: 'center', color: '#999', padding: '2px', fontSize: '10px' }}>
+                        {tribe.kills || 0}/{tribe.starved || 0}
+                      </td>
+                    </tr>
+                  );
+                })}
                 <tr style={{ borderTop: '1px solid #444' }}>
                   <td style={{ color: '#fff', fontWeight: 'bold', padding: '4px' }}>
                     Global
@@ -186,19 +230,23 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
           </div>
         ) : (
           <div style={{ fontSize: '11px' }}>
-            {Object.entries(stats.byTribe).map(([name, tribe]) => (
-              <details key={name} style={{ marginBottom: '4px' }}>
-                <summary style={{
-                  cursor: 'pointer',
-                  padding: '4px',
-                  background: 'rgba(255,255,255,0.05)',
-                  borderRadius: '3px',
-                  borderLeft: `2px solid ${tribe.color}`,
-                  color: tribe.color,
-                  fontWeight: 'bold',
-                }}>
-                  {name}: {tribe.count} ({tribe.births}↑ {tribe.deaths}↓)
-                </summary>
+                {tribeOrderRef.current.map(name => {
+                  const tribe = stats.byTribe[name] || lastKnownDataRef.current[name];
+                  if (!tribe) return null;
+                  const isExtinct = !stats.byTribe[name];
+                  return (
+                    <details key={name} style={{ marginBottom: '4px', opacity: isExtinct ? 0.4 : 1 }}>
+                      <summary style={{
+                        cursor: 'pointer',
+                        padding: '4px',
+                        background: 'rgba(255,255,255,0.05)',
+                        borderRadius: '3px',
+                        borderLeft: `2px solid ${tribe.color}`,
+                        color: tribe.color,
+                        fontWeight: 'bold',
+                      }}>
+                    {name} {isExtinct && '†'}: {tribe.count} ({tribe.births}↑ {tribe.deaths}↓)
+                  </summary>
                 <div style={{ padding: '4px 8px', fontSize: '10px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', color: '#bbb' }}>
                     <div>Spd: {tribe.mean.speed.toFixed(1)}</div>
@@ -213,14 +261,23 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
                   </div>
                 </div>
               </details>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
       
-      <RadarChart stats={stats} />
-      <TraitHistogram stats={stats} />
-      <PopulationGraph client={client} />
+      <CollapsibleSection title="Trait Comparison" defaultOpen={true}>
+        <RadarChart stats={stats} />
+      </CollapsibleSection>
+      
+      <CollapsibleSection title="Trait Distribution" defaultOpen={false}>
+        <TraitHistogram stats={stats} />
+      </CollapsibleSection>
+      
+      <CollapsibleSection title="Population History" defaultOpen={false}>
+        <PopulationGraph client={client} />
+      </CollapsibleSection>
     </div>
   );
 });
