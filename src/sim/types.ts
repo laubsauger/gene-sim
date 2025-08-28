@@ -6,6 +6,8 @@ export type GeneSpec = {
   metabolism: number;   // energy drain/s
   reproChance: number;  // probability per second when energy > threshold
   colorHue: number;     // phenotype base hue
+  aggression: number;   // 0-1, likelihood to attack others
+  cohesion: number;     // 0-1, tendency to stay with tribe
 };
 
 export type TribeInit = {
@@ -32,7 +34,7 @@ export type SimStats = {
   t: number; // sim time in seconds
   population: number;
   byTribe: Record<string, { count: number; births: number; deaths: number; color: string }>;
-  mean: { speed: number; vision: number; metabolism: number };
+  mean: { speed: number; vision: number; metabolism: number; aggression: number };
 };
 
 export type WorkerMsg =

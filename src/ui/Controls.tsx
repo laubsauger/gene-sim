@@ -48,8 +48,8 @@ export function Controls({ client }: ControlsProps) {
         {isPaused ? '▶️' : '⏸'}
       </button>
       
-      <div style={{ display: 'flex', gap: '4px' }}>
-        {[0.5, 1, 2, 8].map(s => (
+      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+        {[0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128].map(s => (
           <button
             key={s}
             onClick={() => handleSpeed(s)}
@@ -62,6 +62,7 @@ export function Controls({ client }: ControlsProps) {
               borderRadius: '4px',
               cursor: 'pointer',
               transition: 'background 0.2s',
+              minWidth: '45px',
             }}
           >
             {s}×

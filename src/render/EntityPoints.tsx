@@ -23,7 +23,6 @@ export function EntityPoints({
     depthWrite: true,
     depthTest: true,
     transparent: true,
-    frustumCulled: false,
     vertexShader: `
       attribute vec2 aPos;
       attribute vec3 aCol;

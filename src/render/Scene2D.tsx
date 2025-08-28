@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrthographicCamera, MapControls } from '@react-three/drei';
+import { OrthographicCamera, OrbitControls, Stats } from '@react-three/drei';
 import { EntityPoints } from './EntityPoints';
 import type { SimClient } from '../client/setupSimClient';
 
@@ -57,12 +57,20 @@ export interface Scene2DProps {
 }
 
 export function Scene2D({ client, world }: Scene2DProps) {
-  // Calculate camera settings - start zoomed in to bottom-left corner
-  const padding = 100; // Small padding to see borders
+  // Calculate camera settings to show the full world centered
+  const padding = 600; // Even more padding to ensure all borders are visible
   const viewWidth = world.width + padding * 2;
   const viewHeight = world.height + padding * 2;
-  // Start zoomed in more - show about 1/3 of the world initially
-  const zoom = Math.min(window.innerWidth / viewWidth, window.innerHeight / viewHeight) * 2.5;
+  
+  // Calculate zoom to fit the entire world in the viewport
+  // Account for the sidebar taking up space (320px from the grid layout)
+  const availableWidth = window.innerWidth - 320;
+  const availableHeight = window.innerHeight;
+  const zoom = Math.min(availableWidth / viewWidth, availableHeight / viewHeight) * 0.75; // 0.75 for extra padding
+  
+  // Center the camera on the world
+  const centerX = world.width / 2;
+  const centerY = world.height / 2;
   
   return (
     <Canvas
@@ -70,36 +78,50 @@ export function Scene2D({ client, world }: Scene2DProps) {
     >
       <OrthographicCamera
         makeDefault
-        position={[world.width * 0.3, world.height * 0.3, 100]}
+        position={[centerX, centerY, 100]}
         zoom={zoom}
         near={0.1}
         far={1000}
       />
-      <MapControls 
+      <OrbitControls 
         enableRotate={false}
         zoomSpeed={1.5}
         panSpeed={1.0}
-        minZoom={zoom * 0.3}
-        maxZoom={zoom * 10}
-        target={[world.width * 0.3, world.height * 0.3, 0]}
+        minZoom={zoom * 0.5}
+        maxZoom={zoom * 20}
+        target={[centerX, centerY, 0]}
+        mouseButtons={{
+          LEFT: 2,  // PAN with left mouse button
+          MIDDLE: 1, // ZOOM with middle
+          RIGHT: 0   // ROTATE with right (disabled anyway)
+        }}
       />
+      <Stats showPanel={0} className="stats-panel" />
       <ambientLight intensity={1} />
       
       {/* World boundary */}
-      <lineLoop>
+      <lineSegments>
         <bufferGeometry>
           <bufferAttribute
             attach="attributes-position"
             args={[new Float32Array([
+              // Bottom border
               0, 0, 0,
               world.width, 0, 0,
+              // Right border
+              world.width, 0, 0,
+              world.width, world.height, 0,
+              // Top border
               world.width, world.height, 0,
               0, world.height, 0,
+              // Left border
+              0, world.height, 0,
+              0, 0, 0,
             ]), 3]}
           />
         </bufferGeometry>
-        <lineBasicMaterial color="#444" linewidth={2} />
-      </lineLoop>
+        <lineBasicMaterial color="#444" />
+      </lineSegments>
       
       {/* Grid lines for reference */}
       <group>

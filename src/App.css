@@ -10,3 +10,11 @@ body {
   color: #fff;
   background: #0a0a0a;
 }
+
+/* Position FPS counter in bottom-left */
+.stats-panel {
+  position: absolute !important;
+  bottom: 16px !important;
+  left: 16px !important;
+  top: auto !important;
+}

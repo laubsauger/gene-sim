@@ -27,22 +27,22 @@ export default function App() {
       },
       tribes: [
         {
-          name: 'Alpha',
-          count: 2000,
+          name: 'Warmongers',
+          count: 1500,
           spawn: { x: 1000, y: 1000, radius: 200 },
-          genes: { speed: 25, reproChance: 0.008, colorHue: 0 }  // Red
+          genes: { speed: 70, aggression: 0.9, cohesion: 0.7, metabolism: 0.25, colorHue: 0 }  // Red - aggressive warriors
         },
         {
-          name: 'Beta',
-          count: 2000,
+          name: 'Swarm',
+          count: 2500,
           spawn: { x: 3000, y: 1000, radius: 200 },
-          genes: { speed: 15, vision: 20, colorHue: 120 }  // Green
+          genes: { speed: 40, vision: 30, cohesion: 0.95, aggression: 0.4, colorHue: 120 }  // Green - highly coordinated
         },
         {
-          name: 'Gamma',
+          name: 'Survivors',
           count: 2000,
           spawn: { x: 2000, y: 3000, radius: 200 },
-          genes: { metabolism: 0.1, reproChance: 0.012, colorHue: 210 }  // Sky Blue
+          genes: { speed: 50, metabolism: 0.08, reproChance: 0.02, vision: 40, colorHue: 210 }  // Blue - efficient survivors
         },
       ],
       });
