@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import type { SimStats } from '../sim/types';
 
 interface PopulationDominanceProps {

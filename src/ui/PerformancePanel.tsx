@@ -14,13 +14,12 @@ interface PerfBreakdown {
 }
 
 export function PerformancePanel({ client }: { client: SimClient }) {
-  const [perfData, setPerfData] = useState<PerfBreakdown | null>(null);
+  const [perfData] = useState<PerfBreakdown | null>(null);
 
   useEffect(() => {
-    const unsubscribe = client.onMessage((msg) => {
-      if (msg.type === 'perfBreakdown') {
-        setPerfData(msg.payload as PerfBreakdown);
-      }
+    const unsubscribe = client.onMessage(() => {
+      // Performance breakdown messages are not currently implemented
+      // This is placeholder code for future performance monitoring
     });
 
     return unsubscribe;

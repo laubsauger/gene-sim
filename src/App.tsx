@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Scene2D } from './render/Scene2D';
 import { setupSimClient } from './client/setupSimClient';
 import SimWorker from './sim/sim.worker.ts?worker';

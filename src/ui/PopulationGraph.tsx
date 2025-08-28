@@ -1,6 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SimClient } from '../client/setupSimClient';
-import type { SimStats } from '../sim/types';
 
 interface PopulationGraphProps {
   client: SimClient;
@@ -95,7 +94,7 @@ export function PopulationGraph({ client, maxHistory = 100 }: PopulationGraphPro
     )).sort();
 
     // Draw individual line charts instead of stacked areas for clarity
-    tribeNames.forEach((tribeName, tribeIndex) => {
+    tribeNames.forEach((tribeName) => {
       // Find the latest tribe data for color
       let tribeColor = '#888';
       for (let i = history.length - 1; i >= 0; i--) {
@@ -111,7 +110,7 @@ export function PopulationGraph({ client, maxHistory = 100 }: PopulationGraphPro
       ctx.beginPath();
       
       let started = false;
-      history.forEach((point, i) => {
+      history.forEach((point) => {
         const tribeData = point.tribes[tribeName];
         if (!tribeData) return;
         

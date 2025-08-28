@@ -1,4 +1,4 @@
-import React, { useEffect, useState, memo, useRef } from 'react';
+import { useEffect, useState, memo, useRef } from 'react';
 import type { SimClient } from '../client/setupSimClient';
 import type { SimStats, TribeStats } from '../sim/types';
 import { PopulationGraph } from './PopulationGraph';

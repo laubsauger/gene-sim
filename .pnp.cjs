@@ -31,6 +31,7 @@ const RAW_RUNTIME_STATE =
           ["@eslint/js", "npm:9.34.0"],\
           ["@react-three/drei", "virtual:943ace82c8fa147cba253ac36e3543fe52be4e0b91e4adbe3340d772eee2b7b664a840c8fd6c94db3b32e2ddebf54bde092ab198b5a7ef14d4c56a0b8f6b1ef8#npm:10.7.4"],\
           ["@react-three/fiber", "virtual:943ace82c8fa147cba253ac36e3543fe52be4e0b91e4adbe3340d772eee2b7b664a840c8fd6c94db3b32e2ddebf54bde092ab198b5a7ef14d4c56a0b8f6b1ef8#npm:9.3.0"],\
+          ["@types/node", "npm:24.3.0"],\
           ["@types/react", "npm:19.1.12"],\
           ["@types/react-dom", "virtual:943ace82c8fa147cba253ac36e3543fe52be4e0b91e4adbe3340d772eee2b7b664a840c8fd6c94db3b32e2ddebf54bde092ab198b5a7ef14d4c56a0b8f6b1ef8#npm:19.1.8"],\
           ["@types/three", "npm:0.179.0"],\
@@ -1281,6 +1282,16 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "../../../.yarn/berry/cache/@types-json-schema-npm-7.0.15-fd16381786-10c0.zip/node_modules/@types/json-schema/",\
         "packageDependencies": [\
           ["@types/json-schema", "npm:7.0.15"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
+    ["@types/node", [\
+      ["npm:24.3.0", {\
+        "packageLocation": "../../../.yarn/berry/cache/@types-node-npm-24.3.0-ebc21e5665-10c0.zip/node_modules/@types/node/",\
+        "packageDependencies": [\
+          ["@types/node", "npm:24.3.0"],\
+          ["undici-types", "npm:7.10.0"]\
         ],\
         "linkType": "HARD"\
       }]\
@@ -2571,6 +2582,7 @@ const RAW_RUNTIME_STATE =
           ["@eslint/js", "npm:9.34.0"],\
           ["@react-three/drei", "virtual:943ace82c8fa147cba253ac36e3543fe52be4e0b91e4adbe3340d772eee2b7b664a840c8fd6c94db3b32e2ddebf54bde092ab198b5a7ef14d4c56a0b8f6b1ef8#npm:10.7.4"],\
           ["@react-three/fiber", "virtual:943ace82c8fa147cba253ac36e3543fe52be4e0b91e4adbe3340d772eee2b7b664a840c8fd6c94db3b32e2ddebf54bde092ab198b5a7ef14d4c56a0b8f6b1ef8#npm:9.3.0"],\
+          ["@types/node", "npm:24.3.0"],\
           ["@types/react", "npm:19.1.12"],\
           ["@types/react-dom", "virtual:943ace82c8fa147cba253ac36e3543fe52be4e0b91e4adbe3340d772eee2b7b664a840c8fd6c94db3b32e2ddebf54bde092ab198b5a7ef14d4c56a0b8f6b1ef8#npm:19.1.8"],\
           ["@types/three", "npm:0.179.0"],\
@@ -4126,6 +4138,15 @@ const RAW_RUNTIME_STATE =
         "linkType": "HARD"\
       }]\
     ]],\
+    ["undici-types", [\
+      ["npm:7.10.0", {\
+        "packageLocation": "../../../.yarn/berry/cache/undici-types-npm-7.10.0-cd8324b9eb-10c0.zip/node_modules/undici-types/",\
+        "packageDependencies": [\
+          ["undici-types", "npm:7.10.0"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
     ["unique-filename", [\
       ["npm:4.0.0", {\
         "packageLocation": "../../../.yarn/berry/cache/unique-filename-npm-4.0.0-bfc100c4e3-10c0.zip/node_modules/unique-filename/",\
@@ -4238,7 +4259,7 @@ const RAW_RUNTIME_STATE =
           ["@types/jiti", null],\
           ["@types/less", null],\
           ["@types/lightningcss", null],\
-          ["@types/node", null],\
+          ["@types/node", "npm:24.3.0"],\
           ["@types/sass", null],\
           ["@types/sass-embedded", null],\
           ["@types/stylus", null],\

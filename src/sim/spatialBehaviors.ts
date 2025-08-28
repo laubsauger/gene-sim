@@ -15,7 +15,7 @@ export function efficientMovement(
   foodRows: number,
   world: { width: number; height: number },
   rand: () => number,
-  dt: number,
+  _dt: number,
   killsByTribe?: Uint32Array,
   deathsByTribe?: Uint32Array,
   color?: Uint8Array,
@@ -424,7 +424,10 @@ export function efficientMovement(
       // SURVIVAL INSTINCT: Actively leave barren areas when hungry
       // Scan wider area for ANY food to determine escape direction
       const escapeCells = 3;
-      let escapeX = 0, escapeY = 0;
+      const cellWidth = world.width / foodCols;
+      const cellHeight = world.height / foodRows;
+      let bestFoodX = 0, bestFoodY = 0;
+      let bestFoodAmount = 0;
       let foundEscape = false;
       
       for (let dy = -escapeCells; dy <= escapeCells; dy++) {
@@ -436,22 +439,25 @@ export function efficientMovement(
           const fy = cellY + dy;
           if (fx >= 0 && fx < foodCols && fy >= 0 && fy < foodRows) {
             const foodIdx = fy * foodCols + fx;
-            if (foodGrid[foodIdx] > 0.1) {
-              escapeX += dx;
-              escapeY += dy;
+            const foodAmount = foodGrid[foodIdx];
+            if (foodAmount > bestFoodAmount) {
+              // Track the best food source position in world coordinates
+              bestFoodX = (fx + 0.5) * cellWidth;
+              bestFoodY = (fy + 0.5) * cellHeight;
+              bestFoodAmount = foodAmount;
               foundEscape = true;
             }
           }
         }
       }
       
-      if (foundEscape) {
-        // Move toward detected food in wider area
-        const escapeNorm = Math.sqrt(escapeX * escapeX + escapeY * escapeY) || 1;
-        const cellWidth = world.width / foodCols;
-        const cellHeight = world.height / foodRows;
-        vx += (escapeX / escapeNorm) * cellWidth * speed * hungerFactor * 0.5;
-        vy += (escapeY / escapeNorm) * cellHeight * speed * hungerFactor * 0.5;
+      if (foundEscape && bestFoodAmount > 0.1) {
+        // Move toward best detected food source using proper world coordinates
+        const dx = bestFoodX - px;
+        const dy = bestFoodY - py;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        vx += (dx / dist) * speed * hungerFactor * 0.5;
+        vy += (dy / dist) * speed * hungerFactor * 0.5;
       } else {
         // No food detected anywhere - PANIC MODE
         // Move in a consistent direction to escape barren region

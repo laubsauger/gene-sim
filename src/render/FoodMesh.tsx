@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -35,7 +35,7 @@ const fragmentShader = `
 
 export function FoodMesh({ foodGrid, cols, rows, world }: FoodMeshProps) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const textureRef = useRef<THREE.DataTexture>();
+  const textureRef = useRef<THREE.DataTexture>(null!);
   
   // Create data texture for food values
   const texture = useMemo(() => {

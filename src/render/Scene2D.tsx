@@ -123,7 +123,6 @@ function EntitiesLayer({ client }: { client: SimClient }) {
       pos={buffers.pos}
       color={buffers.color}
       alive={buffers.alive}
-      age={buffers.age}
       count={buffers.count}
       pointSize={20}
     />

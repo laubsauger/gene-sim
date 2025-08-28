@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import React, { useMemo, useEffect } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 
 interface EntityPointsProps {

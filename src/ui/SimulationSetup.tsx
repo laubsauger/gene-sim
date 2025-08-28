@@ -13,7 +13,7 @@ const defaultTribes: TribeInit[] = [
   {
     name: 'Warmongers',
     count: 1000,
-    spawn: { x: 1000, y: 1000, radius: 200 },
+    spawn: { x: 500, y: 500, radius: 200 },  // Top-left corner
     genes: {
       speed: 70,
       vision: 35,
@@ -29,7 +29,7 @@ const defaultTribes: TribeInit[] = [
   {
     name: 'Swarm',
     count: 1000,
-    spawn: { x: 3000, y: 1000, radius: 200 },
+    spawn: { x: 3500, y: 500, radius: 200 },  // Top-right corner
     genes: {
       speed: 40,
       vision: 30,
@@ -45,7 +45,7 @@ const defaultTribes: TribeInit[] = [
   {
     name: 'Survivors',
     count: 1000,
-    spawn: { x: 2000, y: 3000, radius: 200 },
+    spawn: { x: 500, y: 3500, radius: 200 },  // Bottom-left corner
     genes: {
       speed: 30,
       vision: 45,
@@ -58,27 +58,47 @@ const defaultTribes: TribeInit[] = [
       diet: -0.8
     }
   },
+  {
+    name: 'Nomads',
+    count: 1000,
+    spawn: { x: 3500, y: 3500, radius: 200 },  // Bottom-right corner
+    genes: {
+      speed: 60,
+      vision: 50,
+      metabolism: 0.18,
+      reproChance: 0.008,
+      aggression: 0.5,
+      cohesion: 0.3,
+      colorHue: 120,  // Green
+      foodStandards: 0.1,
+      diet: 0  // Omnivore
+    }
+  },
 ];
 
 // Custom slider with styled track
-const StyledSlider = ({ min, max, value, onChange, step = 1, style = {} }: any) => (
-  <input
-    type="range"
-    min={min}
-    max={max}
-    step={step}
-    value={value}
-    onChange={onChange}
-    style={{
-      width: '100%',
-      height: '4px',
-      background: `linear-gradient(to right, #4a5568 0%, #4a5568 ${((value - min) / (max - min) * 100)}%, #2d3748 ${((value - min) / (max - min) * 100)}%, #2d3748 100%)`,
-      outline: 'none',
-      ...style
-    }}
-    className="custom-slider"
-  />
-);
+const StyledSlider = ({ min, max, value, onChange, step = 1, style = {} }: any) => {
+  const percentage = ((value - min) / (max - min)) * 100;
+  return (
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={onChange}
+      style={{
+        width: '100%',
+        height: '12px',
+        background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${percentage}%, #2d3748 ${percentage}%, #2d3748 100%)`,
+        borderRadius: '3px',
+        outline: 'none',
+        ...style
+      }}
+      className="custom-slider"
+    />
+  );
+};
 
 export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupProps) {
   const [seed, setSeed] = useState(Date.now());
@@ -467,11 +487,11 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
               <div style={{ padding: '12px', fontSize: '13px' }}>
                 <div style={{ display: 'grid', gap: '12px' }}>
 
-                  {/* World Size & Food Grid - Combined Row */}
+                  {/* World Settings & Food Grid - Combined Row */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
                       <label style={{ color: '#a0aec0', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '6px' }}>
-                        World Size
+                        World Settings
                       </label>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                         <div>
@@ -497,6 +517,26 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
                             type="number"
                             value={worldHeight}
                             onChange={(e) => setWorldHeight(Number(e.target.value))}
+                            style={{
+                              width: '100%',
+                              padding: '6px',
+                              background: 'rgba(255,255,255,0.1)',
+                              border: '1px solid rgba(255,255,255,0.2)',
+                              borderRadius: '3px',
+                              color: '#fff',
+                              fontSize: '12px',
+                            }}
+                          />
+                        </div>
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <label style={{ color: '#718096', fontSize: '11px' }}>
+                            Max Entities
+                            <span style={{ color: '#4a5568', fontSize: '10px', marginLeft: '4px' }}>(population cap)</span>
+                          </label>
+                          <input
+                            type="number"
+                            value={maxEntities}
+                            onChange={(e) => setMaxEntities(Number(e.target.value))}
                             style={{
                               width: '100%',
                               padding: '6px',
@@ -568,26 +608,6 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
                             value={foodRegen}
                             onChange={(e) => setFoodRegen(Number(e.target.value))}
                             step="0.01"
-                            style={{
-                              width: '100%',
-                              padding: '6px',
-                              background: 'rgba(255,255,255,0.1)',
-                              border: '1px solid rgba(255,255,255,0.2)',
-                              borderRadius: '3px',
-                              color: '#fff',
-                              fontSize: '12px',
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ color: '#718096', fontSize: '11px' }}>
-                            Max Entities
-                            <span style={{ color: '#4a5568', fontSize: '10px', marginLeft: '4px' }}>(cap)</span>
-                          </label>
-                          <input
-                            type="number"
-                            value={maxEntities}
-                            onChange={(e) => setMaxEntities(Number(e.target.value))}
                             style={{
                               width: '100%',
                               padding: '6px',

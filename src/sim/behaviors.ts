@@ -1,5 +1,4 @@
 // Complex behaviors for entities
-import type { GeneSpec } from './types';
 
 export function calculateGroupBehavior(
   i: number,
@@ -10,7 +9,7 @@ export function calculateGroupBehavior(
   tribeId: Uint16Array,
   genes: Float32Array,
   count: number,
-  world: { width: number; height: number },
+  _world: { width: number; height: number },
   rand: () => number,
   dt: number
 ): { vx: number; vy: number; fight: number | null; switchTribe: boolean } {

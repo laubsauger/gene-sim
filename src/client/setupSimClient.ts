@@ -6,7 +6,6 @@ export function setupSimClient(worker: Worker) {
   let pos: Float32Array | null = null;
   let color: Uint8Array | null = null;
   let alive: Uint8Array | null = null;
-  let age: Float32Array | null = null;
   let count = 0;
   const listeners = new Set<(m: MainMsg) => void>();
 
@@ -17,7 +16,6 @@ export function setupSimClient(worker: Worker) {
       pos = new Float32Array(sab.pos);
       color = new Uint8Array(sab.color);
       alive = new Uint8Array(sab.alive);
-      age = sab.age ? new Float32Array(sab.age) : null;
       count = meta.count;
     }
     listeners.forEach(l => l(msg));
@@ -40,7 +38,7 @@ export function setupSimClient(worker: Worker) {
       };
     },
     get buffers() {
-      return { pos, color, alive, age, count };
+      return { pos, color, alive, count };
     },
     worker, // Expose the worker for direct access
   };
