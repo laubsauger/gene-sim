@@ -233,9 +233,9 @@ function step(dt: number) {
         
         // Only check the exact cell we're in and immediate neighbors if very close to edge
         const cellWidth = world.width / foodCols;
-        const cellHeight = world.height / foodRows;
+        // const cellHeight = world.height / foodRows; // Not currently used
         const cellX = px - fx * cellWidth;
-        const cellY = py - fy * cellHeight;
+        // const cellY = py - fy * cellHeight; // Not currently used
         
         // Check current cell
         const foodIdx = fy * foodCols + fx;
@@ -312,25 +312,31 @@ function step(dt: number) {
     pos[i * 2] += velx * dt;
     pos[i * 2 + 1] += vely * dt;
     
-    // Improved boundary handling - prevent vacuum effect at edges
-    const bounceMargin = 2; // Small margin to prevent exact edge sticking
-    const bounceDamping = 0.7; // Dampen velocity on bounce to prevent rapid oscillation
-    const repulsionForce = 10; // Push entities away from exact boundaries
+    // Boundary handling - allow entities to reach edge but strongly repel them
+    const repulsionStrength = 30; // Strong push away from boundaries
     
     if (pos[i * 2] <= 0) {
-      pos[i * 2] = bounceMargin; // Place slightly inside boundary
-      vel[i * 2] = Math.abs(vel[i * 2]) * bounceDamping + repulsionForce; // Bounce with damping + push inward
+      pos[i * 2] = 0; // Allow exact edge position
+      vel[i * 2] = Math.abs(vel[i * 2]) + repulsionStrength; // Strong bounce + repulsion
+      // Add random perpendicular velocity to prevent getting stuck
+      vel[i * 2 + 1] += (rand() - 0.5) * repulsionStrength;
     } else if (pos[i * 2] >= world.width) {
-      pos[i * 2] = world.width - bounceMargin; // Place slightly inside boundary
-      vel[i * 2] = -Math.abs(vel[i * 2]) * bounceDamping - repulsionForce; // Bounce with damping + push inward
+      pos[i * 2] = world.width; // Allow exact edge position
+      vel[i * 2] = -Math.abs(vel[i * 2]) - repulsionStrength; // Strong bounce + repulsion
+      // Add random perpendicular velocity
+      vel[i * 2 + 1] += (rand() - 0.5) * repulsionStrength;
     }
     
     if (pos[i * 2 + 1] <= 0) {
-      pos[i * 2 + 1] = bounceMargin; // Place slightly inside boundary
-      vel[i * 2 + 1] = Math.abs(vel[i * 2 + 1]) * bounceDamping + repulsionForce; // Bounce with damping + push inward
+      pos[i * 2 + 1] = 0; // Allow exact edge position
+      vel[i * 2 + 1] = Math.abs(vel[i * 2 + 1]) + repulsionStrength; // Strong bounce + repulsion
+      // Add random perpendicular velocity
+      vel[i * 2] += (rand() - 0.5) * repulsionStrength;
     } else if (pos[i * 2 + 1] >= world.height) {
-      pos[i * 2 + 1] = world.height - bounceMargin; // Place slightly inside boundary
-      vel[i * 2 + 1] = -Math.abs(vel[i * 2 + 1]) * bounceDamping - repulsionForce; // Bounce with damping + push inward
+      pos[i * 2 + 1] = world.height; // Allow exact edge position
+      vel[i * 2 + 1] = -Math.abs(vel[i * 2 + 1]) - repulsionStrength; // Strong bounce + repulsion
+      // Add random perpendicular velocity
+      vel[i * 2] += (rand() - 0.5) * repulsionStrength;
     }
     perfTimers.physics += performance.now() - physicsStart;
     
