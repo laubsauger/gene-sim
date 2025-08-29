@@ -8,9 +8,10 @@ import type { WorkerMsg, MainMsg, SimStats, GeneSpec, TribeStats, PerfStats } fr
 
 // Simulation state
 let pos!: Float32Array, vel!: Float32Array, color!: Uint8Array, alive!: Uint8Array, tribeId!: Uint16Array;
-let genes!: Float32Array; // packed [speed, vision, metabolism, repro, aggression, cohesion]
+let genes!: Float32Array; // packed [speed, vision, metabolism, repro, aggression, cohesion, foodStandards, diet, viewAngle]
 let energy!: Float32Array; // energy level per entity
 let age!: Float32Array; // age in simulation time units
+let orientation!: Float32Array; // entity orientation in radians
 let count = 0, cap = 0;
 let rand = Math.random;
 let t = 0, speedMul = 1, paused = true; // Start paused
@@ -32,7 +33,7 @@ let foodRegen = 0.05, foodCapacity = 1;
 let FOOD_REGROW_TIME = 60; // Time in seconds for food to fully regrow (1 minute)
 let allowHybrids = true; // Whether to allow inter-tribe mating
 
-const G = 8; // floats per entity in genes array (speed, vision, metabolism, repro, aggression, cohesion, foodStandards, diet)
+const G = 9; // floats per entity in genes array (speed, vision, metabolism, repro, aggression, cohesion, foodStandards, diet, viewAngle)
 
 // Convert HSL to RGB with high saturation and brightness for visibility
 function hueToRgb(h: number, s = 1.0, v = 1.0): [number, number, number] {
@@ -57,9 +58,15 @@ function spawnEntity(i: number, x: number, y: number, g: GeneSpec, tribeIx: numb
   pos[i * 2 + 1] = y;
   
   const ang = rand() * Math.PI * 2;
-  const sp = g.speed * (0.6 + rand() * 0.8);
+  // Effective speed is modulated by metabolism - low metabolism can't support high speeds
+  const metabolismEfficiency = Math.min(1, g.metabolism / 0.15); // Normalized to base metabolism
+  const effectiveSpeed = g.speed * metabolismEfficiency;
+  const sp = effectiveSpeed * (0.6 + rand() * 0.8);
   vel[i * 2] = Math.cos(ang) * sp;
   vel[i * 2 + 1] = Math.sin(ang) * sp;
+  
+  // Set initial orientation based on velocity direction
+  orientation[i] = ang;
   
   alive[i] = 1;
   tribeId[i] = tribeIx;
@@ -75,6 +82,7 @@ function spawnEntity(i: number, x: number, y: number, g: GeneSpec, tribeIx: numb
   genes[base + 5] = g.cohesion;
   genes[base + 6] = g.foodStandards || 0.3;
   genes[base + 7] = g.diet || -0.5;
+  genes[base + 8] = g.viewAngle || 120;
   
   const [r, gc, b] = hueToRgb(g.colorHue);
   color[i * 3] = r | 0;
@@ -133,6 +141,14 @@ function step(dt: number) {
     const chunkEnd = Math.min(chunk + CHUNK_SIZE, n);
     for (let i = chunk; i < chunkEnd; i++) {
       if (!alive[i]) continue;
+      
+    // Update orientation based on velocity
+    const vx = vel[i * 2];
+    const vy = vel[i * 2 + 1];
+    const currentSpeed = Math.hypot(vx, vy);
+    if (currentSpeed > 1) { // Only update if moving
+      orientation[i] = Math.atan2(vy, vx);
+    }
     
     const base = i * G;
     const sp = genes[base];
@@ -164,10 +180,16 @@ function step(dt: number) {
     color[i * 3 + 2] = Math.min(255, (b * brightness) | 0);
     
     // Energy consumption based on metabolism, speed, and age
+    // Higher metabolism means higher base cost but enables higher effective speeds
     const ageFactor = 1 + (age[i] / 200); // Older entities consume slightly more energy (reduced)
-    const currentSpeed = Math.hypot(vel[i * 2], vel[i * 2 + 1]);
-    const moveCost = currentSpeed * 0.0005 * sp / 50; // Movement cost scales with actual speed (reduced)
-    const baseCost = metab * 1.5; // Base metabolic cost (reduced from 3)
+    // currentSpeed already calculated above for orientation
+    
+    // Movement cost scales with speed² and metabolism (physics: kinetic energy ~ v²)
+    const moveCost = (currentSpeed * currentSpeed) * 0.00001 * metab;
+    
+    // Base metabolic cost scales with metabolism (maintaining cellular processes)
+    const baseCost = metab * 2.0; // Increased base cost for high metabolism
+    
     energy[i] -= (baseCost + moveCost) * dt * ageFactor;
     
     // Check food at current position
@@ -242,19 +264,19 @@ function step(dt: number) {
     
     // Clamp speed
     const physicsStart = performance.now();
-    let vx = vel[i * 2], vy = vel[i * 2 + 1];
-    const vlen = Math.hypot(vx, vy) || 1e-6;
+    let velx = vel[i * 2], vely = vel[i * 2 + 1];
+    const vlen = Math.hypot(velx, vely) || 1e-6;
     const vmax = sp;
     if (vlen > vmax) {
-      vx = vx / vlen * vmax;
-      vy = vy / vlen * vmax;
-      vel[i * 2] = vx;
-      vel[i * 2 + 1] = vy;
+      velx = velx / vlen * vmax;
+      vely = vely / vlen * vmax;
+      vel[i * 2] = velx;
+      vel[i * 2 + 1] = vely;
     }
     
     // Integrate position
-    pos[i * 2] += vx * dt;
-    pos[i * 2 + 1] += vy * dt;
+    pos[i * 2] += velx * dt;
+    pos[i * 2 + 1] += vely * dt;
     
     // Hard boundaries - bounce off walls with some randomness to prevent accumulation
     const bounceForce = 10; // Push away from walls
@@ -294,7 +316,11 @@ function step(dt: number) {
     }
     
     // Reproduction - balanced energy requirements and crowd limits
-    if (alive[i] && energy[i] > energyConfig.repro && rand() < repro * dt) {
+    // High metabolism increases reproduction rate (more energy processing = faster reproduction)
+    const metabolismReproModifier = 0.5 + (metab / 0.3); // 0.5x to 2x modifier based on metabolism
+    const effectiveReproChance = repro * metabolismReproModifier;
+    
+    if (alive[i] && energy[i] > energyConfig.repro && rand() < effectiveReproChance * dt) {
       // Check local crowd density to prevent reproduction in crowded areas
       const px = pos[i * 2], py = pos[i * 2 + 1];
       const vision = genes[base + 1];
@@ -331,6 +357,7 @@ function step(dt: number) {
               cohesion: genes[base + 5],
               foodStandards: genes[base + 6],
               diet: genes[base + 7],
+              viewAngle: genes[base + 8],
               colorHue: tribeColors[tribeId[i]],
             };
             
@@ -478,6 +505,7 @@ function stats(): SimStats {
     const cohesionStats = calcStats(geneArrays[5]);
     const foodStandardsStats = calcStats(geneArrays[6]);
     const dietStats = calcStats(geneArrays[7]);
+    const viewAngleStats = calcStats(geneArrays[8] || []);
     
     byTribe[tribeName] = {
       count: geneArrays[0].length,
@@ -495,6 +523,7 @@ function stats(): SimStats {
         reproChance: reproStats.mean,
         foodStandards: foodStandardsStats.mean,
         diet: dietStats.mean,
+        viewAngle: viewAngleStats.mean,
       },
       distribution: {
         speed: { min: speedStats.min, max: speedStats.max, std: speedStats.std },
@@ -505,6 +534,7 @@ function stats(): SimStats {
         reproChance: { min: reproStats.min, max: reproStats.max, std: reproStats.std },
         foodStandards: { min: foodStandardsStats.min, max: foodStandardsStats.max, std: foodStandardsStats.std },
         diet: { min: dietStats.min, max: dietStats.max, std: dietStats.std },
+        viewAngle: { min: viewAngleStats.min, max: viewAngleStats.max, std: viewAngleStats.std },
       },
     };
   }
@@ -518,6 +548,7 @@ function stats(): SimStats {
   const globalCohesion = calcStats(globalGenes[5]);
   const globalFoodStandards = calcStats(globalGenes[6]);
   const globalDiet = calcStats(globalGenes[7]);
+  const globalViewAngle = calcStats(globalGenes[8] || []);
   
   return {
     t,
@@ -533,6 +564,7 @@ function stats(): SimStats {
         reproChance: globalRepro.mean,
         foodStandards: globalFoodStandards.mean,
         diet: globalDiet.mean,
+        viewAngle: globalViewAngle.mean,
       },
       distribution: {
         speed: { min: globalSpeed.min, max: globalSpeed.max, std: globalSpeed.std },
@@ -543,6 +575,7 @@ function stats(): SimStats {
         reproChance: { min: globalRepro.min, max: globalRepro.max, std: globalRepro.std },
         foodStandards: { min: globalFoodStandards.min, max: globalFoodStandards.max, std: globalFoodStandards.std },
         diet: { min: globalDiet.min, max: globalDiet.max, std: globalDiet.std },
+        viewAngle: { min: globalViewAngle.min, max: globalViewAngle.max, std: globalViewAngle.std },
       },
     },
   };
@@ -581,6 +614,7 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
     genes = new Float32Array(sabGenes);
     energy = new Float32Array(sabEnergy);
     age = new Float32Array(sabAge);
+    orientation = new Float32Array(cap); // Initialize orientation array
     
     // Initialize food grid with configurable resolution
     foodCols = init.world.foodGrid?.cols || 256;

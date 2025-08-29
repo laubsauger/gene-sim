@@ -10,6 +10,7 @@ export type GeneSpec = {
   cohesion: number;     // 0-1, tendency to stay with tribe
   foodStandards?: number; // 0-1, pickiness about food density (0=desperate, 1=very picky)
   diet?: number;        // -1 to 1, -1=pure herbivore, 0=omnivore, 1=pure carnivore
+  viewAngle?: number;   // field of view in degrees (30-180)
 };
 
 export type TribeInit = {
@@ -64,6 +65,7 @@ export type TribeStats = {
     reproChance: number;
     foodStandards: number;
     diet: number;
+    viewAngle: number;
   };
   distribution: {
     speed: { min: number; max: number; std: number };
@@ -74,6 +76,7 @@ export type TribeStats = {
     reproChance: { min: number; max: number; std: number };
     foodStandards: { min: number; max: number; std: number };
     diet: { min: number; max: number; std: number };
+    viewAngle: { min: number; max: number; std: number };
   };
 };
 
@@ -91,6 +94,7 @@ export type SimStats = {
       reproChance: number;
       foodStandards: number;
       diet: number;
+      viewAngle: number;
     };
     distribution: {
       speed: { min: number; max: number; std: number };
@@ -101,6 +105,7 @@ export type SimStats = {
       reproChance: { min: number; max: number; std: number };
       foodStandards: { min: number; max: number; std: number };
       diet: { min: number; max: number; std: number };
+      viewAngle: { min: number; max: number; std: number };
     };
   };
 };

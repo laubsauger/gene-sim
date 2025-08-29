@@ -23,7 +23,8 @@ const defaultTribes: TribeInit[] = [
       cohesion: 0.7,
       colorHue: 0,
       foodStandards: 0.2,
-      diet: 0.3
+      diet: 0.3,  // Carnivore-leaning
+      viewAngle: 90  // Narrow FOV for hunting focus
     }
   },
   {
@@ -39,7 +40,8 @@ const defaultTribes: TribeInit[] = [
       aggression: 0.4,
       colorHue: 270,  // Purple
       foodStandards: 0.5,
-      diet: -0.5
+      diet: -0.5,  // Herbivore-leaning
+      viewAngle: 140  // Wide FOV for predator detection
     }
   },
   {
@@ -55,7 +57,8 @@ const defaultTribes: TribeInit[] = [
       cohesion: 0.55,
       colorHue: 210,
       foodStandards: 0.7,
-      diet: -0.8
+      diet: -0.8,  // Strong herbivore
+      viewAngle: 160  // Very wide FOV for maximum awareness
     }
   },
   {
@@ -71,7 +74,8 @@ const defaultTribes: TribeInit[] = [
       cohesion: 0.3,
       colorHue: 120,  // Green
       foodStandards: 0.1,
-      diet: 0  // Omnivore
+      diet: 0,  // Omnivore
+      viewAngle: 120  // Balanced FOV
     }
   },
 ];
@@ -196,7 +200,8 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
         cohesion: 0.5,
         colorHue: colors[tribes.length % colors.length],
         foodStandards: 0.3,
-        diet: -0.5
+        diet: -0.5,
+        viewAngle: 120
       }
     };
     setTribes([...tribes, newTribe]);
@@ -223,7 +228,8 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
       cohesion: 0.5,
       colorHue: 180,
       foodStandards: 0.3,
-      diet: -0.5
+      diet: -0.5,
+      viewAngle: 120
     };
     updated[index].genes = { ...defaultGenes, ...updated[index].genes, [gene]: value };
     setTribes(updated);
@@ -370,7 +376,8 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
                           cohesion: 0.5,
                           colorHue: 180,
                           foodStandards: 0.3,
-                          diet: -0.5
+                          diet: -0.5,
+                          viewAngle: 120
                         }[gene];
                         const geneLabels: Record<string, string> = {
                           speed: 'Speed',
@@ -579,6 +586,8 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
                             <option value="128">128x128</option>
                             <option value="256">256x256 (Default)</option>
                             <option value="512">512x512 (Detailed)</option>
+                            <option value="1024">1024x1024 (High Res)</option>
+                            <option value="2048">2048x2048 (Ultra)</option>
                           </select>
                         </div>
                         <div>

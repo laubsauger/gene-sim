@@ -22,15 +22,23 @@ export function efficientMovement(
   birthsByTribe?: Uint32Array,
   allowHybrids?: boolean
 ): void {
-  const G = 8; // Now includes foodStandards and diet genes
+  const G = 9; // Now includes foodStandards, diet, and viewAngle genes
   const base = i * G;
   const px = pos[i * 2], py = pos[i * 2 + 1];
-  const speed = genes[base];
+  const rawSpeed = genes[base];
   const vision = genes[base + 1];
+  const metabolism = genes[base + 2];
   const aggression = genes[base + 4];
   const cohesion = genes[base + 5];
   const foodStandards = genes[base + 6] || 0.3; // How picky about food density
   const diet = genes[base + 7] || -0.5; // -1=herbivore, 0=omnivore, 1=carnivore
+  const viewAngle = (genes[base + 8] || 120) * Math.PI / 180; // Convert to radians
+  
+  // Calculate effective speed based on metabolism
+  // Low metabolism can't support high speeds effectively
+  const metabolismEfficiency = Math.min(1, metabolism / 0.15); // Normalized to base metabolism
+  const speed = rawSpeed * metabolismEfficiency;
+  
   const myTribe = tribeId[i];
   const myEnergy = energy[i];
   
@@ -54,6 +62,9 @@ export function efficientMovement(
   // Adaptive limit based on entity count but maintaining fidelity
   const maxChecks = Math.max(25, Math.min(40, 600000 / alive.length)); // 25-40 checks adaptive
   
+  // Get entity orientation for view angle calculation
+  const myOrientation = _dt > 0 ? Math.atan2(vel[i * 2 + 1], vel[i * 2]) : 0;
+  
   // Use optimized neighbor search with early exit
   grid.forNeighborsWithLimit(px, py, vision, maxChecks, (j) => {
     if (j === i || !alive[j]) return false; // Don't count self or dead
@@ -64,6 +75,15 @@ export function efficientMovement(
     
     // Skip if too far
     if (distSq > visionSq) return false;
+    
+    // Check if entity is within view angle
+    const angleToTarget = Math.atan2(dy, dx);
+    let angleDiff = Math.abs(angleToTarget - myOrientation);
+    // Normalize angle difference to [-π, π]
+    if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+    
+    // Skip if outside view angle (viewAngle is full FOV, so half on each side)
+    if (angleDiff > viewAngle / 2) return false;
     
     totalNearby++;
     const otherTribe = tribeId[j];
@@ -292,7 +312,10 @@ export function efficientMovement(
             pos[j * 2 + 1] = parentY + Math.sin(spawnAngle) * spawnOffset;
             
             const ang = rand() * Math.PI * 2;
-            const hybridSpeed = (genes[base] + genes[mateBase]) / 2;
+            const hybridRawSpeed = (genes[base] + genes[mateBase]) / 2;
+            const hybridMetabolism = (genes[base + 2] + genes[mateBase + 2]) / 2;
+            const hybridMetabEfficiency = Math.min(1, hybridMetabolism / 0.15);
+            const hybridSpeed = hybridRawSpeed * hybridMetabEfficiency;
             vel[j * 2] = Math.cos(ang) * hybridSpeed * 0.5;
             vel[j * 2 + 1] = Math.sin(ang) * hybridSpeed * 0.5;
             

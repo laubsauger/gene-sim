@@ -279,6 +279,7 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
                       if (diet < 0.7) return 'Carn-lean';
                       return 'Carnivore';
                     })()}</div>
+                    <div>View: {tribe.mean.viewAngle?.toFixed(0) || '120'}°</div>
                   </div>
                   <div style={{ marginTop: '4px', color: '#888' }}>
                     Kills: {tribe.kills || 0} | Starved: {tribe.starved || 0}
