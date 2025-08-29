@@ -236,7 +236,7 @@ function initializeAsSubWorker(msg: any) {
   const totalCap = buffers.positions.byteLength / 8; // Float32Array with x,y = 8 bytes per entity
   sim = new SimulationCore(worldWidth, worldHeight, cap, seed + workerId, config.tribes?.length || 3, totalCap);
   sim.allowHybrids = config.allowHybrids !== false;
-  sim.updateFood = workerId === 0;  // Only worker 0 updates food regrowth to avoid races
+  sim.updateFood = workerId === 0;  // Only worker 0 handles food regrowth (but syncs from shared buffer first)
   sim.tribeNames = config.tribes?.map((t: any) => t.name) || [];
   sim.tribeColors = config.tribes?.map((t: any) => t.genes?.colorHue || 0) || [];
   sim.workerRegion = workerRegion;

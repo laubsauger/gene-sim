@@ -68,9 +68,21 @@ export class FoodSystem {
   }
 
   update(dt: number) {
+    // When using shared buffer, sync from it first to see other workers' consumption
+    if (this.foodGridUint8 && this.isShared) {
+      for (let i = 0; i < this.foodGridUint8.length; i++) {
+        const sharedValue = this.foodGridUint8[i] / 255;
+        // Only update local grid if shared buffer shows consumption
+        if (sharedValue < this.foodGrid[i]) {
+          this.foodGrid[i] = sharedValue;
+        }
+      }
+    }
+    
+    // Now regrow based on current state
     for (let i = 0; i < this.foodGrid.length; i++) {
       if (this.foodGrid[i] < this.foodMaxCapacity[i]) {
-        // Regrow food continuously, not after 10 second delay
+        // Regrow food continuously
         const newValue = Math.min(
           this.foodMaxCapacity[i],
           this.foodGrid[i] + this.regen * dt
@@ -95,15 +107,23 @@ export class FoodSystem {
     const fy = Math.floor((worldY / this.worldHeight) * this.rows);
     const idx = fy * this.cols + fx;
     
+    // When using shared buffer, check and update it directly
+    if (this.foodGridUint8 && this.isShared) {
+      const currentValue = this.foodGridUint8[idx] / 255;
+      if (currentValue > 0.3) {
+        // Use atomic-like operation to consume food
+        this.foodGridUint8[idx] = 0;
+        this.foodGrid[idx] = 0;
+        this.foodRegrowTimer[idx] = 0;
+        return 1;
+      }
+      return 0;
+    }
+    
+    // Fallback to local grid for non-shared mode
     if (this.foodGrid[idx] > 0.3) {
       this.foodGrid[idx] = 0;
       this.foodRegrowTimer[idx] = 0;
-      
-      // Immediately update shared buffer if available
-      if (this.foodGridUint8 && this.isShared) {
-        this.foodGridUint8[idx] = 0;
-      }
-      
       return 1;
     }
     return 0;
