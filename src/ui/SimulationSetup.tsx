@@ -352,12 +352,21 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange }: Si
                   onClick={randomizeSeed}
                   style={{
                     padding: '8px 12px',
-                    background: '#3b82f6',
-                    border: 'none',
+                    background: 'transparent',
+                    border: '1px solid rgba(255,255,255,0.2)',
                     borderRadius: '4px',
-                    color: '#fff',
+                    color: 'rgba(255,255,255,0.7)',
                     cursor: 'pointer',
                     fontSize: '13px',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)';
+                    e.currentTarget.style.color = 'rgba(255,255,255,0.9)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+                    e.currentTarget.style.color = 'rgba(255,255,255,0.7)';
                   }}
                 >
                   🎲 Random

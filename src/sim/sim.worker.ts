@@ -848,9 +848,9 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
           y = tribe.spawn.y + Math.sin(ang) * r;
         }
         
-        // Clamp to world bounds with better margin
-        x = Math.max(50, Math.min(world.width - 50, x));
-        y = Math.max(50, Math.min(world.height - 50, y));
+        // Clamp to world bounds - allow full range
+        x = Math.max(0, Math.min(world.width, x));
+        y = Math.max(0, Math.min(world.height, y));
         
         const initialAge = rand() * 30; // Random age between 0-30 seconds
         const initialEnergy = energyConfig.start + rand() * 20; // Start energy plus some variation

@@ -148,9 +148,8 @@ export interface Scene2DProps {
 
 export function Scene2D({ client, world }: Scene2DProps) {
   // Calculate camera settings to show the full world centered
-  const padding = 200; // Less padding for closer view
-  const viewWidth = world.width + padding * 2;
-  const viewHeight = world.height + padding * 2;
+  const viewWidth = world.width;
+  const viewHeight = world.height;
   
   // Calculate zoom to fit the entire world in the viewport
   // Account for the sidebar taking up space (420px from the grid layout)
