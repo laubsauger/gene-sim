@@ -61,7 +61,7 @@ export function efficientMovementOptimized(
   const rawSpeed = genes[base];
   const vision = genes[base + 1];
   const metabolism = genes[base + 2];
-  const reproChance = genes[base + 3];
+  // const reproChance = genes[base + 3]; // Not used in movement
   const aggression = genes[base + 4];
   const cohesion = genes[base + 5];
   const foodStandards = genes[base + 6] || 0.3;

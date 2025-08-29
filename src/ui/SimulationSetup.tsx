@@ -317,8 +317,13 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange }: Si
   const randomizeSeed = () => {
     const newSeed = Date.now() + Math.floor(Math.random() * 1000000);
     setSeed(newSeed);
-    setTribes(generateTribesFromSeed(newSeed));
+    const newTribes = generateTribesFromSeed(newSeed);
+    setTribes(newTribes);
     if (onSeedChange) onSeedChange(newSeed);
+    // Force immediate update
+    if (!isRunning) {
+      updateConfigImmediate({ seed: newSeed, tribes: newTribes });
+    }
   };
 
   // Update parent when seed changes manually
@@ -349,17 +354,31 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange }: Si
         viewAngle: 120
       }
     };
-    setTribes([...tribes, newTribe]);
+    const updated = [...tribes, newTribe];
+    setTribes(updated);
+    // Force immediate update
+    if (!isRunning) {
+      updateConfigImmediate({ tribes: updated });
+    }
   };
 
   const removeTribe = (index: number) => {
-    setTribes(tribes.filter((_, i) => i !== index));
+    const updated = tribes.filter((_, i) => i !== index);
+    setTribes(updated);
+    // Force immediate update
+    if (!isRunning) {
+      updateConfigImmediate({ tribes: updated });
+    }
   };
 
   const updateTribe = (index: number, updates: Partial<TribeInit>) => {
     const updated = [...tribes];
     updated[index] = { ...updated[index], ...updates };
     setTribes(updated);
+    // Force immediate update
+    if (!isRunning) {
+      updateConfigImmediate({ tribes: updated });
+    }
   };
 
   const updateTribeGene = (index: number, gene: string, value: number) => {
@@ -378,6 +397,10 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange }: Si
     };
     updated[index].genes = { ...defaultGenes, ...updated[index].genes, [gene]: value };
     setTribes(updated);
+    // Force immediate update
+    if (!isRunning) {
+      updateConfigImmediate({ tribes: updated });
+    }
   };
 
   return (

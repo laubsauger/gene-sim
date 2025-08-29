@@ -143,28 +143,93 @@ function step(dt: number) {
   // Update entities with better cache locality
   const entityStart = performance.now();
   
-  // Process all entities - removed chunking as it adds overhead
+  // Entity pooling: process expensive operations in alternating batches
+  // Critical operations (position, death) happen every frame
+  // Expensive operations (food, movement AI, reproduction) alternate
+  const frameNum = Math.floor(t * 60);
+  const batchId = frameNum % 2; // Alternate between 0 and 1
+  
+  // First pass: Critical updates for ALL entities (position integration, death checks)
   for (let i = 0; i < n; i++) {
-      if (!alive[i]) continue;
-      
-    // Update orientation based on velocity - avoid hypot
-    const vx = vel[i * 2];
-    const vy = vel[i * 2 + 1];
-    const currentSpeedSq = vx * vx + vy * vy;
-    if (currentSpeedSq > 1) { // Only update if moving
-      orientation[i] = Math.atan2(vy, vx);
-    }
-    const currentSpeed = Math.sqrt(currentSpeedSq);
+    if (!alive[i]) continue;
     
     const base = i * G;
     const sp = genes[base];
-    // const vision = genes[base + 1]; // unused but kept for future use
     const metab = genes[base + 2];
-    const repro = genes[base + 3];
-    const diet = genes[base + 7] || -0.5; // -1=herbivore, 0=omnivore, 1=carnivore
     
-    // Age entity
+    // Age entity (critical - affects death)
     age[i] += dt;
+    
+    // Energy consumption (critical - affects death)
+    const vx = vel[i * 2];
+    const vy = vel[i * 2 + 1];
+    const currentSpeedSq = vx * vx + vy * vy;
+    const currentSpeed = Math.sqrt(currentSpeedSq);
+    
+    const diet = genes[base + 7] || -0.5;
+    const carnivoreLevel = Math.max(0, diet);
+    const herbivoreLevel = Math.max(0, -diet);
+    const ageFactor = 1 + (age[i] / 200);
+    
+    const dietMovementEfficiency = 1 - (carnivoreLevel * 0.5);
+    const moveCost = (currentSpeed * currentSpeed) * 0.000005 * metab * dietMovementEfficiency;
+    const dietMetabolismFactor = 1 + (herbivoreLevel * 0.5) - (carnivoreLevel * 0.3);
+    const baseCost = metab * 1.5 * dietMetabolismFactor;
+    energy[i] -= (baseCost + moveCost) * dt * ageFactor;
+    
+    // Position integration (critical for rendering)
+    const physicsStart = performance.now();
+    let velx = vel[i * 2], vely = vel[i * 2 + 1];
+    const vlen = Math.hypot(velx, vely) || 1e-6;
+    const vmax = sp;
+    if (vlen > vmax) {
+      velx = velx / vlen * vmax;
+      vely = vely / vlen * vmax;
+      vel[i * 2] = velx;
+      vel[i * 2 + 1] = vely;
+    }
+    
+    pos[i * 2] += velx * dt;
+    pos[i * 2 + 1] += vely * dt;
+    
+    // World wrapping (critical for correct position)
+    if (pos[i * 2] < 0) {
+      pos[i * 2] += world.width;
+    } else if (pos[i * 2] >= world.width) {
+      pos[i * 2] -= world.width;
+    }
+    if (pos[i * 2 + 1] < 0) {
+      pos[i * 2 + 1] += world.height;
+    } else if (pos[i * 2 + 1] >= world.height) {
+      pos[i * 2 + 1] -= world.height;
+    }
+    perfTimers.physics += performance.now() - physicsStart;
+    
+    // Death checks (critical)
+    if (energy[i] <= 0 || age[i] > 80) {
+      alive[i] = 0;
+      deathsByTribe[tribeId[i]]++;
+      if (energy[i] <= 0) {
+        starvedByTribe[tribeId[i]]++;
+      }
+      age[i] = 0;
+    }
+  }
+  
+  // Second pass: Expensive operations for half the entities (alternating batches)
+  for (let i = batchId; i < n; i += 2) {
+    if (!alive[i]) continue;
+    
+    // Update orientation based on velocity
+    const vx = vel[i * 2];
+    const vy = vel[i * 2 + 1];
+    const currentSpeedSq = vx * vx + vy * vy;
+    if (currentSpeedSq > 1) {
+      orientation[i] = Math.atan2(vy, vx);
+    }
+    
+    const base = i * G;
+    const repro = genes[base + 3];
     
     // Update color only every 30 frames for this entity (staggered)
     if ((i + Math.floor(t * 20)) % 30 === 0) {
@@ -186,30 +251,6 @@ function step(dt: number) {
       color[i * 3 + 1] = Math.min(255, (g * brightness) | 0);
       color[i * 3 + 2] = Math.min(255, (b * brightness) | 0);
     }
-    
-    // Energy consumption based on metabolism, speed, and age
-    // Higher metabolism means higher base cost but enables higher effective speeds
-    const ageFactor = 1 + (age[i] / 200); // Older entities consume slightly more energy (reduced)
-    // currentSpeed already calculated above for orientation
-    
-    // Diet-based energy efficiency
-    // Carnivores are more efficient at rest and movement (like big cats)
-    // Herbivores have higher constant energy drain (constant grazing)
-    const carnivoreLevel = Math.max(0, diet); // 0-1 for carnivorous
-    const herbivoreLevel = Math.max(0, -diet); // 0-1 for herbivorous
-    
-    // Movement cost scales with speed² and metabolism
-    // Carnivores use 50% less energy when moving (efficient hunters)
-    const dietMovementEfficiency = 1 - (carnivoreLevel * 0.5);
-    const moveCost = (currentSpeed * currentSpeed) * 0.000005 * metab * dietMovementEfficiency;
-    
-    // Base metabolic cost
-    // Herbivores have 50% higher base metabolism (constant digestion)
-    // Carnivores have 30% lower base metabolism (can rest between hunts)
-    const dietMetabolismFactor = 1 + (herbivoreLevel * 0.5) - (carnivoreLevel * 0.3);
-    const baseCost = metab * 1.5 * dietMetabolismFactor;
-    
-    energy[i] -= (baseCost + moveCost) * dt * ageFactor;
     
     // Check food at current position
     // OPTIMIZATION: Only check food every 3rd frame for each entity (staggered)
@@ -293,52 +334,9 @@ function step(dt: number) {
     );
     perfTimers.movement += performance.now() - moveStart;
     
-    // Clamp speed
-    const physicsStart = performance.now();
-    let velx = vel[i * 2], vely = vel[i * 2 + 1];
-    const vlen = Math.hypot(velx, vely) || 1e-6;
-    const vmax = sp;
-    if (vlen > vmax) {
-      velx = velx / vlen * vmax;
-      vely = vely / vlen * vmax;
-      vel[i * 2] = velx;
-      vel[i * 2 + 1] = vely;
-    }
-    
-    // Integrate position
-    pos[i * 2] += velx * dt;
-    pos[i * 2 + 1] += vely * dt;
-    
-    // Toroidal world wrapping - seamless edge transitions
-    // Wrap X coordinate
-    if (pos[i * 2] < 0) {
-      pos[i * 2] += world.width;
-    } else if (pos[i * 2] >= world.width) {
-      pos[i * 2] -= world.width;
-    }
-    
-    // Wrap Y coordinate
-    if (pos[i * 2 + 1] < 0) {
-      pos[i * 2 + 1] += world.height;
-    } else if (pos[i * 2 + 1] >= world.height) {
-      pos[i * 2 + 1] -= world.height;
-    }
-    perfTimers.physics += performance.now() - physicsStart;
-    
-    // Death from starvation or old age
-    if (energy[i] <= 0 || age[i] > 80) { // Die at 80 seconds (~8 days)
-      alive[i] = 0;
-      deathsByTribe[tribeId[i]]++;
-      if (energy[i] <= 0) {
-        starvedByTribe[tribeId[i]]++;
-      }
-      // Reset age for reuse
-      age[i] = 0;
-      continue;
-    }
-    
     // Reproduction - balanced energy requirements and crowd limits
     // High metabolism increases reproduction rate (more energy processing = faster reproduction)
+    const metab = genes[base + 2];
     const metabolismReproModifier = 0.5 + (metab / 0.3); // 0.5x to 2x modifier based on metabolism
     const effectiveReproChance = repro * metabolismReproModifier;
     
@@ -760,19 +758,42 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
           y = rand() * world.height;
           
         } else if (pattern === 'herd') {
-          // Multiple small groups (herbivore-like)
-          const numHerds = 3 + Math.floor(rand() * 3); // 3-5 herds
-          const herdIndex = i % numHerds;
-          const herdAngle = (herdIndex / numHerds) * Math.PI * 2 + rand() * 0.3; // Add some randomness
-          const herdDistance = tribe.spawn.radius * (3 + rand()); // 3-4x radius for better separation
+          // Multiple small groups with varied patterns
+          const numHerds = 4 + Math.floor(rand() * 4); // 4-7 herds for more variety
+          const herdIndex = Math.floor(i * numHerds / tribe.count); // Better distribution across herds
+          
+          // Irregular angles for more organic placement
+          const baseAngle = (herdIndex / numHerds) * Math.PI * 2;
+          const angleVariation = (rand() - 0.5) * Math.PI * 0.8; // Much more angle variation
+          const herdAngle = baseAngle + angleVariation;
+          
+          // Varied distances for each herd
+          const herdDistance = tribe.spawn.radius * (2 + rand() * 4); // 2-6x radius, much wider spread
           const herdCenterX = tribe.spawn.x + Math.cos(herdAngle) * herdDistance;
           const herdCenterY = tribe.spawn.y + Math.sin(herdAngle) * herdDistance;
           
-          // Smaller, tighter groups
-          const ang = rand() * Math.PI * 2;
-          const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.3); // Smaller, denser herds
-          x = herdCenterX + Math.cos(ang) * r;
-          y = herdCenterY + Math.sin(ang) * r;
+          // Varied herd sizes and shapes
+          const herdShape = rand();
+          if (herdShape < 0.3) {
+            // Tight circular cluster (30% chance)
+            const ang = rand() * Math.PI * 2;
+            const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.2);
+            x = herdCenterX + Math.cos(ang) * r;
+            y = herdCenterY + Math.sin(ang) * r;
+          } else if (herdShape < 0.6) {
+            // Elongated herd (30% chance)
+            const alongAngle = herdAngle + Math.PI / 2; // Perpendicular to radial
+            const along = (rand() - 0.5) * tribe.spawn.radius * 0.8;
+            const across = (rand() - 0.5) * tribe.spawn.radius * 0.2;
+            x = herdCenterX + Math.cos(alongAngle) * along + Math.cos(herdAngle) * across;
+            y = herdCenterY + Math.sin(alongAngle) * along + Math.sin(herdAngle) * across;
+          } else {
+            // Loose scatter around center (40% chance)
+            const ang = rand() * Math.PI * 2;
+            const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.5);
+            x = herdCenterX + Math.cos(ang) * r;
+            y = herdCenterY + Math.sin(ang) * r;
+          }
           
         } else if (pattern === 'adaptive') {
           // Pattern based on diet
