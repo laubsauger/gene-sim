@@ -5,6 +5,8 @@ import SimWorker from './sim/sim.worker.ts?worker';
 import { Controls } from './ui/Controls';
 import { StatsPanel } from './ui/StatsPanel';
 import { SimulationSetup } from './ui/SimulationSetup';
+import { GameOver } from './ui/GameOver';
+import type { SimStats } from './sim/types';
 import './App.css';
 
 const WORLD_WIDTH = 4000;
@@ -17,6 +19,7 @@ export default function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [showSetup, setShowSetup] = useState(true);
   const [currentSeed, setCurrentSeed] = useState<number>(Date.now());
+  const [gameOver, setGameOver] = useState<{ finalTime: number; finalStats: SimStats } | null>(null);
 
   useEffect(() => {
     if (!initialized.current) {
@@ -92,13 +95,38 @@ export default function App() {
   const handleStart = () => {
     setIsRunning(true);
     setShowSetup(false);
+    setGameOver(null);
     client.pause(false); // Unpause the simulation
+  };
+  
+  const handleRestart = () => {
+    // Reset with same seed
+    setGameOver(null);
+    setShowSetup(true);
+    setIsRunning(false);
+    // Seed is already set, just restart
+  };
+  
+  const handleNewSimulation = () => {
+    // Reset with new seed
+    const newSeed = Date.now();
+    setCurrentSeed(newSeed);
+    setGameOver(null);
+    setShowSetup(true);
+    setIsRunning(false);
   };
 
   // Track pause state
   useEffect(() => {
-    const unsubscribe = client.onMessage(() => {
-      // We could track pause state from worker if needed
+    const unsubscribe = client.onMessage((msg) => {
+      // Listen for extinction event
+      if (msg.type === 'extinction') {
+        setGameOver({
+          finalTime: msg.payload.finalTime,
+          finalStats: msg.payload.finalStats
+        });
+        setIsRunning(false);
+      }
     });
     return unsubscribe;
   }, [client]);
@@ -174,6 +202,16 @@ export default function App() {
           </button>
         )} */}
       </div>
+      
+      {gameOver && (
+        <GameOver
+          finalTime={gameOver.finalTime}
+          finalStats={gameOver.finalStats}
+          onRestart={handleRestart}
+          onNewSimulation={handleNewSimulation}
+          seed={currentSeed}
+        />
+      )}
     </div>
   );
 }

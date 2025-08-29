@@ -663,8 +663,8 @@ export function efficientMovement(
   vy += (rand() * 2 - 1) * speed * 0.3 * wanderFactor;
   
   // INTELLIGENT WALL AVOIDANCE: Detect walls early and turn away
-  const wallDetectionRange = vision * 1.2; // Larger detection range
-  const wallAvoidanceStrength = speed * 3; // Much stronger avoidance
+  const wallDetectionRange = vision * 0.8; // Use vision range for wall detection
+  const wallAvoidanceStrength = speed * 1.5;
 
   // Calculate distances to all borders
   const distToLeft = px;
@@ -685,11 +685,11 @@ export function efficientMovement(
     wallAvoidanceX += wallAvoidanceStrength * avoidanceForce * 1.5; // Stronger repulsion
 
     // Add perpendicular movement to avoid getting stuck
-    if (distToLeft < 10) {
+    if (distToLeft < 20) {
       // Very close - strong perpendicular push with randomization
-      const perpAngle = (rand() - 0.5) * Math.PI; // More random angle
-      wallAvoidanceY += Math.sin(perpAngle) * speed * 5; // Much stronger perpendicular force
-      wallAvoidanceX += speed * 4; // Stronger push away from wall
+      const perpAngle = (orientation ? orientation[i] : Math.atan2(vy, vx)) + (rand() - 0.5) * Math.PI * 0.5;
+      wallAvoidanceY += Math.sin(perpAngle) * speed * 3; // Stronger perpendicular force
+      wallAvoidanceX += speed * 2; // Always push away from wall
     }
   }
 
@@ -699,10 +699,10 @@ export function efficientMovement(
     const avoidanceForce = Math.pow((wallDetectionRange - distToRight) / wallDetectionRange, 2);
     wallAvoidanceX -= wallAvoidanceStrength * avoidanceForce * 1.5; // Stronger repulsion
 
-    if (distToRight < 10) {
-      const perpAngle = (rand() - 0.5) * Math.PI; // More random angle
-      wallAvoidanceY += Math.sin(perpAngle) * speed * 5;
-      wallAvoidanceX -= speed * 4; // Stronger push away from wall
+    if (distToRight < 20) {
+      const perpAngle = (orientation ? orientation[i] : Math.atan2(vy, vx)) + (rand() - 0.5) * Math.PI * 0.5;
+      wallAvoidanceY += Math.sin(perpAngle) * speed * 3;
+      wallAvoidanceX -= speed * 2; // Always push away from wall
     }
   }
 
@@ -712,10 +712,10 @@ export function efficientMovement(
     const avoidanceForce = Math.pow((wallDetectionRange - distToTop) / wallDetectionRange, 2);
     wallAvoidanceY += wallAvoidanceStrength * avoidanceForce * 1.5; // Stronger repulsion
 
-    if (distToTop < 10) {
-      const perpAngle = (rand() - 0.5) * Math.PI; // More random angle
-      wallAvoidanceX += Math.cos(perpAngle) * speed * 5;
-      wallAvoidanceY += speed * 4; // Stronger push away from wall
+    if (distToTop < 20) {
+      const perpAngle = (orientation ? orientation[i] : Math.atan2(vy, vx)) + (rand() - 0.5) * Math.PI * 0.5;
+      wallAvoidanceX += Math.cos(perpAngle) * speed * 3;
+      wallAvoidanceY += speed * 2; // Always push away from wall
     }
   }
 
@@ -725,18 +725,18 @@ export function efficientMovement(
     const avoidanceForce = Math.pow((wallDetectionRange - distToBottom) / wallDetectionRange, 2);
     wallAvoidanceY -= wallAvoidanceStrength * avoidanceForce * 1.5; // Stronger repulsion
 
-    if (distToBottom < 10) {
-      const perpAngle = (rand() - 0.5) * Math.PI; // More random angle
-      wallAvoidanceX += Math.cos(perpAngle) * speed * 5;
-      wallAvoidanceY -= speed * 4; // Stronger push away from wall
+    if (distToBottom < 20) {
+      const perpAngle = (orientation ? orientation[i] : Math.atan2(vy, vx)) + (rand() - 0.5) * Math.PI * 0.5;
+      wallAvoidanceX += Math.cos(perpAngle) * speed * 3;
+      wallAvoidanceY -= speed * 2; // Always push away from wall
     }
   }
 
   // Apply wall avoidance
   if (nearWall) {
-    // Override other behaviors when near wall with stronger force
-    vx = vx * 0.1 + wallAvoidanceX; // Almost completely override with avoidance
-    vy = vy * 0.1 + wallAvoidanceY;
+    // Override other behaviors when near wall
+    vx = vx * 0.3 + wallAvoidanceX; // Reduce original direction, add avoidance
+    vy = vy * 0.3 + wallAvoidanceY;
 
     // Add randomness but only in directions away from walls
     // Calculate the safe angle range based on which walls we're near
@@ -793,7 +793,7 @@ export function efficientMovement(
 
     // If stuck in corner (near two walls), use the calculated safe angle
     const nearCorner =
-      (distToLeft < 30 || distToRight < 30) &&
+      (distToLeft < 30 || distToRight < 30) && 
       (distToTop < 30 || distToBottom < 30);
 
     if (nearCorner) {

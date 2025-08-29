@@ -144,4 +144,5 @@ export type MainMsg =
     }}
   | { type: 'stats'; payload: SimStats }
   | { type: 'perf'; payload: PerfStats }
-  | { type: 'foodUpdate'; payload: { foodGrid: ArrayBuffer } };
+  | { type: 'foodUpdate'; payload: { foodGrid: ArrayBuffer } }
+  | { type: 'extinction'; payload: { finalTime: number; finalStats: SimStats } };

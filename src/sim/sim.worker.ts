@@ -312,31 +312,19 @@ function step(dt: number) {
     pos[i * 2] += velx * dt;
     pos[i * 2 + 1] += vely * dt;
     
-    // Boundary handling - allow entities to reach edge but strongly repel them
-    const repulsionStrength = 30; // Strong push away from boundaries
-    
-    if (pos[i * 2] <= 0) {
-      pos[i * 2] = 0; // Allow exact edge position
-      vel[i * 2] = Math.abs(vel[i * 2]) + repulsionStrength; // Strong bounce + repulsion
-      // Add random perpendicular velocity to prevent getting stuck
-      vel[i * 2 + 1] += (rand() - 0.5) * repulsionStrength;
+    // Toroidal world wrapping - seamless edge transitions
+    // Wrap X coordinate
+    if (pos[i * 2] < 0) {
+      pos[i * 2] += world.width;
     } else if (pos[i * 2] >= world.width) {
-      pos[i * 2] = world.width; // Allow exact edge position
-      vel[i * 2] = -Math.abs(vel[i * 2]) - repulsionStrength; // Strong bounce + repulsion
-      // Add random perpendicular velocity
-      vel[i * 2 + 1] += (rand() - 0.5) * repulsionStrength;
+      pos[i * 2] -= world.width;
     }
     
-    if (pos[i * 2 + 1] <= 0) {
-      pos[i * 2 + 1] = 0; // Allow exact edge position
-      vel[i * 2 + 1] = Math.abs(vel[i * 2 + 1]) + repulsionStrength; // Strong bounce + repulsion
-      // Add random perpendicular velocity
-      vel[i * 2] += (rand() - 0.5) * repulsionStrength;
+    // Wrap Y coordinate
+    if (pos[i * 2 + 1] < 0) {
+      pos[i * 2 + 1] += world.height;
     } else if (pos[i * 2 + 1] >= world.height) {
-      pos[i * 2 + 1] = world.height; // Allow exact edge position
-      vel[i * 2 + 1] = -Math.abs(vel[i * 2 + 1]) - repulsionStrength; // Strong bounce + repulsion
-      // Add random perpendicular velocity
-      vel[i * 2] += (rand() - 0.5) * repulsionStrength;
+      pos[i * 2 + 1] -= world.height;
     }
     perfTimers.physics += performance.now() - physicsStart;
     
@@ -932,7 +920,19 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
       // Send stats periodically (2Hz for performance)
       if (now - lastStatsTime > 500) {
         lastStatsTime = now;
-        self.postMessage({ type: 'stats', payload: stats() } as MainMsg);
+        const currentStats = stats();
+        self.postMessage({ type: 'stats', payload: currentStats } as MainMsg);
+        
+        // Check for extinction
+        if (currentStats.population === 0 && count > 0) {
+          // All entities are dead - send extinction event
+          self.postMessage({ type: 'extinction', payload: { 
+            finalTime: t,
+            finalStats: currentStats 
+          }} as MainMsg);
+          // Stop simulation
+          paused = true;
+        }
       }
       
       requestAnimationFrame(tick);

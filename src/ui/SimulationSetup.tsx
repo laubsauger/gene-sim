@@ -60,87 +60,155 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
   const tribes: TribeInit[] = [];
 
   const archetypes = [
-    // Carnivore Pack Hunters
-    {
-      name: 'Hunters',
-      genes: {
-        speed: 70 + rng() * 30,
-        vision: 60 + rng() * 40,
-        metabolism: 0.2 + rng() * 0.15,
-        reproChance: 0.005 + rng() * 0.01,
-        aggression: 0.7 + rng() * 0.3,
-        cohesion: 0.5 + rng() * 0.4,
-        diet: 0.5 + rng() * 0.5, // 0.5 to 1.0 (carnivore)
-        foodStandards: 0.1 + rng() * 0.2,
-        viewAngle: 100 + rng() * 60,
-        colorHue: 0 + rng() * 30 // Red spectrum
-      },
-      spawnPattern: 'scattered' as const
-    },
-    // Herbivore Herds
+    // Pure Herbivore Herds (most common)
     {
       name: 'Grazers',
       genes: {
         speed: 20 + rng() * 40,
         vision: 40 + rng() * 30,
         metabolism: 0.08 + rng() * 0.12,
-        reproChance: 0.01 + rng() * 0.02,
-        aggression: 0.1 + rng() * 0.3,
+        reproChance: 0.012 + rng() * 0.018, // Higher reproduction
+        aggression: 0.1 + rng() * 0.2,
         cohesion: 0.6 + rng() * 0.4,
-        diet: -1.0 + rng() * 0.5, // -1.0 to -0.5 (herbivore)
+        diet: -1.0 + rng() * 0.3, // -1.0 to -0.7 (strong herbivore)
         foodStandards: 0.4 + rng() * 0.4,
         viewAngle: 120 + rng() * 60,
         colorHue: 90 + rng() * 60 // Green spectrum
       },
       spawnPattern: 'herd' as const
     },
-    // Balanced Omnivores
+    // Another herbivore variant
     {
-      name: 'Adaptors',
+      name: 'Browsers',
       genes: {
-        speed: 40 + rng() * 40,
-        vision: 30 + rng() * 40,
-        metabolism: 0.12 + rng() * 0.13,
+        speed: 30 + rng() * 30,
+        vision: 50 + rng() * 30,
+        metabolism: 0.1 + rng() * 0.1,
+        reproChance: 0.01 + rng() * 0.015,
+        aggression: 0.05 + rng() * 0.15,
+        cohesion: 0.7 + rng() * 0.3,
+        diet: -0.9 + rng() * 0.3, // -0.9 to -0.6 (herbivore)
+        foodStandards: 0.5 + rng() * 0.3,
+        viewAngle: 140 + rng() * 40,
+        colorHue: 120 + rng() * 40 // Yellow-green spectrum
+      },
+      spawnPattern: 'herd' as const
+    },
+    // Mostly herbivore omnivores
+    {
+      name: 'Foragers',
+      genes: {
+        speed: 40 + rng() * 30,
+        vision: 35 + rng() * 25,
+        metabolism: 0.12 + rng() * 0.08,
         reproChance: 0.008 + rng() * 0.012,
-        aggression: 0.3 + rng() * 0.4,
-        cohesion: 0.3 + rng() * 0.4,
-        diet: -0.3 + rng() * 0.6, // -0.3 to 0.3 (omnivore)
-        foodStandards: 0.2 + rng() * 0.4,
-        viewAngle: 100 + rng() * 40,
+        aggression: 0.2 + rng() * 0.3,
+        cohesion: 0.4 + rng() * 0.3,
+        diet: -0.6 + rng() * 0.4, // -0.6 to -0.2 (herbivore-leaning omnivore)
+        foodStandards: 0.3 + rng() * 0.3,
+        viewAngle: 110 + rng() * 40,
         colorHue: 180 + rng() * 60 // Blue spectrum
       },
       spawnPattern: 'adaptive' as const
     },
-    // Fast Scavengers
+    // Balanced Omnivores
     {
-      name: 'Nomads',
+      name: 'Adaptors',
       genes: {
-        speed: 60 + rng() * 40,
-        vision: 50 + rng() * 30,
-        metabolism: 0.15 + rng() * 0.15,
+        speed: 45 + rng() * 35,
+        vision: 30 + rng() * 40,
+        metabolism: 0.12 + rng() * 0.13,
+        reproChance: 0.008 + rng() * 0.012,
+        aggression: 0.3 + rng() * 0.3,
+        cohesion: 0.3 + rng() * 0.4,
+        diet: -0.4 + rng() * 0.5, // -0.4 to 0.1 (mostly herbivore omnivore)
+        foodStandards: 0.2 + rng() * 0.4,
+        viewAngle: 100 + rng() * 40,
+        colorHue: 200 + rng() * 40 // Cyan spectrum
+      },
+      spawnPattern: 'adaptive' as const
+    },
+    // Opportunistic Omnivores (slight carnivore tendency - rare)
+    {
+      name: 'Scavengers',
+      genes: {
+        speed: 50 + rng() * 30,
+        vision: 45 + rng() * 25,
+        metabolism: 0.14 + rng() * 0.1,
         reproChance: 0.006 + rng() * 0.008,
         aggression: 0.4 + rng() * 0.3,
         cohesion: 0.2 + rng() * 0.3,
-        diet: -0.2 + rng() * 0.7, // Mostly omnivore with variation
+        diet: -0.2 + rng() * 0.5, // -0.2 to 0.3 (omnivore with slight carnivore potential)
         foodStandards: 0.1 + rng() * 0.3,
-        viewAngle: 140 + rng() * 40,
+        viewAngle: 130 + rng() * 40,
         colorHue: 270 + rng() * 60 // Purple spectrum
+      },
+      spawnPattern: 'scattered' as const
+    },
+    // Rare mild carnivore (only occasionally appears)
+    {
+      name: 'Hunters',
+      genes: {
+        speed: 60 + rng() * 20, // Reduced speed
+        vision: 50 + rng() * 30, // Reduced vision
+        metabolism: 0.18 + rng() * 0.12, // Higher metabolism cost
+        reproChance: 0.004 + rng() * 0.006, // Lower reproduction
+        aggression: 0.5 + rng() * 0.3, // Reduced aggression
+        cohesion: 0.4 + rng() * 0.3,
+        diet: 0.2 + rng() * 0.4, // 0.2 to 0.6 (mild carnivore, not pure)
+        foodStandards: 0.1 + rng() * 0.2,
+        viewAngle: 90 + rng() * 40, // Narrower vision
+        colorHue: 0 + rng() * 30 // Red spectrum
       },
       spawnPattern: 'scattered' as const
     }
   ];
 
-  // Shuffle and pick tribes
-  const shuffled = archetypes.sort(() => rng() - 0.5);
+  // Weighted selection - herbivores are more common
+  const weightedArchetypes: typeof archetypes[0][] = [];
+  
+  // Add herbivores multiple times for higher weight
+  for (let j = 0; j < 3; j++) {
+    if (archetypes[0]) weightedArchetypes.push(archetypes[0]); // Grazers x3
+    if (archetypes[1]) weightedArchetypes.push(archetypes[1]); // Browsers x3
+  }
+  for (let j = 0; j < 2; j++) {
+    if (archetypes[2]) weightedArchetypes.push(archetypes[2]); // Foragers x2
+    if (archetypes[3]) weightedArchetypes.push(archetypes[3]); // Adaptors x2
+  }
+  if (archetypes[4]) weightedArchetypes.push(archetypes[4]); // Scavengers x1
+  
+  // Hunters always available but with lower weight
+  if (archetypes[5]) {
+    weightedArchetypes.push(archetypes[5]); // Hunters x1 (less common than herbivores)
+  }
+  
+  // Shuffle the weighted list
+  const shuffled = weightedArchetypes.sort(() => rng() - 0.5);
+  
+  // Pick unique archetypes (avoid duplicates)
+  const selectedArchetypes = new Set<typeof archetypes[0]>();
+  for (let i = 0; i < tribesCount && selectedArchetypes.size < tribesCount; i++) {
+    if (i < shuffled.length) {
+      selectedArchetypes.add(shuffled[i]);
+    }
+  }
 
-  for (let i = 0; i < tribesCount && i < shuffled.length; i++) {
-    const archetype = shuffled[i];
-    const angle = (i / tribesCount) * Math.PI * 2;
+  let tribeIndex = 0;
+  for (const archetype of selectedArchetypes) {
+    // Add random offset to angle so tribes don't always spawn in same pattern
+    const angleOffset = rng() * Math.PI * 0.5; // Random offset up to 90 degrees
+    const angle = (tribeIndex / tribesCount) * Math.PI * 2 + angleOffset;
     const distance = 1200 + rng() * 800;
+    
+    // Hunters get smaller initial population
+    const isHunter = archetype.name === 'Hunters';
+    const baseCount = isHunter ? 400 : 800;
+    const varCount = isHunter ? 200 : 400;
 
     tribes.push({
       name: archetype.name,
-      count: 800 + Math.floor(rng() * 400), // 800-1200 entities
+      count: baseCount + Math.floor(rng() * varCount), // Hunters: 400-600, Others: 800-1200
       spawn: {
         x: 2000 + Math.cos(angle) * distance,
         y: 2000 + Math.sin(angle) * distance,
@@ -149,6 +217,7 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
       },
       genes: archetype.genes
     });
+    tribeIndex++;
   }
 
   return tribes;
@@ -174,9 +243,9 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange }: Si
   const [entityRenderSize, setEntityRenderSize] = useState(48);
   const [initialized, setInitialized] = useState(false);
 
-  const updateConfigImmediate = useCallback(() => {
+  const updateConfigImmediate = useCallback((overrides?: { seed?: number; tribes?: TribeInit[] }) => {
     const config: SimInit = {
-      seed,
+      seed: overrides?.seed ?? seed,
       cap: maxEntities,
       world: {
         width: worldWidth,
@@ -193,7 +262,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange }: Si
           } : undefined
         }
       },
-      tribes,
+      tribes: overrides?.tribes ?? tribes,
       energy: {
         start: startEnergy,
         max: maxEnergy,
@@ -336,7 +405,13 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange }: Si
                   onChange={(e) => {
                     const newSeed = Number(e.target.value);
                     setSeed(newSeed);
-                    setTribes(generateTribesFromSeed(newSeed));
+                    const newTribes = generateTribesFromSeed(newSeed);
+                    setTribes(newTribes);
+                    if (onSeedChange) onSeedChange(newSeed);
+                    // Force immediate update with new values
+                    if (!isRunning) {
+                      updateConfigImmediate({ seed: newSeed, tribes: newTribes });
+                    }
                   }}
                   style={{
                     flex: 1,
