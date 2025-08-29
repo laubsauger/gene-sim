@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import { loadWasmModule, isWasmSupported } from './wasmLoader';
 import type { WorkerMsg, MainMsg } from './types';
+import { updateSubWorkerEntities } from './subWorkerSimulation';
 
 // Import the JavaScript implementation as fallback
 import './sim.worker'; // This will be our fallback
@@ -345,13 +346,15 @@ function initSubWorkerJs(init: any) {
   // Use actual entity count if provided
   const actualStart = init.actualEntityStart ?? entityStart;
   const actualEnd = init.actualEntityEnd ?? entityEnd;
-  const entityCount = actualEnd - actualStart;
+  const actualEntityCount = actualEnd - actualStart;
   
   // Create views into the coordinator's SharedArrayBuffers
+  // Use the BUFFER range for views, not actual count
+  const bufferEntityCount = entityEnd - entityStart;
   const posBuffer = new Float32Array(
     sharedBuffers.positions, 
     entityStart * 2 * Float32Array.BYTES_PER_ELEMENT, 
-    entityCount * 2
+    bufferEntityCount * 2
   );
   
   const colorBuffer = new Uint8Array(
@@ -468,20 +471,23 @@ function startSubWorkerLoop(
   
   const tick = () => {
     if (!paused) {
-      // Simple movement for testing
-      for (let i = 0; i < entityCount; i++) {
-        if (aliveBuffer[i]) {
-          // Random walk
-          posBuffer[i * 2] += (Math.random() - 0.5) * 2 * speedMul;
-          posBuffer[i * 2 + 1] += (Math.random() - 0.5) * 2 * speedMul;
-          
-          // Wrap around world boundaries
-          if (posBuffer[i * 2] < 0) posBuffer[i * 2] = init.world.width;
-          if (posBuffer[i * 2] > init.world.width) posBuffer[i * 2] = 0;
-          if (posBuffer[i * 2 + 1] < 0) posBuffer[i * 2 + 1] = init.world.height;
-          if (posBuffer[i * 2 + 1] > init.world.height) posBuffer[i * 2 + 1] = 0;
-        }
-      }
+      // Use improved simulation logic
+      updateSubWorkerEntities({
+        posBuffer,
+        colorBuffer,
+        aliveBuffer,
+        energyBuffer,
+        genesBuffer,
+        foodBuffer: foodBuf,
+        entityCount,
+        entityStart,
+        entityEnd,
+        world: init.world,
+        speedMul,
+        dt: 0.016, // ~60 FPS
+        foodCols: foodCols || 256,
+        foodRows: foodRows || 256
+      });
     }
     
     setTimeout(tick, 16); // ~60 FPS

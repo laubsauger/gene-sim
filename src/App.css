@@ -103,8 +103,8 @@ input[type="range"]:focus::-moz-range-thumb {
 .diet-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 24px;
-  height: 24px;
+  width: 12px;
+    height: 18px;
   border-radius: 50%;
   background: #ffffff;
   cursor: pointer;
@@ -125,9 +125,9 @@ input[type="range"]:focus::-moz-range-thumb {
 }
 
 .diet-slider::-moz-range-thumb {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
+  width: 18px;
+    height: 12px;
+    border-radius: 12px;
   background: #ffffff;
   cursor: pointer;
   border: 2px solid #1f2937;

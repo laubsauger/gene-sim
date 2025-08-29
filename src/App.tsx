@@ -99,6 +99,10 @@ export default function App() {
   const [currentSeed, setCurrentSeed] = useState<number>(Date.now());
   const [gameOver, setGameOver] = useState<{ finalTime: number; finalStats: SimStats } | null>(null);
 
+  // Track if we need to reinitialize
+  const [needsReinit, setNeedsReinit] = useState(false);
+  const lastConfigRef = useRef<any>(null);
+  
   useEffect(() => {
     const initClient = async () => {
       // Only initialize if we have a config from SimulationSetup
@@ -107,33 +111,50 @@ export default function App() {
         return;
       }
       
-      // If already initialized and not running, reinitialize with new config
-      if (client.isReady() && !isRunning) {
-        console.log('[App] Re-initializing with updated config from SimulationSetup');
-        client.terminate();
-        clientRef.current = createSimClient({ mode: simMode });
-        initialized.current = false;
-        setClientReady(false);
-        
-        await clientRef.current.init(simConfig);
-        initialized.current = true;
-        setClientReady(true);
-        return;
-      }
+      // Check if config actually changed (not just a re-render)
+      const configChanged = JSON.stringify(simConfig) !== JSON.stringify(lastConfigRef.current);
       
       // First time initialization
       if (!initialized.current && client && !client.isReady()) {
         initialized.current = true;
+        lastConfigRef.current = simConfig;
         console.log('[App] Initial client setup with config from SimulationSetup');
         await client.init(simConfig);
         setClientReady(true);
+        return;
+      }
+      
+      // Only reinitialize if config actually changed and we're not running
+      if (configChanged && client.isReady() && !isRunning) {
+        console.log('[App] Config changed, marking for reinit');
+        setNeedsReinit(true);
+        lastConfigRef.current = simConfig;
       }
     };
     
     if (simConfig) {
       initClient();
     }
-  }, [simConfig, isRunning, simMode]); // Re-init when config changes (but not while running)
+  }, [simConfig, isRunning, client]);
+  
+  // Handle reinit separately to avoid constant recreation
+  useEffect(() => {
+    if (needsReinit && !isRunning && lastConfigRef.current) {
+      console.log('[App] Reinitializing with new config');
+      setNeedsReinit(false);
+      
+      // Send a reinit message to the worker instead of recreating
+      client.terminate();
+      clientRef.current = createSimClient({ mode: simMode });
+      initialized.current = false;
+      setClientReady(false);
+      
+      clientRef.current.init(lastConfigRef.current).then(() => {
+        initialized.current = true;
+        setClientReady(true);
+      });
+    }
+  }, [needsReinit, isRunning, simMode]);
 
   const handleStart = () => {
     setIsRunning(true);

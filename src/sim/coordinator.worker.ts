@@ -124,11 +124,7 @@ class SimulationCoordinator {
       this.foodCols = cols;
       this.foodRows = rows;
       
-      // Initialize food grid
-      const food = new Uint8Array(this.foodBuffer);
-      for (let i = 0; i < food.length; i++) {
-        food[i] = Math.floor(Math.random() * 4); // 0-3 food units per cell
-      }
+      // Don't initialize food here - worker 0 will initialize it with proper noise pattern
       console.log('[Coordinator] Allocated food grid:', cols, 'x', rows);
     }
   }
@@ -160,7 +156,7 @@ class SimulationCoordinator {
       const workerInfo: WorkerInfo = {
         id: i,
         worker: new Worker(
-          new URL('./sim.worker.wasm.ts', import.meta.url),
+          new URL('./sim.worker.ts', import.meta.url),
           { type: 'module' }
         ),
         entityStart: i * entitiesPerWorker,

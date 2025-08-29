@@ -10,6 +10,7 @@ export interface ControlsProps {
 export function Controls({ client, isRunning, onStart }: ControlsProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [sliderValue, setSliderValue] = useState(50);
 
   const handlePause = () => {
     const newPaused = !isPaused;
@@ -17,6 +18,24 @@ export function Controls({ client, isRunning, onStart }: ControlsProps) {
     client.pause(newPaused);
   };
 
+  const speedValues = [0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
+  
+  const sliderToSpeed = (value: number) => {
+    const index = Math.round((value / 100) * (speedValues.length - 1));
+    return speedValues[index];
+  };
+  
+  const speedToSlider = (speedMul: number) => {
+    const index = speedValues.indexOf(speedMul);
+    if (index === -1) {
+      const closest = speedValues.reduce((prev, curr) => 
+        Math.abs(curr - speedMul) < Math.abs(prev - speedMul) ? curr : prev
+      );
+      return (speedValues.indexOf(closest) / (speedValues.length - 1)) * 100;
+    }
+    return (index / (speedValues.length - 1)) * 100;
+  };
+  
   const handleSpeed = (speedMul: number) => {
     setSpeed(speedMul);
     client.setSpeed(speedMul);
@@ -24,6 +43,13 @@ export function Controls({ client, isRunning, onStart }: ControlsProps) {
       setIsPaused(false);
       client.pause(false);
     }
+  };
+  
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value);
+    setSliderValue(value);
+    const speedMul = sliderToSpeed(value);
+    handleSpeed(speedMul);
   };
   
   // Add spacebar pause/play or start
@@ -81,26 +107,70 @@ export function Controls({ client, isRunning, onStart }: ControlsProps) {
         </span>
       </button>
       
-      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-        {[0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64].map(s => (
-          <button
-            key={s}
-            onClick={() => handleSpeed(s)}
-            style={{
-              padding: '8px 12px',
-              fontSize: '14px',
-              background: speed === s ? '#3b82f6' : '#1e293b',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              transition: 'background 0.2s',
-              minWidth: '45px',
-            }}
-          >
-            {s}×
-          </button>
-        ))}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '12px',
+        flex: 1,
+        minWidth: '200px',
+      }}>
+        <span style={{ 
+          color: 'white', 
+          fontSize: '14px',
+          minWidth: '45px',
+          textAlign: 'right',
+        }}>
+          {speed < 1 ? speed.toFixed(2) : speed}×
+        </span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={sliderValue}
+          onChange={handleSliderChange}
+          disabled={!isRunning}
+          style={{
+            flex: 1,
+            height: '6px',
+            background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${sliderValue}%, #1e293b ${sliderValue}%, #1e293b 100%)`,
+            borderRadius: '3px',
+            outline: 'none',
+            WebkitAppearance: 'none',
+            appearance: 'none',
+            cursor: isRunning ? 'pointer' : 'not-allowed',
+            opacity: isRunning ? 1 : 0.5,
+          }}
+        />
+        <style>{`
+          input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #3b82f6;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+          input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            background: #60a5fa;
+          }
+          input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            background: #3b82f6;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+          input[type="range"]::-moz-range-thumb:hover {
+            transform: scale(1.2);
+            background: #60a5fa;
+          }
+        `}</style>
       </div>
     </div>
   );

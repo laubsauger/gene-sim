@@ -5,14 +5,13 @@ import { SpatialHash } from './spatialHash';
 import { efficientMovementOptimized } from './spatialBehaviorsOptimized';
 import { createFractalNoise2D } from './noise';
 import type { WorkerMsg, MainMsg, SimStats, GeneSpec, TribeStats, PerfStats } from './types';
-
-// Sub-worker mode detection
-let isSubWorker = false;
-let workerId = -1;
-let bufferEntityStart = 0;
-let bufferEntityEnd = 0;
-let actualEntityStart = 0;
-let actualEntityEnd = 0;
+import {
+  simulationStep,
+  type SimBuffers,
+  type FoodState,
+  type SimState,
+  type SimWorkerContext,
+} from './sharedSimulation';
 
 // Simulation state
 let pos!: Float32Array, vel!: Float32Array, color!: Uint8Array, alive!: Uint8Array, tribeId!: Uint16Array;
@@ -103,140 +102,6 @@ function spawnEntity(i: number, x: number, y: number, g: GeneSpec, tribeIx: numb
   color[i * 3 + 2] = b | 0;
 }
 
-/**
- * Initialize food grid with noise pattern - shared by both modes
- */
-function initializeFoodGrid(init: any, seed: number) {
-  const distribution = init.world.foodGrid?.distribution;
-  const noise = createFractalNoise2D(seed + 12345);
-  
-  if (distribution && distribution.threshold > 0) {
-    const scale = distribution.scale || 35;
-    const threshold = distribution.threshold || 0.35;
-    const frequency = distribution.frequency || 3;
-    
-    for (let y = 0; y < foodRows; y++) {
-      for (let x = 0; x < foodCols; x++) {
-        const worldX = (x / foodCols) * world.width;
-        const worldY = (y / foodRows) * world.height;
-        const octaves = Math.max(1, frequency);
-        const noiseValue = noise(worldX, worldY, scale, octaves);
-        
-        const idx = y * foodCols + x;
-        if (noiseValue > threshold) {
-          const normalizedValue = (noiseValue - threshold) / (1 - threshold);
-          const richness = Math.pow(normalizedValue, 1.5);
-          foodMaxCapacity[idx] = richness * foodCapacity;
-          foodGrid[idx] = foodMaxCapacity[idx];
-        } else {
-          foodMaxCapacity[idx] = 0;
-          foodGrid[idx] = 0;
-        }
-        foodRegrowTimer[idx] = 0;
-      }
-    }
-  } else {
-    // Default island pattern
-    for (let y = 0; y < foodRows; y++) {
-      for (let x = 0; x < foodCols; x++) {
-        const worldX = (x / foodCols) * world.width;
-        const worldY = (y / foodRows) * world.height;
-        const noiseValue = noise(worldX, worldY, 35, 3);
-        
-        const idx = y * foodCols + x;
-        const capacity = noiseValue * noiseValue * foodCapacity;
-        foodMaxCapacity[idx] = capacity;
-        foodGrid[idx] = capacity;
-        foodRegrowTimer[idx] = 0;
-      }
-    }
-  }
-  
-  // Sync to uint8 buffer
-  for (let i = 0; i < foodGrid.length; i++) {
-    foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, foodGrid[i])) * 255);
-  }
-}
-
-/**
- * Get spawn position for an entity based on pattern - shared by both modes
- */
-function getSpawnPosition(tribe: any, i: number, pattern: string, baseGenes: any): [number, number] {
-  let x: number, y: number;
-  
-  if (pattern === 'blob') {
-    const ang = rand() * Math.PI * 2;
-    const r = Math.sqrt(rand()) * tribe.spawn.radius;
-    x = tribe.spawn.x + Math.cos(ang) * r;
-    y = tribe.spawn.y + Math.sin(ang) * r;
-    
-  } else if (pattern === 'scattered') {
-    x = rand() * world.width;
-    y = rand() * world.height;
-    
-  } else if (pattern === 'herd') {
-    const numHerds = 4 + Math.floor(rand() * 4);
-    const herdIndex = Math.floor(i * numHerds / tribe.count);
-    
-    const baseAngle = (herdIndex / numHerds) * Math.PI * 2;
-    const angleVariation = (rand() - 0.5) * Math.PI * 0.8;
-    const herdAngle = baseAngle + angleVariation;
-    
-    const herdDistance = tribe.spawn.radius * (2 + rand() * 4);
-    const herdCenterX = tribe.spawn.x + Math.cos(herdAngle) * herdDistance;
-    const herdCenterY = tribe.spawn.y + Math.sin(herdAngle) * herdDistance;
-    
-    const herdShape = rand();
-    if (herdShape < 0.3) {
-      const ang = rand() * Math.PI * 2;
-      const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.2);
-      x = herdCenterX + Math.cos(ang) * r;
-      y = herdCenterY + Math.sin(ang) * r;
-    } else if (herdShape < 0.6) {
-      const alongAngle = herdAngle + Math.PI / 2;
-      const along = (rand() - 0.5) * tribe.spawn.radius * 0.8;
-      const across = (rand() - 0.5) * tribe.spawn.radius * 0.2;
-      x = herdCenterX + Math.cos(alongAngle) * along + Math.cos(herdAngle) * across;
-      y = herdCenterY + Math.sin(alongAngle) * along + Math.sin(herdAngle) * across;
-    } else {
-      const ang = rand() * Math.PI * 2;
-      const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.4);
-      x = herdCenterX + Math.cos(ang) * r;
-      y = herdCenterY + Math.sin(ang) * r;
-    }
-    
-  } else if (pattern === 'adaptive') {
-    const diet = baseGenes.diet || -0.5;
-    const herbivoreLevel = Math.max(0, -diet);
-    
-    if (herbivoreLevel > 0.5) {
-      const herdCenterX = tribe.spawn.x + (rand() - 0.5) * tribe.spawn.radius * 2;
-      const herdCenterY = tribe.spawn.y + (rand() - 0.5) * tribe.spawn.radius * 2;
-      const ang = rand() * Math.PI * 2;
-      const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.3);
-      x = herdCenterX + Math.cos(ang) * r;
-      y = herdCenterY + Math.sin(ang) * r;
-    } else {
-      const ang = rand() * Math.PI * 2;
-      const r = Math.sqrt(rand()) * tribe.spawn.radius * 1.5;
-      x = tribe.spawn.x + Math.cos(ang) * r;
-      y = tribe.spawn.y + Math.sin(ang) * r;
-    }
-  } else {
-    // Default to blob
-    const ang = rand() * Math.PI * 2;
-    const r = Math.sqrt(rand()) * tribe.spawn.radius;
-    x = tribe.spawn.x + Math.cos(ang) * r;
-    y = tribe.spawn.y + Math.sin(ang) * r;
-  }
-  
-  // Ensure position is within world bounds
-  x = Math.max(0, Math.min(world.width - 1, x));
-  y = Math.max(0, Math.min(world.height - 1, y));
-  
-  return [x, y];
-}
-
 // Performance tracking
 let perfTimers = {
   spatialHash: 0,
@@ -250,24 +115,39 @@ let perfTimers = {
 };
 
 function step(dt: number) {
-  if (paused) return;
+  // Create context objects for shared simulation
+  const buffers: SimBuffers = {
+    pos, vel, color, alive, tribeId, genes, energy, age, orientation
+  };
+
+  const foodState: FoodState = {
+    foodGrid, foodGridUint8, foodMaxCapacity, foodRegrowTimer,
+    foodCols, foodRows, foodRegen, foodCapacity
+  };
+
+  const simState: SimState = {
+    count, cap, t, world, energyConfig, speedMul, paused,
+    birthsByTribe, deathsByTribe, killsByTribe, starvedByTribe,
+    tribeColors, allowHybrids, rand
+  };
+
+  const context: SimWorkerContext = {
+    isSubWorker: false
+  };
   
-  const stepStart = performance.now();
-  const n = count;
-  t += dt;
+  // Call shared simulation
+  simulationStep(dt, buffers, foodState, simState, grid, context, perfTimers);
   
-  // Rebuild spatial grid for efficient neighbor queries
-  const hashStart = performance.now();
-  grid.rebuild(pos, alive, count);
-  perfTimers.spatialHash += performance.now() - hashStart;
+  // Update local state from shared simulation
+  count = simState.count;
+  t = simState.t;
   
   // Regenerate food based on timers (respecting initial distribution)
   // OPTIMIZATION: Only update food every 10 frames (6 Hz) instead of 60 Hz
-  // In multi-worker mode, only worker 0 updates food
   const foodStart = performance.now();
   const shouldUpdateFood = Math.floor(t * 10) !== Math.floor((t - dt) * 10);
   
-  if (shouldUpdateFood && (!isSubWorker || workerId === 0)) {
+  if (shouldUpdateFood) {
     for (let i = 0; i < foodGrid.length; i++) {
       const maxCap = foodMaxCapacity[i]; // Respect noise-based max capacity
       if (foodGrid[i] < maxCap && maxCap > 0) {
@@ -745,278 +625,12 @@ function stats(): SimStats {
   };
 }
 
-/**
- * Initialize as a sub-worker using coordinator's shared buffers
- */
-function initSubWorker(init: any) {
-  const { sharedBuffers, foodBuffer, foodMeta } = init;
-  
-  world.width = init.world.width;
-  world.height = init.world.height;
-  cap = init.cap;
-  
-  // Update energy config if provided
-  if (init.energy) {
-    energyConfig = init.energy;
-  }
-  
-  // Set hybridization flag (same as standalone)
-  allowHybrids = init.hybridization !== false;
-  
-  // Use shared buffers from coordinator
-  const bufferSize = bufferEntityEnd - bufferEntityStart;
-  
-  // Create views into the shared buffers for our range
-  pos = new Float32Array(
-    sharedBuffers.positions,
-    bufferEntityStart * 2 * Float32Array.BYTES_PER_ELEMENT,
-    bufferSize * 2
-  );
-  
-  vel = new Float32Array(
-    sharedBuffers.velocities,
-    bufferEntityStart * 2 * Float32Array.BYTES_PER_ELEMENT,
-    bufferSize * 2
-  );
-  
-  color = new Uint8Array(
-    sharedBuffers.colors,
-    bufferEntityStart * 3,
-    bufferSize * 3
-  );
-  
-  alive = new Uint8Array(
-    sharedBuffers.alive,
-    bufferEntityStart,
-    bufferSize
-  );
-  
-  tribeId = new Uint16Array(
-    sharedBuffers.tribeIds,
-    bufferEntityStart * Uint16Array.BYTES_PER_ELEMENT,
-    bufferSize
-  );
-  
-  genes = new Float32Array(
-    sharedBuffers.genes,
-    bufferEntityStart * G * Float32Array.BYTES_PER_ELEMENT,
-    bufferSize * G
-  );
-  
-  energy = new Float32Array(
-    sharedBuffers.energy,
-    bufferEntityStart * Float32Array.BYTES_PER_ELEMENT,
-    bufferSize
-  );
-  
-  age = new Float32Array(bufferSize);
-  orientation = new Float32Array(bufferSize);
-  
-  // Food grid initialization - shared with standalone mode
-  if (foodBuffer) {
-    foodGridUint8 = new Uint8Array(foodBuffer);
-    foodCols = foodMeta?.cols || init.world.foodGrid?.cols || 256;
-    foodRows = foodMeta?.rows || init.world.foodGrid?.rows || 256;
-    foodRegen = init.world.foodGrid?.regen || 0.05;
-    foodCapacity = init.world.foodGrid?.capacity || 1;
-    
-    // Set regrow time based on regen rate
-    FOOD_REGROW_TIME = 10 / foodRegen;
-    
-    foodGrid = new Float32Array(foodCols * foodRows);
-    foodMaxCapacity = new Float32Array(foodCols * foodRows);
-    foodRegrowTimer = new Float32Array(foodCols * foodRows);
-    
-    // Only worker 0 initializes food pattern (others just read the shared buffer)
-    if (workerId === 0) {
-      // Initialize food using shared function
-      initializeFoodGrid(init, init.seed);
-    } else {
-      // Other workers read from shared buffer
-      for (let i = 0; i < foodGridUint8.length; i++) {
-        foodGrid[i] = foodGridUint8[i] / 255;
-        foodMaxCapacity[i] = foodGrid[i]; // Assume current is max for now
-        foodRegrowTimer[i] = 0;
-      }
-    }
-  }
-  
-  // Initialize tracking arrays
-  birthsByTribe = new Uint32Array(init.tribes.length);
-  deathsByTribe = new Uint32Array(init.tribes.length);
-  killsByTribe = new Uint32Array(init.tribes.length);
-  starvedByTribe = new Uint32Array(init.tribes.length);
-  tribeNames = init.tribes.map((t: any) => t.name);
-  tribeColors = init.tribes.map((t: any) => t.genes?.colorHue || 0);
-  
-  // Initialize spatial grid
-  grid = new SpatialHash(80, world.width, world.height);
-  
-  // Initialize RNG
-  rand = createRng(init.seed + workerId);
-  
-  // Initialize entities using the SAME spawning logic as standalone mode
-  count = 0;
-  
-  // Calculate global entity distribution (which entities belong to this worker)
-  let globalEntityCount = 0;
-  const tribeStartIndices: number[] = [];
-  init.tribes.forEach((tribe: any) => {
-    tribeStartIndices.push(globalEntityCount);
-    globalEntityCount += tribe.count;
-  });
-  
-  // Spawn tribes with the SAME patterns as standalone mode
-  init.tribes.forEach((tribe: any, ix: number) => {
-    const baseGenes = clampGene({
-      ...defaultGenes,
-      ...tribe.genes,
-    });
-    tribeColors[ix] = baseGenes.colorHue;
-    
-    // Determine spawn pattern
-    const pattern = tribe.spawn.pattern || 'blob';
-    const diet = baseGenes.diet || -0.5;
-    const carnivoreLevel = Math.max(0, diet);
-    const herbivoreLevel = Math.max(0, -diet);
-    
-    for (let i = 0; i < tribe.count; i++) {
-      // Calculate global index for this entity
-      const globalIdx = tribeStartIndices[ix] + i;
-      
-      // Skip if not in our range
-      if (globalIdx < actualEntityStart || globalIdx >= actualEntityEnd) {
-        continue;
-      }
-      
-      // Local index in our buffer
-      const localIdx = globalIdx - actualEntityStart;
-      if (localIdx >= bufferSize) break;
-      
-      // Use shared spawn position function
-      const [x, y] = getSpawnPosition(tribe, i, pattern, baseGenes);
-      
-      // Use the existing spawnEntity function (matching standalone)
-      spawnEntity(localIdx, x, y, baseGenes, ix, energyConfig.start);
-      count++;
-    }
-  });
-  
-  // Send ready message
-  self.postMessage({ type: 'ready' } as MainMsg);
-  
-  // Start simulation loop
-  startSubWorkerLoop();
-}
-
-/**
- * Start the simulation loop for sub-worker mode
- */
-function startSubWorkerLoop() {
-  let last = performance.now();
-  let accumulator = 0;
-  const FIXED_TIMESTEP = 1/60;
-  let statsTimer = 0;
-  let lastStatsTime = performance.now();
-  
-  const tick = () => {
-    const now = performance.now();
-    const frameTime = Math.min(0.1, (now - last) / 1000);
-    last = now;
-    
-    if (!paused && speedMul > 0) {
-      accumulator += frameTime * speedMul;
-      
-      while (accumulator >= FIXED_TIMESTEP) {
-        step(FIXED_TIMESTEP);
-        accumulator -= FIXED_TIMESTEP;
-      }
-    }
-    
-    // Send stats periodically (2Hz for performance)
-    if (now - lastStatsTime > 500) {
-      lastStatsTime = now;
-      const currentStats = stats();
-      self.postMessage({ type: 'stats', payload: currentStats });
-    }
-    
-    // Send performance stats periodically (every 100ms)
-    statsTimer += frameTime * 1000;
-    if (statsTimer >= 100) {
-      statsTimer = 0;
-      
-      // Send aggregated perf stats to coordinator
-      if (perfTimers.samples > 0) {
-        const avgTimers = {
-          spatialHash: perfTimers.spatialHash / perfTimers.samples,
-          foodRegrow: perfTimers.foodRegrow / perfTimers.samples,
-          entityUpdate: perfTimers.entityUpdate / perfTimers.samples,
-          foodConsume: perfTimers.foodConsume / perfTimers.samples,
-          movement: perfTimers.movement / perfTimers.samples,
-          physics: perfTimers.physics / perfTimers.samples,
-          total: perfTimers.total / perfTimers.samples
-        };
-        
-        self.postMessage({ 
-          type: 'perf', 
-          payload: {
-            workerId,
-            ...avgTimers,
-            entities: actualEntityEnd - actualEntityStart
-          }
-        });
-        
-        // Reset counters
-        perfTimers = {
-          spatialHash: 0,
-          foodRegrow: 0,
-          entityUpdate: 0,
-          foodConsume: 0,
-          movement: 0,
-          physics: 0,
-          total: 0,
-          samples: 0
-        };
-      }
-    }
-    
-    // Update food buffer for rendering (only worker 0 in multi-worker mode)
-    if (foodGridUint8 && (!isSubWorker || workerId === 0)) {
-      for (let i = 0; i < foodGrid.length; i++) {
-        foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, foodGrid[i])) * 255);
-      }
-    }
-    
-    setTimeout(tick, 0);
-  };
-  
-  tick();
-}
-
 // Message handler
 self.onmessage = (e: MessageEvent<WorkerMsg>) => {
   const msg = e.data;
   
   if (msg.type === 'init') {
-    const init: any = msg.payload;
-    
-    // Check if this is a sub-worker from coordinator
-    if (init.sharedBuffers && init.workerId !== undefined) {
-      isSubWorker = true;
-      workerId = init.workerId;
-      bufferEntityStart = init.entityStart;
-      bufferEntityEnd = init.entityEnd;
-      actualEntityStart = init.actualEntityStart || bufferEntityStart;
-      actualEntityEnd = init.actualEntityEnd || bufferEntityEnd;
-      
-      console.log(`[Sub-Worker ${workerId}] Initializing in sub-worker mode for entities ${actualEntityStart}-${actualEntityEnd}`);
-      
-      // Initialize with shared buffers from coordinator
-      initSubWorker(init);
-      return;
-    }
-    
-    // Regular standalone mode
+    const init = msg.payload;
     world.width = init.world.width;
     world.height = init.world.height;
     cap = init.cap;
@@ -1063,8 +677,63 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
     // Set regrow time based on regen rate (lower regen = longer time)
     FOOD_REGROW_TIME = 10 / foodRegen; // e.g., 0.1 regen = 100 seconds
     
-    // Initialize food using shared function
-    initializeFoodGrid(init, init.seed);
+    // Initialize food distribution based on noise
+    const distribution = init.world.foodGrid?.distribution;
+    if (distribution && distribution.threshold > 0) {
+      const noise = createFractalNoise2D(init.seed + 12345); // Different seed for food
+      const scale = distribution.scale || 35;
+      const threshold = distribution.threshold || 0.35;
+      const frequency = distribution.frequency || 3;
+      
+      for (let y = 0; y < foodRows; y++) {
+        for (let x = 0; x < foodCols; x++) {
+          const worldX = (x / foodCols) * world.width;
+          const worldY = (y / foodRows) * world.height;
+          // Use frequency as octaves count (can be fractional for smooth blending)
+          const octaves = Math.max(1, frequency);
+          const noiseValue = noise(worldX, worldY, scale, octaves);
+          
+          const idx = y * foodCols + x;
+          // Apply threshold - values below threshold get no food
+          if (noiseValue > threshold) {
+            // Use exponential scaling for more dramatic islands
+            // Values just above threshold are sparse, high values are very rich
+            const normalizedValue = (noiseValue - threshold) / (1 - threshold);
+            // Apply power curve for richer variation (squared makes rich areas richer)
+            const richness = Math.pow(normalizedValue, 1.5);
+            foodMaxCapacity[idx] = richness * foodCapacity;
+            foodGrid[idx] = foodMaxCapacity[idx]; // Start at max
+          } else {
+            foodMaxCapacity[idx] = 0;
+            foodGrid[idx] = 0;
+          }
+          foodRegrowTimer[idx] = 0;
+        }
+      }
+    } else {
+      // Default: Use interesting island pattern even without explicit distribution settings
+      const noise = createFractalNoise2D(init.seed + 12345);
+      for (let y = 0; y < foodRows; y++) {
+        for (let x = 0; x < foodCols; x++) {
+          const worldX = (x / foodCols) * world.width;
+          const worldY = (y / foodRows) * world.height;
+          // Create default island pattern
+          const noiseValue = noise(worldX, worldY, 35, 3);
+          
+          const idx = y * foodCols + x;
+          // Simple capacity modulation - use full noise range
+          const capacity = noiseValue * noiseValue * foodCapacity; // Squared for more variation
+          foodMaxCapacity[idx] = capacity;
+          foodGrid[idx] = capacity;
+          foodRegrowTimer[idx] = 0;
+        }
+      }
+    }
+    
+    // Initialize foodGridUint8 with initial food values
+    for (let i = 0; i < foodGrid.length; i++) {
+      foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, foodGrid[i])) * 255);
+    }
     
     // Set hybridization flag
     allowHybrids = init.hybridization !== false; // Default true for backwards compat
@@ -1097,8 +766,119 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
       for (let i = 0; i < tribe.count; i++) {
         if (count >= cap) break;
         
-        // Use shared spawn position function
-        const [x, y] = getSpawnPosition(tribe, i, pattern, baseGenes);
+        let x: number, y: number;
+        
+        if (pattern === 'blob') {
+          // Original tight blob spawn
+          const ang = rand() * Math.PI * 2;
+          const r = Math.sqrt(rand()) * tribe.spawn.radius;
+          x = tribe.spawn.x + Math.cos(ang) * r;
+          y = tribe.spawn.y + Math.sin(ang) * r;
+          
+        } else if (pattern === 'scattered') {
+          // Random scatter across entire map
+          x = rand() * world.width;
+          y = rand() * world.height;
+          
+        } else if (pattern === 'herd') {
+          // Multiple small groups with varied patterns
+          const numHerds = 4 + Math.floor(rand() * 4); // 4-7 herds for more variety
+          const herdIndex = Math.floor(i * numHerds / tribe.count); // Better distribution across herds
+          
+          // Irregular angles for more organic placement
+          const baseAngle = (herdIndex / numHerds) * Math.PI * 2;
+          const angleVariation = (rand() - 0.5) * Math.PI * 0.8; // Much more angle variation
+          const herdAngle = baseAngle + angleVariation;
+          
+          // Varied distances for each herd
+          const herdDistance = tribe.spawn.radius * (2 + rand() * 4); // 2-6x radius, much wider spread
+          const herdCenterX = tribe.spawn.x + Math.cos(herdAngle) * herdDistance;
+          const herdCenterY = tribe.spawn.y + Math.sin(herdAngle) * herdDistance;
+          
+          // Varied herd sizes and shapes
+          const herdShape = rand();
+          if (herdShape < 0.3) {
+            // Tight circular cluster (30% chance)
+            const ang = rand() * Math.PI * 2;
+            const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.2);
+            x = herdCenterX + Math.cos(ang) * r;
+            y = herdCenterY + Math.sin(ang) * r;
+          } else if (herdShape < 0.6) {
+            // Elongated herd (30% chance)
+            const alongAngle = herdAngle + Math.PI / 2; // Perpendicular to radial
+            const along = (rand() - 0.5) * tribe.spawn.radius * 0.8;
+            const across = (rand() - 0.5) * tribe.spawn.radius * 0.2;
+            x = herdCenterX + Math.cos(alongAngle) * along + Math.cos(herdAngle) * across;
+            y = herdCenterY + Math.sin(alongAngle) * along + Math.sin(herdAngle) * across;
+          } else {
+            // Loose scatter around center (40% chance)
+            const ang = rand() * Math.PI * 2;
+            const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.5);
+            x = herdCenterX + Math.cos(ang) * r;
+            y = herdCenterY + Math.sin(ang) * r;
+          }
+          
+        } else if (pattern === 'adaptive') {
+          // Pattern based on diet
+          if (carnivoreLevel > 0.7) {
+            // Carnivores: very sparse, wide distribution
+            // Scattered across map with preference for edges
+            if (rand() < 0.3) {
+              // 30% spawn near edges (hunting grounds)
+              const edge = Math.floor(rand() * 4);
+              const margin = 100;
+              if (edge === 0) {
+                x = margin + rand() * 200;
+                y = rand() * world.height;
+              } else if (edge === 1) {
+                x = world.width - margin - rand() * 200;
+                y = rand() * world.height;
+              } else if (edge === 2) {
+                x = rand() * world.width;
+                y = margin + rand() * 200;
+              } else {
+                x = rand() * world.width;
+                y = world.height - margin - rand() * 200;
+              }
+            } else {
+              // 70% scattered across map
+              x = 200 + rand() * (world.width - 400);
+              y = 200 + rand() * (world.height - 400);
+            }
+            
+          } else if (herbivoreLevel > 0.7) {
+            // Herbivores: tight herds
+            const numHerds = 2 + Math.floor(herbivoreLevel * 3); // 2-4 herds based on how herbivorous
+            const herdIndex = i % numHerds;
+            const herdAngle = (herdIndex / numHerds) * Math.PI * 2;
+            const herdDistance = tribe.spawn.radius * (1.5 + rand());
+            const herdCenterX = tribe.spawn.x + Math.cos(herdAngle) * herdDistance;
+            const herdCenterY = tribe.spawn.y + Math.sin(herdAngle) * herdDistance;
+            
+            // Tight blob around herd center
+            const ang = rand() * Math.PI * 2;
+            const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.3 * (2 - herbivoreLevel)); // Tighter for pure herbivores
+            x = herdCenterX + Math.cos(ang) * r;
+            y = herdCenterY + Math.sin(ang) * r;
+            
+          } else {
+            // Omnivores: medium scatter
+            const ang = rand() * Math.PI * 2;
+            const r = Math.sqrt(rand()) * tribe.spawn.radius * 2; // Wider than blob but not fully scattered
+            x = tribe.spawn.x + Math.cos(ang) * r;
+            y = tribe.spawn.y + Math.sin(ang) * r;
+          }
+        } else {
+          // Fallback to blob
+          const ang = rand() * Math.PI * 2;
+          const r = Math.sqrt(rand()) * tribe.spawn.radius;
+          x = tribe.spawn.x + Math.cos(ang) * r;
+          y = tribe.spawn.y + Math.sin(ang) * r;
+        }
+        
+        // Clamp to world bounds - allow full range
+        x = Math.max(0, Math.min(world.width, x));
+        y = Math.max(0, Math.min(world.height, y));
         
         const initialAge = rand() * 30; // Random age between 0-30 seconds
         const initialEnergy = energyConfig.start + rand() * 20; // Start energy plus some variation
