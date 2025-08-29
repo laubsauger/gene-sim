@@ -252,6 +252,7 @@ let perfTimers = {
 function step(dt: number) {
   if (paused) return;
   
+  
   const stepStart = performance.now();
   const n = count;
   t += dt;
@@ -849,8 +850,8 @@ function initSubWorker(init: any) {
   tribeNames = init.tribes.map((t: any) => t.name);
   tribeColors = init.tribes.map((t: any) => t.genes?.colorHue || 0);
   
-  // Initialize spatial grid
-  grid = new SpatialHash(80, world.width, world.height);
+  // Initialize spatial grid - need to provide cap for sub-worker buffer size
+  grid = new SpatialHash(world.width, world.height, 80, bufferEntityEnd - bufferEntityStart);
   
   // Initialize RNG
   rand = createRng(init.seed + workerId);
@@ -924,12 +925,14 @@ function startSubWorkerLoop() {
     const frameTime = Math.min(0.1, (now - last) / 1000);
     last = now;
     
+    
     if (!paused && speedMul > 0) {
       accumulator += frameTime * speedMul;
       
       while (accumulator >= FIXED_TIMESTEP) {
         step(FIXED_TIMESTEP);
         accumulator -= FIXED_TIMESTEP;
+        
       }
     }
     

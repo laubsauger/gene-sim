@@ -95,6 +95,7 @@ function EntitiesLayer({ client }: { client: SimClient }) {
   useEffect(() => {
     // Check if buffers exist immediately
     if (buffers?.pos && buffers?.color && buffers?.alive) {
+      console.log('[EntitiesLayer] Buffers already available, count:', buffers.count);
       setReady(true);
       return;
     }
@@ -102,6 +103,14 @@ function EntitiesLayer({ client }: { client: SimClient }) {
     // Listen for ready message
     const unsubscribe = client.onMessage((msg) => {
       if (msg.type === 'ready') {
+        console.log('[EntitiesLayer] Got ready message, checking buffers...');
+        const { buffers: currentBuffers } = client;
+        console.log('[EntitiesLayer] Current buffers:', {
+          hasPos: !!currentBuffers?.pos,
+          hasColor: !!currentBuffers?.color,
+          hasAlive: !!currentBuffers?.alive,
+          count: currentBuffers?.count
+        });
         setReady(true);
       }
     });

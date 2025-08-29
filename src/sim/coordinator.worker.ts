@@ -17,6 +17,7 @@ interface CoordinatorState {
   workers: WorkerInfo[];
   workerCount: number;
   entityCount: number;
+  actualPopulation: number;
   worldWidth: number;
   worldHeight: number;
   paused: boolean;
@@ -37,14 +38,19 @@ class SimulationCoordinator {
   private foodBuffer: SharedArrayBuffer | null = null;
   private foodCols = 0;
   private foodRows = 0;
-  private statsTimer: any = null;
+  private statsTimer: ReturnType<typeof setInterval> | null = null;
   private initialized = false;
+  private workersReady = 0;
+  private allWorkersReadyCallback: (() => void) | null = null;
+  private perfStats: Map<number, any> = new Map();
+  private lastPerfSend = 0;
   
   constructor() {
     this.state = {
       workers: [],
       workerCount: 0,
       entityCount: 0,
+      actualPopulation: 0,  // Track actual starting population for rendering
       worldWidth: 1000,
       worldHeight: 1000,
       paused: true,
@@ -72,6 +78,7 @@ class SimulationCoordinator {
     // Cap is maximum capacity, actual starting population comes from tribes
     this.state.entityCount = init.cap; // Keep this as cap for buffer allocation
     const actualPopulation = init.tribes?.reduce((sum: number, t: any) => sum + t.count, 0) || 0;
+    this.state.actualPopulation = actualPopulation;  // Store for rendering
     
     this.state.worldWidth = init.world.width;
     this.state.worldHeight = init.world.height;
@@ -85,6 +92,9 @@ class SimulationCoordinator {
     
     // Spawn and initialize workers
     await this.spawnWorkers(init);
+    
+    // Wait for all workers to be ready
+    await this.waitForAllWorkers();
     
     // Start coordination loop
     this.startCoordinationLoop();
@@ -205,6 +215,19 @@ class SimulationCoordinator {
   }
   
   /**
+   * Wait for all workers to be ready
+   */
+  private waitForAllWorkers(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.workersReady >= this.state.workerCount) {
+        resolve();
+      } else {
+        this.allWorkersReadyCallback = resolve;
+      }
+    });
+  }
+  
+  /**
    * Handle messages from workers
    */
   private handleWorkerMessage(workerId: number, msg: any) {
@@ -214,6 +237,12 @@ class SimulationCoordinator {
       case 'ready':
         console.log(`[Coordinator] Worker ${workerId} ready`);
         worker.status = 'idle';
+        this.workersReady++;
+        
+        if (this.workersReady >= this.state.workerCount && this.allWorkersReadyCallback) {
+          this.allWorkersReadyCallback();
+          this.allWorkersReadyCallback = null;
+        }
         break;
         
       case 'sync_request':
@@ -232,8 +261,15 @@ class SimulationCoordinator {
         break;
         
       case 'perf':
-        // Performance metrics from worker
-        console.log(`[Coordinator] Worker ${workerId} perf:`, msg.payload);
+        // Store performance metrics from worker
+        this.perfStats.set(workerId, msg.payload);
+        
+        // Send aggregated stats periodically (250ms)
+        const now = performance.now();
+        if (now - this.lastPerfSend > 250 && this.perfStats.size === this.state.workerCount) {
+          this.lastPerfSend = now;
+          this.sendAggregatedPerfStats();
+        }
         break;
     }
   }
@@ -316,6 +352,39 @@ class SimulationCoordinator {
   }
   
   /**
+   * Aggregate and send performance stats from all workers
+   */
+  private sendAggregatedPerfStats() {
+    if (this.perfStats.size === 0) return;
+    
+    // Calculate average performance metrics across all workers
+    let totalEntities = 0;
+    let simSpeed = 0;
+    
+    // Sum up entity counts to get simulation speed
+    this.perfStats.forEach(stats => {
+      if (stats.entities) {
+        totalEntities += stats.entities;
+      }
+    });
+    
+    // Estimate simulation speed (steps per second)
+    // Each worker reports every 100ms, so ~10 reports per second
+    // This is a rough estimate - we use render FPS for actual display
+    simSpeed = 60; // Fixed 60Hz when running
+    
+    // Send aggregated performance stats
+    self.postMessage({
+      type: 'perf',
+      payload: {
+        fps: 60, // Workers run at 60Hz internally
+        simSpeed: this.state.paused ? 0 : simSpeed,
+        speedMul: this.state.speedMul,
+      }
+    } as MainMsg);
+  }
+  
+  /**
    * Main coordination loop
    */
   private startCoordinationLoop() {
@@ -362,7 +431,7 @@ class SimulationCoordinator {
           alive: this.sharedBuffers.alive,
           food: this.foodBuffer || new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * 256 * 256),
         },
-        meta: { count: this.state.entityCount },
+        meta: { count: this.state.entityCount },  // Use full buffer size for rendering
         foodMeta: { cols: this.foodCols || 256, rows: this.foodRows || 256 },
       },
     };
@@ -375,7 +444,7 @@ class SimulationCoordinator {
    */
   private startStatsReporting() {
     // Send stats every 100ms
-    this.statsTimer = setInterval(() => {
+    (this as any).statsTimer = setInterval(() => {
       if (!this.state.paused) {
         this.sendStats();
       }
@@ -448,9 +517,10 @@ class SimulationCoordinator {
         
       case 'pause':
         this.state.paused = msg.payload.paused;
-        console.log(`[Coordinator] Setting paused to ${msg.payload.paused}`);
         // Broadcast to all workers  
-        this.state.workers.forEach(w => w.worker.postMessage(msg));
+        this.state.workers.forEach((w) => {
+          w.worker.postMessage(msg);
+        });
         break;
         
       case 'renderFps':

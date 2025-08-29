@@ -71,6 +71,14 @@ export class HybridSimClient {
         
         // Extract shared buffers
         const { sab, meta, foodMeta } = msg.payload;
+        console.log('[SimClient] Received SharedArrayBuffers:', {
+          pos: sab.pos?.byteLength,
+          color: sab.color?.byteLength,
+          alive: sab.alive?.byteLength,
+          food: sab.food?.byteLength,
+          meta,
+          foodMeta
+        });
         this.pos = new Float32Array(sab.pos);
         this.color = new Uint8Array(sab.color);
         this.alive = new Uint8Array(sab.alive);
@@ -82,6 +90,7 @@ export class HybridSimClient {
           this.foodCols = foodMeta.cols;
           this.foodRows = foodMeta.rows;
         }
+        console.log('[SimClient] Buffers initialized, count:', this.count);
       }
       
       // Notify all listeners

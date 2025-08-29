@@ -67,12 +67,12 @@ input[type="range"]::-moz-range-track {
 }
 
 input[type="range"]::-moz-range-thumb {
-  border: 1px solid #3b82f6;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 18px;
   border-radius: 2px;
   background: #60a5fa;
   cursor: pointer;
+  border: 1px solid #000000;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   transition: all 0.15s ease;
 }
@@ -84,6 +84,37 @@ input[type="range"]:hover::-moz-range-thumb {
 }
 
 input[type="range"]:focus::-moz-range-thumb {
+  background: #93bbfc;
+  width: 14px;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+/* Microsoft Edge and IE */
+input[type="range"]::-ms-track {
+  height: 10px;
+  border-radius: 4px;
+  background: #2d3748;
+  border: none;
+}
+
+input[type="range"]::-ms-thumb {
+  width: 14px;
+  height: 18px;
+  border-radius: 2px;
+  background: #60a5fa;
+  cursor: pointer;
+  border: 1px solid #000000;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: all 0.15s ease;
+}
+
+input[type="range"]:hover::-ms-thumb {
+  background: #93bbfc;
+  width: 14px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+
+input[type="range"]:focus::-ms-thumb {
   background: #93bbfc;
   width: 14px;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
