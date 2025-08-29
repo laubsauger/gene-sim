@@ -41,6 +41,9 @@ export function setupSimClient(worker: Worker) {
     pause(paused: boolean) {
       worker.postMessage({ type: 'pause', payload: { paused } } as WorkerMsg);
     },
+    sendRenderFps(fps: number) {
+      worker.postMessage({ type: 'renderFps', payload: { fps } } as WorkerMsg);
+    },
     onMessage(cb: (m: MainMsg) => void) {
       listeners.add(cb);
       return () => {

@@ -22,6 +22,7 @@ interface CoordinatorState {
   worldHeight: number;
   paused: boolean;
   speedMul: number;
+  renderFps: number;
 }
 
 class SimulationCoordinator {
@@ -34,6 +35,8 @@ class SimulationCoordinator {
     energy: SharedArrayBuffer;
     tribeIds: SharedArrayBuffer;
     genes: SharedArrayBuffer;
+    orientations: SharedArrayBuffer;
+    ages: SharedArrayBuffer;
   } | null = null;
   private foodBuffer: SharedArrayBuffer | null = null;
   private foodCols = 0;
@@ -44,6 +47,8 @@ class SimulationCoordinator {
   private allWorkersReadyCallback: (() => void) | null = null;
   private perfStats: Map<number, any> = new Map();
   private lastPerfSend = 0;
+  private workerStats: Map<number, SimStats> = new Map();
+  private lastStatsTime = 0;
   
   constructor() {
     this.state = {
@@ -55,6 +60,7 @@ class SimulationCoordinator {
       worldHeight: 1000,
       paused: true,
       speedMul: 1,
+      renderFps: 0,
     };
   }
   
@@ -123,6 +129,8 @@ class SimulationCoordinator {
       energy: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * count),
       tribeIds: new SharedArrayBuffer(Uint16Array.BYTES_PER_ELEMENT * count),
       genes: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * count * 9),
+      orientations: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * count),
+      ages: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * count),
     };
     
     console.log('[Coordinator] Allocated shared memory for', count, 'entities');
@@ -205,8 +213,30 @@ class SimulationCoordinator {
       // Set up message handler
       workerInfo.worker.onmessage = (e) => this.handleWorkerMessage(i, e.data);
       
-      // Send initialization
-      workerInfo.worker.postMessage({ type: 'init', payload: workerInit });
+      // Send initialization to sub-worker
+      workerInfo.worker.postMessage({ 
+        type: 'init-sub-worker', 
+        payload: {
+          sharedBuffers: {
+            ...this.sharedBuffers,
+            foodGrid: this.foodBuffer
+          },
+          config: init,
+          workerId: i,
+          entityRange: {
+            start: workerInfo.entityStart,
+            end: workerInfo.entityEnd,
+            actualStart,
+            actualEnd
+          },
+          region: {
+            x: workerInfo.regionX,
+            y: workerInfo.regionY,
+            width: workerInfo.regionWidth,
+            height: workerInfo.regionHeight
+          }
+        }
+      });
       
       this.state.workers.push(workerInfo);
       
@@ -219,7 +249,9 @@ class SimulationCoordinator {
    */
   private waitForAllWorkers(): Promise<void> {
     return new Promise((resolve) => {
+      console.log(`[Coordinator] Waiting for workers: ${this.workersReady}/${this.state.workerCount} ready`);
       if (this.workersReady >= this.state.workerCount) {
+        console.log(`[Coordinator] All workers ready, proceeding`);
         resolve();
       } else {
         this.allWorkersReadyCallback = resolve;
@@ -234,12 +266,13 @@ class SimulationCoordinator {
     const worker = this.state.workers[workerId];
     
     switch (msg.type) {
-      case 'ready':
-        console.log(`[Coordinator] Worker ${workerId} ready`);
+      case 'worker-ready':
+        console.log(`[Coordinator] Worker ${workerId} ready (${this.workersReady + 1}/${this.state.workerCount})`);
         worker.status = 'idle';
         this.workersReady++;
         
         if (this.workersReady >= this.state.workerCount && this.allWorkersReadyCallback) {
+          console.log(`[Coordinator] All workers ready, calling callback`);
           this.allWorkersReadyCallback();
           this.allWorkersReadyCallback = null;
         }
@@ -255,12 +288,12 @@ class SimulationCoordinator {
         this.handleEntityMigration(workerId, msg.payload);
         break;
         
-      case 'stats':
+      case 'worker-stats':
         // Aggregate stats from all workers
-        this.aggregateStats(workerId, msg.payload);
+        this.aggregateStats(workerId, msg.payload.stats);
         break;
         
-      case 'perf':
+      case 'worker-perf':
         // Store performance metrics from worker
         this.perfStats.set(workerId, msg.payload);
         
@@ -345,10 +378,111 @@ class SimulationCoordinator {
   /**
    * Aggregate statistics from all workers
    */
-  private aggregateStats(_workerId: number, _stats: SimStats) {
+  private aggregateStats(workerId: number, stats: SimStats) {
     // Store stats from this worker
+    this.workerStats.set(workerId, stats);
+    
     // When we have stats from all workers, combine and send to main thread
-    // ... (implementation depends on stats structure)
+    if (this.workerStats.size === this.state.workerCount) {
+      const now = performance.now();
+      if (now - this.lastStatsTime > 400) { // Throttle to prevent flickering
+        this.lastStatsTime = now;
+        
+        // Aggregate all worker stats
+        const aggregated: SimStats = {
+          population: 0,
+          time: 0,
+          byTribe: {},
+          global: {
+            mean: {
+              speed: 0, vision: 0, metabolism: 0, aggression: 0,
+              cohesion: 0, reproChance: 0, foodStandards: 0,
+              diet: 0, viewAngle: 0
+            },
+            distribution: {
+              speed: { min: Infinity, max: -Infinity, std: 0 },
+              vision: { min: Infinity, max: -Infinity, std: 0 },
+              metabolism: { min: Infinity, max: -Infinity, std: 0 },
+              aggression: { min: Infinity, max: -Infinity, std: 0 },
+              cohesion: { min: Infinity, max: -Infinity, std: 0 },
+              reproChance: { min: Infinity, max: -Infinity, std: 0 },
+              foodStandards: { min: Infinity, max: -Infinity, std: 0 },
+              diet: { min: Infinity, max: -Infinity, std: 0 },
+              viewAngle: { min: Infinity, max: -Infinity, std: 0 },
+            }
+          }
+        };
+        
+        // Merge stats from all workers
+        this.workerStats.forEach(workerStat => {
+          aggregated.population += workerStat.population;
+          aggregated.time = Math.max(aggregated.time, workerStat.time);
+          
+          // Merge tribe stats
+          Object.entries(workerStat.byTribe).forEach(([tribeName, tribeData]) => {
+            if (!aggregated.byTribe[tribeName]) {
+              aggregated.byTribe[tribeName] = {
+                population: 0,
+                births: 0,
+                deaths: 0,
+                starved: 0,
+                kills: 0,
+                averageAge: 0,
+                averageEnergy: 0,
+                color: tribeData.color,
+                mean: {
+                  speed: 0,
+                  vision: 0,
+                  metabolism: 0,
+                  aggression: 0,
+                  cohesion: 0,
+                  reproChance: 0,
+                  foodStandards: 0,
+                  diet: 0,
+                  viewAngle: 0
+                }
+              };
+            }
+            const aggTribe = aggregated.byTribe[tribeName];
+            aggTribe.population += tribeData.population;
+            aggTribe.births += tribeData.births;
+            aggTribe.deaths += tribeData.deaths;
+            aggTribe.starved += tribeData.starved;
+            aggTribe.kills += tribeData.kills;
+            aggTribe.averageAge += tribeData.averageAge * tribeData.population;
+            aggTribe.averageEnergy += tribeData.averageEnergy * tribeData.population;
+            
+            // Aggregate mean gene values (weighted by population)
+            if (tribeData.mean) {
+              Object.keys(tribeData.mean).forEach(gene => {
+                aggTribe.mean[gene] += tribeData.mean[gene] * tribeData.population;
+              });
+            }
+          });
+        });
+        
+        // Calculate weighted averages for tribes
+        Object.values(aggregated.byTribe).forEach(tribe => {
+          if (tribe.population > 0) {
+            tribe.averageAge /= tribe.population;
+            tribe.averageEnergy /= tribe.population;
+            
+            // Calculate mean gene values
+            if (tribe.mean) {
+              Object.keys(tribe.mean).forEach(gene => {
+                tribe.mean[gene] /= tribe.population;
+              });
+            }
+          }
+        });
+        
+        // Send aggregated stats
+        self.postMessage({ type: 'stats', payload: aggregated } as MainMsg);
+        
+        // Clear for next round
+        this.workerStats.clear();
+      }
+    }
   }
   
   /**
@@ -357,29 +491,34 @@ class SimulationCoordinator {
   private sendAggregatedPerfStats() {
     if (this.perfStats.size === 0) return;
     
-    // Calculate average performance metrics across all workers
+    // Calculate aggregate performance metrics across all workers
     let totalEntities = 0;
-    let simSpeed = 0;
+    let avgSimHz = 0;
+    let maxStepTime = 0;
+    let totalAvgStepTime = 0;
     
-    // Sum up entity counts to get simulation speed
+    // Aggregate metrics from all workers
     this.perfStats.forEach(stats => {
-      if (stats.entities) {
-        totalEntities += stats.entities;
-      }
+      totalEntities += stats.entityCount || 0;
+      avgSimHz += stats.simHz || 0;
+      maxStepTime = Math.max(maxStepTime, stats.maxStepTime || 0);
+      totalAvgStepTime += stats.avgStepTime || 0;
     });
     
-    // Estimate simulation speed (steps per second)
-    // Each worker reports every 100ms, so ~10 reports per second
-    // This is a rough estimate - we use render FPS for actual display
-    simSpeed = 60; // Fixed 60Hz when running
+    // Average the Hz and step times
+    avgSimHz = this.perfStats.size > 0 ? avgSimHz / this.perfStats.size : 0;
+    totalAvgStepTime = this.perfStats.size > 0 ? totalAvgStepTime / this.perfStats.size : 0;
     
     // Send aggregated performance stats
     self.postMessage({
       type: 'perf',
       payload: {
-        fps: 60, // Workers run at 60Hz internally
-        simSpeed: this.state.paused ? 0 : simSpeed,
-        speedMul: this.state.speedMul,
+        simHz: avgSimHz,
+        renderFps: this.state.renderFps,
+        entityCount: totalEntities,
+        avgStepTime: totalAvgStepTime,
+        maxStepTime,
+        workerCount: this.state.workerCount
       }
     } as MainMsg);
   }
@@ -389,7 +528,9 @@ class SimulationCoordinator {
    */
   private startCoordinationLoop() {
     let lastSyncTime = 0;
+    let lastPerfRequest = 0;
     const SYNC_INTERVAL = 16.67; // Sync at 60Hz
+    const PERF_INTERVAL = 250; // Request perf stats at 4Hz
     
     const tick = () => {
       const now = performance.now();
@@ -398,6 +539,14 @@ class SimulationCoordinator {
       if (now - lastSyncTime > SYNC_INTERVAL) {
         this.synchronizeWorkers();
         lastSyncTime = now;
+      }
+      
+      // Request performance stats from workers
+      if (now - lastPerfRequest > PERF_INTERVAL) {
+        this.state.workers.forEach(w => {
+          w.worker.postMessage({ type: 'perf' });
+        });
+        lastPerfRequest = now;
       }
       
       setTimeout(tick, 0);
@@ -443,58 +592,15 @@ class SimulationCoordinator {
    * Start sending stats to main thread
    */
   private startStatsReporting() {
-    // Send stats every 100ms
+    // Send stats every 500ms
     (this as any).statsTimer = setInterval(() => {
-      if (!this.state.paused) {
-        this.sendStats();
-      }
-    }, 100);
+      // Request stats from all workers
+      this.state.workers.forEach(w => {
+        w.worker.postMessage({ type: 'stats' });
+      });
+    }, 500);
   }
   
-  /**
-   * Calculate and send stats
-   */
-  private sendStats() {
-    if (!this.sharedBuffers) return;
-    
-    const aliveBuffer = new Uint8Array(this.sharedBuffers.alive);
-    const colorBuffer = new Uint8Array(this.sharedBuffers.colors);
-    
-    // Count alive entities and tribes
-    let aliveCount = 0;
-    const tribeCounts = new Map<number, number>();
-    
-    for (let i = 0; i < this.state.entityCount; i++) {
-      if (aliveBuffer[i]) {
-        aliveCount++;
-        // Use color as a simple tribe identifier (red channel)
-        const tribeId = colorBuffer[i * 3];
-        tribeCounts.set(tribeId, (tribeCounts.get(tribeId) || 0) + 1);
-      }
-    }
-    
-    // Build tribe stats
-    const tribeStats = Array.from(tribeCounts.entries()).map(([id, count]) => ({
-      name: `Tribe ${id}`,
-      count,
-      avgSpeed: 50, // Placeholder
-      avgEnergy: 100, // Placeholder
-    }));
-    
-    const stats = {
-      time: Date.now(),
-      alive: aliveCount,
-      dead: this.state.entityCount - aliveCount,
-      tribes: tribeStats,
-      performance: {
-        fps: 60, // Placeholder
-        updateTime: 0,
-        renderTime: 0,
-      },
-    };
-    
-    self.postMessage({ type: 'stats', payload: stats });
-  }
   
   /**
    * Check if coordinator is initialized
@@ -516,15 +622,18 @@ class SimulationCoordinator {
         break;
         
       case 'pause':
+        console.log(`[Coordinator] Received pause=${msg.payload.paused}, broadcasting to ${this.state.workers.length} workers`);
         this.state.paused = msg.payload.paused;
         // Broadcast to all workers  
-        this.state.workers.forEach((w) => {
+        this.state.workers.forEach((w, i) => {
+          console.log(`[Coordinator] Sending pause=${msg.payload.paused} to worker ${i}`);
           w.worker.postMessage(msg);
         });
         break;
         
       case 'renderFps':
-        // Forward render FPS to workers
+        // Store render FPS and forward to workers
+        this.state.renderFps = msg.payload.fps;
         this.state.workers.forEach(w => w.worker.postMessage(msg));
         break;
     }

@@ -124,6 +124,7 @@ export class HybridSimClient {
   }
   
   pause(paused: boolean) {
+    console.log(`[SimClient] Sending pause=${paused} to coordinator`);
     this._worker?.postMessage({
       type: 'pause',
       payload: { paused },
@@ -206,6 +207,7 @@ export function detectBestMode(): SimMode {
     return 'multi-worker';
   }
   
+  console.log(`[SimClient] ${cores} cores detected, using JS mode`);
   return 'js';
 }
 

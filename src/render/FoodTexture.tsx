@@ -19,15 +19,13 @@ const vertexShader = `
 
 const fragmentShader = `
   uniform sampler2D foodTexture;
-  uniform float time;
   varying vec2 vUv;
   
   void main() {
     float food = texture2D(foodTexture, vUv).r;
     
-    // Enhanced visual with subtle animation
-    float pulse = 0.95 + 0.05 * sin(time * 2.0 + vUv.x * 10.0 + vUv.y * 10.0);
-    food *= pulse;
+    // No animation - just static food display
+    // food value is already normalized 0-1
     
     // Better color gradient
     vec3 depleted = vec3(0.05, 0.05, 0.06);  // Nearly black
@@ -85,19 +83,14 @@ export function FoodTexture({ foodData, cols, rows, world }: FoodTextureProps) {
       textureRef.current.needsUpdate = true;
     }
     
-    // Update time uniform less frequently for subtle animation
-    // Only update every 10 frames to reduce uniform updates
-    if (materialRef.current && frameCount.current % 10 === 0) {
-      materialRef.current.uniforms.time.value = state.clock.elapsedTime;
-    }
+    // No need to update time uniform anymore - no animation
   });
   
   const material = useMemo(
     () => {
       const mat = new THREE.ShaderMaterial({
         uniforms: {
-          foodTexture: { value: texture },
-          time: { value: 0 }
+          foodTexture: { value: texture }
         },
         vertexShader,
         fragmentShader,

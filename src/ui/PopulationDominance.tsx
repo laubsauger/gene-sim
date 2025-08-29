@@ -10,14 +10,14 @@ export function PopulationDominance({ stats }: PopulationDominanceProps) {
     if (!stats?.byTribe) return [];
 
     // Calculate total population
-    const totalPop = Object.values(stats.byTribe).reduce((sum, t) => sum + t.count, 0);
+    const totalPop = Object.values(stats.byTribe).reduce((sum, t) => sum + (t.population || t.count || 0), 0);
 
     // Create array with percentages, maintaining consistent order by name
     return Object.entries(stats.byTribe)
       .map(([name, tribe]) => ({
         name,
-        count: tribe.count,
-        percentage: totalPop > 0 ? (tribe.count / totalPop) * 100 : 0,
+        count: tribe.population || tribe.count || 0,
+        percentage: totalPop > 0 ? ((tribe.population || tribe.count || 0) / totalPop) * 100 : 0,
         color: tribe.color,
       }))
       .sort((a, b) => a.name.localeCompare(b.name)); // Sort alphabetically for consistency

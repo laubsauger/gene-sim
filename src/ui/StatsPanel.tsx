@@ -44,7 +44,11 @@ export const StatsPanel = memo(function StatsPanel({ client, currentSeed }: Stat
 
         setStats(newStats);
       } else if (m.type === 'perf') {
-        setSimPerf(m.payload);
+        setSimPerf({
+          fps: m.payload.renderFps,
+          simSpeed: m.payload.simHz,
+          speedMul: m.payload.speedMul || 1
+        });
       }
     });
     return unsubscribe;
@@ -95,7 +99,7 @@ export const StatsPanel = memo(function StatsPanel({ client, currentSeed }: Stat
             <span style={{ color: '#888' }}>Pop:</span> <b>{stats?.population?.toLocaleString() || '0'}</b>
           </div>
           <div>
-            <span style={{ color: '#888' }}>Time:</span> <b>{stats?.t?.toFixed(1) || '0.0'}s</b>
+            <span style={{ color: '#888' }}>Time:</span> <b>{stats?.time?.toFixed(1) || '0.0'}s</b>
           </div>
         </div>
         

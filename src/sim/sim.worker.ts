@@ -1,10 +1,11 @@
 /// <reference lib="webworker" />
+import { SimulationCore } from './core/simulationCore';
+import { EntitySystem } from './core/entitySystem';
+import { FoodSystem } from './core/foodSystem';
 import { createRng } from './random';
-import { clampGene, mutate, defaultGenes } from './genes';
-import { SpatialHash } from './spatialHash';
-import { efficientMovementOptimized } from './spatialBehaviorsOptimized';
-import { createFractalNoise2D } from './noise';
-import type { WorkerMsg, MainMsg, SimStats, GeneSpec, TribeStats, PerfStats } from './types';
+import { defaultGenes } from './genes';
+import type { WorkerMsg, MainMsg, PerfStats } from './types';
+import { WORLD_WIDTH, WORLD_HEIGHT } from './core/constants';
 
 // Sub-worker mode detection
 let isSubWorker = false;
@@ -14,1198 +15,447 @@ let bufferEntityEnd = 0;
 let actualEntityStart = 0;
 let actualEntityEnd = 0;
 
-// Simulation state
-let pos!: Float32Array, vel!: Float32Array, color!: Uint8Array, alive!: Uint8Array, tribeId!: Uint16Array;
-let genes!: Float32Array; // packed [speed, vision, metabolism, repro, aggression, cohesion, foodStandards, diet, viewAngle]
-let energy!: Float32Array; // energy level per entity
-let age!: Float32Array; // age in simulation time units
-let orientation!: Float32Array; // entity orientation in radians
-let count = 0, cap = 0;
-let rand = Math.random;
-let t = 0, speedMul = 1, paused = true; // Start paused
-let renderFps = 0; // Track render FPS from main thread
-let grid!: SpatialHash;
-let tribeNames: string[] = [];
-let tribeColors: number[] = [];
-let birthsByTribe: Uint32Array, deathsByTribe: Uint32Array;
-let killsByTribe: Uint32Array, starvedByTribe: Uint32Array;
-const world = { width: 1000, height: 1000 };
-let energyConfig = { start: 50, max: 100, repro: 60 }; // Default energy settings
+// Core simulation instance
+let sim: SimulationCore | null = null;
 
-// Food grid
-let foodGrid!: Float32Array;
-let foodGridUint8!: Uint8Array; // Food grid as uint8 for GPU (SharedArrayBuffer)
-let foodMaxCapacity!: Float32Array; // Max capacity per cell (from noise distribution)
-let foodRegrowTimer!: Float32Array; // Timer for each cell's regrowth
-let foodCols = 0, foodRows = 0;
-let foodRegen = 0.05, foodCapacity = 1;
-let FOOD_REGROW_TIME = 60; // Time in seconds for food to fully regrow (1 minute)
-let allowHybrids = true; // Whether to allow inter-tribe mating
+// Direct buffer references for rendering
+let sharedBuffers: {
+  positions: SharedArrayBuffer;
+  velocities: SharedArrayBuffer;
+  colors: SharedArrayBuffer;
+  alive: SharedArrayBuffer;
+  energy: SharedArrayBuffer;
+  tribeIds: SharedArrayBuffer;
+  genes: SharedArrayBuffer;
+  orientations: SharedArrayBuffer;
+  ages: SharedArrayBuffer;
+  foodGrid?: SharedArrayBuffer;
+} | null = null;
 
-const G = 9; // floats per entity in genes array (speed, vision, metabolism, repro, aggression, cohesion, foodStandards, diet, viewAngle)
-
-// Convert HSL to RGB with high saturation and brightness for visibility
-function hueToRgb(h: number, s = 1.0, v = 1.0): [number, number, number] {
-  h = ((h % 360) + 360) % 360;
-  const c = v * s;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = v - c;
-  let [r, g, b] = [0, 0, 0];
-  
-  if (h < 60) [r, g, b] = [c, x, 0];
-  else if (h < 120) [r, g, b] = [x, c, 0];
-  else if (h < 180) [r, g, b] = [0, c, x];
-  else if (h < 240) [r, g, b] = [0, x, c];
-  else if (h < 300) [r, g, b] = [x, 0, c];
-  else [r, g, b] = [c, 0, x];
-  
-  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
-}
-
-function spawnEntity(i: number, x: number, y: number, g: GeneSpec, tribeIx: number, initialEnergy = 50, initialAge = 0) {
-  pos[i * 2] = x;
-  pos[i * 2 + 1] = y;
-  
-  const ang = rand() * Math.PI * 2;
-  // Effective speed is modulated by metabolism - low metabolism can't support high speeds
-  const metabolismEfficiency = Math.min(1, g.metabolism / 0.15); // Normalized to base metabolism
-  const effectiveSpeed = g.speed * metabolismEfficiency;
-  const sp = effectiveSpeed * (0.6 + rand() * 0.8);
-  vel[i * 2] = Math.cos(ang) * sp;
-  vel[i * 2 + 1] = Math.sin(ang) * sp;
-  
-  // Set initial orientation based on velocity direction
-  orientation[i] = ang;
-  
-  alive[i] = 1;
-  tribeId[i] = tribeIx;
-  
-  const base = i * G;
-  genes[base] = g.speed;
-  genes[base + 1] = g.vision;
-  genes[base + 2] = g.metabolism;
-  genes[base + 3] = g.reproChance;
-  genes[base + 4] = g.aggression;
-  genes[base + 5] = g.cohesion;
-  genes[base + 6] = g.foodStandards || 0.3;
-  genes[base + 7] = g.diet || -0.5;
-  genes[base + 8] = g.viewAngle || 120;
-  
-  // Carnivores start with more energy reserves (can last longer between meals)
-  const carnivoreLevel = Math.max(0, g.diet || -0.5);
-  const energyBonus = 1 + carnivoreLevel * 0.5; // Up to 50% more starting energy
-  energy[i] = initialEnergy * energyBonus;
-  age[i] = initialAge;
-  
-  const [r, gc, b] = hueToRgb(g.colorHue);
-  color[i * 3] = r | 0;
-  color[i * 3 + 1] = gc | 0;
-  color[i * 3 + 2] = b | 0;
-}
-
-/**
- * Initialize food grid with noise pattern - shared by both modes
- */
-function initializeFoodGrid(init: any, seed: number) {
-  const distribution = init.world.foodGrid?.distribution;
-  const noise = createFractalNoise2D(seed + 12345);
-  
-  if (distribution && distribution.threshold > 0) {
-    const scale = distribution.scale || 35;
-    const threshold = distribution.threshold || 0.35;
-    const frequency = distribution.frequency || 3;
-    
-    for (let y = 0; y < foodRows; y++) {
-      for (let x = 0; x < foodCols; x++) {
-        const worldX = (x / foodCols) * world.width;
-        const worldY = (y / foodRows) * world.height;
-        const octaves = Math.max(1, frequency);
-        const noiseValue = noise(worldX, worldY, scale, octaves);
-        
-        const idx = y * foodCols + x;
-        if (noiseValue > threshold) {
-          const normalizedValue = (noiseValue - threshold) / (1 - threshold);
-          const richness = Math.pow(normalizedValue, 1.5);
-          foodMaxCapacity[idx] = richness * foodCapacity;
-          foodGrid[idx] = foodMaxCapacity[idx];
-        } else {
-          foodMaxCapacity[idx] = 0;
-          foodGrid[idx] = 0;
-        }
-        foodRegrowTimer[idx] = 0;
-      }
-    }
-  } else {
-    // Default island pattern
-    for (let y = 0; y < foodRows; y++) {
-      for (let x = 0; x < foodCols; x++) {
-        const worldX = (x / foodCols) * world.width;
-        const worldY = (y / foodRows) * world.height;
-        const noiseValue = noise(worldX, worldY, 35, 3);
-        
-        const idx = y * foodCols + x;
-        const capacity = noiseValue * noiseValue * foodCapacity;
-        foodMaxCapacity[idx] = capacity;
-        foodGrid[idx] = capacity;
-        foodRegrowTimer[idx] = 0;
-      }
-    }
-  }
-  
-  // Sync to uint8 buffer
-  for (let i = 0; i < foodGrid.length; i++) {
-    foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, foodGrid[i])) * 255);
-  }
-}
-
-/**
- * Get spawn position for an entity based on pattern - shared by both modes
- */
-function getSpawnPosition(tribe: any, i: number, pattern: string, baseGenes: any): [number, number] {
-  let x: number, y: number;
-  
-  if (pattern === 'blob') {
-    const ang = rand() * Math.PI * 2;
-    const r = Math.sqrt(rand()) * tribe.spawn.radius;
-    x = tribe.spawn.x + Math.cos(ang) * r;
-    y = tribe.spawn.y + Math.sin(ang) * r;
-    
-  } else if (pattern === 'scattered') {
-    x = rand() * world.width;
-    y = rand() * world.height;
-    
-  } else if (pattern === 'herd') {
-    const numHerds = 4 + Math.floor(rand() * 4);
-    const herdIndex = Math.floor(i * numHerds / tribe.count);
-    
-    const baseAngle = (herdIndex / numHerds) * Math.PI * 2;
-    const angleVariation = (rand() - 0.5) * Math.PI * 0.8;
-    const herdAngle = baseAngle + angleVariation;
-    
-    const herdDistance = tribe.spawn.radius * (2 + rand() * 4);
-    const herdCenterX = tribe.spawn.x + Math.cos(herdAngle) * herdDistance;
-    const herdCenterY = tribe.spawn.y + Math.sin(herdAngle) * herdDistance;
-    
-    const herdShape = rand();
-    if (herdShape < 0.3) {
-      const ang = rand() * Math.PI * 2;
-      const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.2);
-      x = herdCenterX + Math.cos(ang) * r;
-      y = herdCenterY + Math.sin(ang) * r;
-    } else if (herdShape < 0.6) {
-      const alongAngle = herdAngle + Math.PI / 2;
-      const along = (rand() - 0.5) * tribe.spawn.radius * 0.8;
-      const across = (rand() - 0.5) * tribe.spawn.radius * 0.2;
-      x = herdCenterX + Math.cos(alongAngle) * along + Math.cos(herdAngle) * across;
-      y = herdCenterY + Math.sin(alongAngle) * along + Math.sin(herdAngle) * across;
-    } else {
-      const ang = rand() * Math.PI * 2;
-      const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.4);
-      x = herdCenterX + Math.cos(ang) * r;
-      y = herdCenterY + Math.sin(ang) * r;
-    }
-    
-  } else if (pattern === 'adaptive') {
-    const diet = baseGenes.diet || -0.5;
-    const herbivoreLevel = Math.max(0, -diet);
-    
-    if (herbivoreLevel > 0.5) {
-      const herdCenterX = tribe.spawn.x + (rand() - 0.5) * tribe.spawn.radius * 2;
-      const herdCenterY = tribe.spawn.y + (rand() - 0.5) * tribe.spawn.radius * 2;
-      const ang = rand() * Math.PI * 2;
-      const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.3);
-      x = herdCenterX + Math.cos(ang) * r;
-      y = herdCenterY + Math.sin(ang) * r;
-    } else {
-      const ang = rand() * Math.PI * 2;
-      const r = Math.sqrt(rand()) * tribe.spawn.radius * 1.5;
-      x = tribe.spawn.x + Math.cos(ang) * r;
-      y = tribe.spawn.y + Math.sin(ang) * r;
-    }
-  } else {
-    // Default to blob
-    const ang = rand() * Math.PI * 2;
-    const r = Math.sqrt(rand()) * tribe.spawn.radius;
-    x = tribe.spawn.x + Math.cos(ang) * r;
-    y = tribe.spawn.y + Math.sin(ang) * r;
-  }
-  
-  // Ensure position is within world bounds
-  x = Math.max(0, Math.min(world.width - 1, x));
-  y = Math.max(0, Math.min(world.height - 1, y));
-  
-  return [x, y];
-}
+// Timing and stats
+let lastTime = 0;
+let simHz = 0;
+let renderFps = 0;
+let accumulator = 0;
+const FIXED_TIMESTEP = 1 / 60;
+const MAX_STEPS_PER_FRAME = 4;
 
 // Performance tracking
-let perfTimers = {
-  spatialHash: 0,
-  foodRegrow: 0,
-  entityUpdate: 0,
-  foodConsume: 0,
-  movement: 0,
-  physics: 0,
-  total: 0,
-  samples: 0
-};
+let stepCount = 0;
+let lastPerfUpdate = 0;
+let frameCount = 0;
+let stepTimeAccum = 0;
+let maxStepTime = 0;
 
-function step(dt: number) {
-  if (paused) return;
+function initializeAsMainWorker(msg: any) {
+  const init = msg.payload;
+  const seed = init.seed || Date.now();
+  const rand = createRng(seed);
   
+  // Create simulation core
+  const worldWidth = init.world?.width || WORLD_WIDTH;
+  const worldHeight = init.world?.height || WORLD_HEIGHT;
+  const cap = init.cap || 10000;
+  const tribeCount = init.tribes?.length || 3;
   
-  const stepStart = performance.now();
-  const n = count;
-  t += dt;
+  sim = new SimulationCore(worldWidth, worldHeight, cap, seed, tribeCount);
+  sim.allowHybrids = init.allowHybrids !== false;
   
-  // Rebuild spatial grid for efficient neighbor queries
-  const hashStart = performance.now();
-  grid.rebuild(pos, alive, count);
-  perfTimers.spatialHash += performance.now() - hashStart;
+  // Store tribe metadata
+  sim.tribeNames = init.tribes?.map((t: any) => t.name) || [];
+  sim.tribeColors = init.tribes?.map((t: any) => t.genes?.colorHue || 0) || [];
   
-  // Regenerate food based on timers (respecting initial distribution)
-  // OPTIMIZATION: Only update food every 10 frames (6 Hz) instead of 60 Hz
-  // In multi-worker mode, only worker 0 updates food
-  const foodStart = performance.now();
-  const shouldUpdateFood = Math.floor(t * 10) !== Math.floor((t - dt) * 10);
-  
-  if (shouldUpdateFood && (!isSubWorker || workerId === 0)) {
-    for (let i = 0; i < foodGrid.length; i++) {
-      const maxCap = foodMaxCapacity[i]; // Respect noise-based max capacity
-      if (foodGrid[i] < maxCap && maxCap > 0) {
-        foodRegrowTimer[i] += dt * 10; // Compensate for reduced update rate
-        if (foodRegrowTimer[i] >= FOOD_REGROW_TIME) {
-          foodGrid[i] = maxCap;
-          foodRegrowTimer[i] = 0;
-        } else {
-          foodGrid[i] = (foodRegrowTimer[i] / FOOD_REGROW_TIME) * maxCap;
-        }
-      }
-    }
-  }
-  perfTimers.foodRegrow += performance.now() - foodStart;
-  
-  // Update entities with better cache locality
-  const entityStart = performance.now();
-  
-  // Entity pooling: process expensive operations in alternating batches
-  // Critical operations (position, death) happen every frame
-  // Expensive operations (food, movement AI, reproduction) alternate
-  const frameNum = Math.floor(t * 60);
-  const batchId = frameNum % 2; // Alternate between 0 and 1
-  
-  // First pass: Critical updates for ALL entities (position integration, death checks)
-  for (let i = 0; i < n; i++) {
-    if (!alive[i]) continue;
-    
-    const base = i * G;
-    const sp = genes[base];
-    const metab = genes[base + 2];
-    
-    // Age entity (critical - affects death)
-    age[i] += dt;
-    
-    // Energy consumption (critical - affects death)
-    const vx = vel[i * 2];
-    const vy = vel[i * 2 + 1];
-    const currentSpeedSq = vx * vx + vy * vy;
-    const currentSpeed = Math.sqrt(currentSpeedSq);
-    
-    const diet = genes[base + 7] || -0.5;
-    const carnivoreLevel = Math.max(0, diet);
-    const herbivoreLevel = Math.max(0, -diet);
-    const ageFactor = 1 + (age[i] / 200);
-    
-    const dietMovementEfficiency = 1 - (carnivoreLevel * 0.5);
-    const moveCost = (currentSpeed * currentSpeed) * 0.000005 * metab * dietMovementEfficiency;
-    const dietMetabolismFactor = 1 + (herbivoreLevel * 0.5) - (carnivoreLevel * 0.3);
-    const baseCost = metab * 1.5 * dietMetabolismFactor;
-    energy[i] -= (baseCost + moveCost) * dt * ageFactor;
-    
-    // Position integration (critical for rendering)
-    const physicsStart = performance.now();
-    let velx = vel[i * 2], vely = vel[i * 2 + 1];
-    const vlen = Math.hypot(velx, vely) || 1e-6;
-    const vmax = sp;
-    if (vlen > vmax) {
-      velx = velx / vlen * vmax;
-      vely = vely / vlen * vmax;
-      vel[i * 2] = velx;
-      vel[i * 2 + 1] = vely;
-    }
-    
-    pos[i * 2] += velx * dt;
-    pos[i * 2 + 1] += vely * dt;
-    
-    // World wrapping (critical for correct position)
-    if (pos[i * 2] < 0) {
-      pos[i * 2] += world.width;
-    } else if (pos[i * 2] >= world.width) {
-      pos[i * 2] -= world.width;
-    }
-    if (pos[i * 2 + 1] < 0) {
-      pos[i * 2 + 1] += world.height;
-    } else if (pos[i * 2 + 1] >= world.height) {
-      pos[i * 2 + 1] -= world.height;
-    }
-    perfTimers.physics += performance.now() - physicsStart;
-    
-    // Death checks (critical)
-    if (energy[i] <= 0 || age[i] > 80) {
-      alive[i] = 0;
-      deathsByTribe[tribeId[i]]++;
-      if (energy[i] <= 0) {
-        starvedByTribe[tribeId[i]]++;
-      }
-      age[i] = 0;
-    }
-  }
-  
-  // Second pass: Expensive operations for half the entities (alternating batches)
-  for (let i = batchId; i < n; i += 2) {
-    if (!alive[i]) continue;
-    
-    // Update orientation based on velocity
-    const vx = vel[i * 2];
-    const vy = vel[i * 2 + 1];
-    const currentSpeedSq = vx * vx + vy * vy;
-    if (currentSpeedSq > 1) {
-      orientation[i] = Math.atan2(vy, vx);
-    }
-    
-    const base = i * G;
-    const repro = genes[base + 3];
-    
-    // Update color only every 30 frames for this entity (staggered)
-    if ((i + Math.floor(t * 20)) % 30 === 0) {
-      const ageInDays = age[i] / 10;
-      let brightness = 1.0;
-      if (ageInDays < 2) {
-        brightness = 1.3;
-      } else if (ageInDays < 4) {
-        brightness = 1.1;
-      } else if (ageInDays < 6) {
-        brightness = 0.9;
-      } else {
-        brightness = 0.75;
-      }
+  // Spawn initial entities
+  let totalSpawned = 0;
+  if (init.tribes) {
+    init.tribes.forEach((tribe: any, tribeIdx: number) => {
+      const count = tribe.count || 100;
+      // Use provided spawn or generate random position for tribe
+      const spawn = tribe.spawn || { 
+        x: worldWidth * (0.2 + 0.6 * rand()), 
+        y: worldHeight * (0.2 + 0.6 * rand())
+      };
+      const radius = tribe.spawn?.radius || 200;  // Increased default radius from 100 to 200
+      const geneSpec = { ...defaultGenes, ...tribe.genes };
       
-      const tribeHue = tribeColors[tribeId[i]] || 0;
-      const [r, g, b] = hueToRgb(tribeHue);
-      color[i * 3] = Math.min(255, (r * brightness) | 0);
-      color[i * 3 + 1] = Math.min(255, (g * brightness) | 0);
-      color[i * 3 + 2] = Math.min(255, (b * brightness) | 0);
-    }
-    
-    // Check food at current position
-    // OPTIMIZATION: Only check food every 3rd frame for each entity (staggered)
-    const shouldCheckFood = (i + Math.floor(t * 20)) % 3 === 0;
-    const foodCheckStart = shouldCheckFood ? performance.now() : 0;
-    
-    if (shouldCheckFood) {
-      const px = pos[i * 2];
-      const py = pos[i * 2 + 1];
-      
-      // Only check food if entity is within world bounds and hungry
-      if (energy[i] < 80 && px >= 0 && px < world.width && py >= 0 && py < world.height) {
-        // OPTIMIZATION: Direct cell lookup instead of 3x3 grid
-        const fx = Math.floor((px / world.width) * foodCols);
-        const fy = Math.floor((py / world.height) * foodRows);
+      for (let i = 0; i < count && totalSpawned < cap; i++) {
+        const angle = rand() * Math.PI * 2;
+        const r = Math.sqrt(rand()) * radius;
+        const x = spawn.x + Math.cos(angle) * r;
+        const y = spawn.y + Math.sin(angle) * r;
         
-        let totalFoodConsumed = 0;
-        
-        // Only check the exact cell we're in and immediate neighbors if very close to edge
-        const cellWidth = world.width / foodCols;
-        // const cellHeight = world.height / foodRows; // Not currently used
-        const cellX = px - fx * cellWidth;
-        // const cellY = py - fy * cellHeight; // Not currently used
-        
-        // Check current cell
-        const foodIdx = fy * foodCols + fx;
-        if (foodGrid[foodIdx] > 0.3) {
-          foodGrid[foodIdx] = 0;
-          foodRegrowTimer[foodIdx] = 0;
-          totalFoodConsumed++;
-        }
-        
-        // Only check neighbors if very close to cell edge (within 25% of edge)
-        if (cellX < cellWidth * 0.25 && fx > 0) {
-          const leftIdx = fy * foodCols + (fx - 1);
-          if (foodGrid[leftIdx] > 0.3) {
-            foodGrid[leftIdx] = 0;
-            foodRegrowTimer[leftIdx] = 0;
-            totalFoodConsumed++;
-          }
-        } else if (cellX > cellWidth * 0.75 && fx < foodCols - 1) {
-          const rightIdx = fy * foodCols + (fx + 1);
-          if (foodGrid[rightIdx] > 0.3) {
-            foodGrid[rightIdx] = 0;
-            foodRegrowTimer[rightIdx] = 0;
-            totalFoodConsumed++;
-          }
-        }
-        
-        // Gain energy based on amount consumed and diet
-        if (totalFoodConsumed > 0) {
-          // Diet affects plant food efficiency
-          const dietGene = genes[base + 7] || -0.5;
-          const herbivoreLevel = Math.max(0, -dietGene); // 0-1 for herbivorous tendency
-          
-          // Pure carnivores (diet=1) get 0% from plants, pure herbivores (diet=-1) get 100%
-          // Omnivores (diet=0) get 50% efficiency
-          const plantFoodEfficiency = herbivoreLevel; // 0-1 based on how herbivorous
-          
-          // Only herbivores and omnivores can get energy from plants
-          if (herbivoreLevel > 0) {
-            // Compensate for reduced check frequency by increasing energy gain
-            energy[i] += Math.min(30, totalFoodConsumed * 8 * plantFoodEfficiency);
-            energy[i] = Math.min(energy[i], energyConfig.max); // Max energy cap
-          }
-        }
+        sim!.entities.spawn(totalSpawned, x, y, geneSpec, tribeIdx);
+        totalSpawned++;
       }
-    }
-    
-    if (shouldCheckFood) {
-      perfTimers.foodConsume += performance.now() - foodCheckStart;
-    }
-    
-    // Use spatial hashing for efficient movement and combat
-    const moveStart = performance.now();
-    efficientMovementOptimized(
-      i, pos, vel, alive, energy, tribeId, genes, grid,
-      foodGrid, foodCols, foodRows, world, rand, dt,
-      killsByTribe, deathsByTribe, color, birthsByTribe, allowHybrids,
-      orientation, age
-    );
-    perfTimers.movement += performance.now() - moveStart;
-    
-    // Reproduction - balanced energy requirements and crowd limits
-    // High metabolism increases reproduction rate (more energy processing = faster reproduction)
-    const metab = genes[base + 2];
-    const metabolismReproModifier = 0.5 + (metab / 0.3); // 0.5x to 2x modifier based on metabolism
-    const effectiveReproChance = repro * metabolismReproModifier;
-    
-    if (alive[i] && energy[i] > energyConfig.repro && rand() < effectiveReproChance * dt) {
-      // Check local crowd density to prevent reproduction in crowded areas
-      const px = pos[i * 2], py = pos[i * 2 + 1];
-      const vision = genes[base + 1];
-      let nearbyCount = 0;
-      const checkRadius = vision * 1.5; // Check slightly beyond vision
-      const checkRadiusSq = checkRadius * checkRadius;
-      
-      // Quick crowd check - only check immediate neighbors
-      grid.forNeighborsWithLimit(px, py, checkRadius, 20, (j) => {
-        if (j !== i && alive[j]) {
-          const dx = pos[j * 2] - px;
-          const dy = pos[j * 2 + 1] - py;
-          if (dx * dx + dy * dy < checkRadiusSq) {
-            nearbyCount++;
-          }
-        }
-        return nearbyCount < 15; // Early exit if too crowded
-      });
-      
-      const crowdStress = Math.min(1, nearbyCount / 15);
-      const reproductiveCrowdLimit = 0.7;
-      
-      // Don't reproduce if too crowded
-      if (crowdStress < reproductiveCrowdLimit) {
-        // Find a free slot
-        for (let j = 0; j < cap; j++) {
-          if (!alive[j]) {
-            const childGenes: GeneSpec = {
-              speed: genes[base],
-              vision: genes[base + 1],
-              metabolism: genes[base + 2],
-              reproChance: genes[base + 3],
-              aggression: genes[base + 4],
-              cohesion: genes[base + 5],
-              foodStandards: genes[base + 6],
-              diet: genes[base + 7],
-              viewAngle: genes[base + 8],
-              colorHue: tribeColors[tribeId[i]],
-            };
-            
-            const mutatedGenes = mutate(childGenes, rand); // Uses default 0.12 intensity now
-            
-            // Spawn child NEAR parent, not at same location
-            const spawnOffset = 10 + rand() * 15; // 10-25 units away
-            const spawnAngle = rand() * Math.PI * 2;
-            const childX = px + Math.cos(spawnAngle) * spawnOffset;
-            const childY = py + Math.sin(spawnAngle) * spawnOffset;
-            
-            // Parent gives energy to child
-            energy[i] -= 25; // Reduced cost
-            spawnEntity(j, childX, childY, mutatedGenes, tribeId[i], energyConfig.start * 0.7, rand() * 10);
-            birthsByTribe[tribeId[i]]++;
-            if (j >= count) count = j + 1;
-            break;
-          }
-        }
-      }
-    }
-  }
-  perfTimers.entityUpdate += performance.now() - entityStart;
-  
-  perfTimers.total += performance.now() - stepStart;
-  perfTimers.samples++;
-  
-  // Log performance stats every 2 seconds
-  if (perfTimers.samples >= 120) {
-    const avgTimers = {
-      spatialHash: perfTimers.spatialHash / perfTimers.samples,
-      foodRegrow: perfTimers.foodRegrow / perfTimers.samples,
-      entityUpdate: perfTimers.entityUpdate / perfTimers.samples,
-      foodConsume: perfTimers.foodConsume / perfTimers.samples,
-      movement: perfTimers.movement / perfTimers.samples,
-      physics: perfTimers.physics / perfTimers.samples,
-      total: perfTimers.total / perfTimers.samples
-    };
-    
-    const perfBreakdown = {
-      spatialHash: avgTimers.spatialHash.toFixed(2),
-      foodRegrow: avgTimers.foodRegrow.toFixed(2),
-      entityUpdate: avgTimers.entityUpdate.toFixed(2),
-      foodConsume: avgTimers.foodConsume.toFixed(2),
-      movement: avgTimers.movement.toFixed(2),
-      physics: avgTimers.physics.toFixed(2),
-      total: avgTimers.total.toFixed(2),
-      entities: count
-    };
-    
-    // Send to UI
-    self.postMessage({ type: 'perfBreakdown', payload: perfBreakdown });
-    
-    // Also log to console for debugging
-    console.log('Performance breakdown (ms):', perfBreakdown);
-    
-    // Reset counters
-    perfTimers = {
-      spatialHash: 0,
-      foodRegrow: 0,
-      entityUpdate: 0,
-      foodConsume: 0,
-      movement: 0,
-      physics: 0,
-      total: 0,
-      samples: 0
-    };
-  }
-}
-
-function stats(): SimStats {
-  const byTribe: Record<string, TribeStats> = {};
-  const tribeData: Record<string, number[][]> = {}; // Store gene values per tribe
-  
-  let aliveCount = 0;
-  const globalGenes: number[][] = [[], [], [], [], [], [], [], [], []]; // speed, vision, metab, repro, aggro, cohesion, foodStandards, diet, viewAngle
-  
-  // Collect data
-  for (let i = 0; i < count; i++) {
-    if (alive[i]) {
-      aliveCount++;
-      const base = i * G;
-      const tribeName = tribeNames[tribeId[i]] || 'Unknown';
-      
-      // Initialize tribe data if needed
-      if (!tribeData[tribeName]) {
-        tribeData[tribeName] = [[], [], [], [], [], [], [], [], []]; // 9 arrays for 9 genes
-      }
-      
-      // Collect gene values (speed, vision, metabolism, reproChance, aggression, cohesion, foodStandards, diet, viewAngle)
-      tribeData[tribeName][0].push(genes[base]);        // speed
-      tribeData[tribeName][1].push(genes[base + 1]);    // vision
-      tribeData[tribeName][2].push(genes[base + 2]);    // metabolism
-      tribeData[tribeName][3].push(genes[base + 3]);    // reproChance
-      tribeData[tribeName][4].push(genes[base + 4]);    // aggression
-      tribeData[tribeName][5].push(genes[base + 5]);    // cohesion
-      tribeData[tribeName][6].push(genes[base + 6] || 0.3);  // foodStandards
-      tribeData[tribeName][7].push(genes[base + 7] || -0.5); // diet
-      tribeData[tribeName][8].push(genes[base + 8] || 120); // viewAngle
-      
-      globalGenes[0].push(genes[base]);
-      globalGenes[1].push(genes[base + 1]);
-      globalGenes[2].push(genes[base + 2]);
-      globalGenes[3].push(genes[base + 3]);
-      globalGenes[4].push(genes[base + 4]);
-      globalGenes[5].push(genes[base + 5]);
-      globalGenes[6].push(genes[base + 6] || 0.3);
-      globalGenes[7].push(genes[base + 7] || -0.5);
-      globalGenes[8].push(genes[base + 8] || 120);  // viewAngle
-    }
-  }
-  
-  // Helper to calculate statistics
-  const calcStats = (values: number[]) => {
-    if (values.length === 0) return { min: 0, max: 0, mean: 0, std: 0 };
-    
-    // Avoid stack overflow with large arrays by using reduce instead of spread
-    let min = Infinity;
-    let max = -Infinity;
-    let sum = 0;
-    
-    for (const v of values) {
-      if (v < min) min = v;
-      if (v > max) max = v;
-      sum += v;
-    }
-    
-    const mean = sum / values.length;
-    const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
-    const std = Math.sqrt(variance);
-    
-    return { mean, min, max, std };
-  };
-  
-  // Process each tribe
-  for (const [tribeName, geneArrays] of Object.entries(tribeData)) {
-    const isHybrid = tribeName === 'Hybrids';
-    const tribeIndex = isHybrid ? 999 : tribeNames.indexOf(tribeName);
-    const [r, g, b] = isHybrid ? [220, 220, 255] : hueToRgb(tribeColors[tribeIndex] || 0);
-    
-    const speedStats = calcStats(geneArrays[0]);
-    const visionStats = calcStats(geneArrays[1]);
-    const metabStats = calcStats(geneArrays[2]);
-    const reproStats = calcStats(geneArrays[3]);
-    const aggroStats = calcStats(geneArrays[4]);
-    const cohesionStats = calcStats(geneArrays[5]);
-    const foodStandardsStats = calcStats(geneArrays[6]);
-    const dietStats = calcStats(geneArrays[7]);
-    const viewAngleStats = calcStats(geneArrays[8]);
-    
-    byTribe[tribeName] = {
-      count: geneArrays[0].length,
-      births: 0, // TODO: track hybrid births properly
-      deaths: 0, // TODO: track hybrid deaths properly
-      kills: 0,
-      starved: 0,
-      color: `rgb(${r},${g},${b})`,
-      mean: {
-        speed: speedStats.mean,
-        vision: visionStats.mean,
-        metabolism: metabStats.mean,
-        aggression: aggroStats.mean,
-        cohesion: cohesionStats.mean,
-        reproChance: reproStats.mean,
-        foodStandards: foodStandardsStats.mean,
-        diet: dietStats.mean,
-        viewAngle: viewAngleStats.mean,
-      },
-      distribution: {
-        speed: { min: speedStats.min, max: speedStats.max, std: speedStats.std },
-        vision: { min: visionStats.min, max: visionStats.max, std: visionStats.std },
-        metabolism: { min: metabStats.min, max: metabStats.max, std: metabStats.std },
-        aggression: { min: aggroStats.min, max: aggroStats.max, std: aggroStats.std },
-        cohesion: { min: cohesionStats.min, max: cohesionStats.max, std: cohesionStats.std },
-        reproChance: { min: reproStats.min, max: reproStats.max, std: reproStats.std },
-        foodStandards: { min: foodStandardsStats.min, max: foodStandardsStats.max, std: foodStandardsStats.std },
-        diet: { min: dietStats.min, max: dietStats.max, std: dietStats.std },
-        viewAngle: { min: viewAngleStats.min, max: viewAngleStats.max, std: viewAngleStats.std },
-      },
-    };
-  }
-  
-  // Calculate global statistics
-  const globalSpeed = calcStats(globalGenes[0]);
-  const globalVision = calcStats(globalGenes[1]);
-  const globalMetab = calcStats(globalGenes[2]);
-  const globalRepro = calcStats(globalGenes[3]);
-  const globalAggro = calcStats(globalGenes[4]);
-  const globalCohesion = calcStats(globalGenes[5]);
-  const globalFoodStandards = calcStats(globalGenes[6]);
-  const globalDiet = calcStats(globalGenes[7]);
-  const globalViewAngle = calcStats(globalGenes[8]);
-  
-  return {
-    t,
-    population: aliveCount,
-    byTribe,
-    global: {
-      mean: {
-        speed: globalSpeed.mean,
-        vision: globalVision.mean,
-        metabolism: globalMetab.mean,
-        aggression: globalAggro.mean,
-        cohesion: globalCohesion.mean,
-        reproChance: globalRepro.mean,
-        foodStandards: globalFoodStandards.mean,
-        diet: globalDiet.mean,
-        viewAngle: globalViewAngle.mean,
-      },
-      distribution: {
-        speed: { min: globalSpeed.min, max: globalSpeed.max, std: globalSpeed.std },
-        vision: { min: globalVision.min, max: globalVision.max, std: globalVision.std },
-        metabolism: { min: globalMetab.min, max: globalMetab.max, std: globalMetab.std },
-        aggression: { min: globalAggro.min, max: globalAggro.max, std: globalAggro.std },
-        cohesion: { min: globalCohesion.min, max: globalCohesion.max, std: globalCohesion.std },
-        reproChance: { min: globalRepro.min, max: globalRepro.max, std: globalRepro.std },
-        foodStandards: { min: globalFoodStandards.min, max: globalFoodStandards.max, std: globalFoodStandards.std },
-        diet: { min: globalDiet.min, max: globalDiet.max, std: globalDiet.std },
-        viewAngle: { min: globalViewAngle.min, max: globalViewAngle.max, std: globalViewAngle.std },
-      },
-    },
-  };
-}
-
-/**
- * Initialize as a sub-worker using coordinator's shared buffers
- */
-function initSubWorker(init: any) {
-  const { sharedBuffers, foodBuffer, foodMeta } = init;
-  
-  world.width = init.world.width;
-  world.height = init.world.height;
-  cap = init.cap;
-  
-  // Update energy config if provided
-  if (init.energy) {
-    energyConfig = init.energy;
-  }
-  
-  // Set hybridization flag (same as standalone)
-  allowHybrids = init.hybridization !== false;
-  
-  // Use shared buffers from coordinator
-  const bufferSize = bufferEntityEnd - bufferEntityStart;
-  
-  // Create views into the shared buffers for our range
-  pos = new Float32Array(
-    sharedBuffers.positions,
-    bufferEntityStart * 2 * Float32Array.BYTES_PER_ELEMENT,
-    bufferSize * 2
-  );
-  
-  vel = new Float32Array(
-    sharedBuffers.velocities,
-    bufferEntityStart * 2 * Float32Array.BYTES_PER_ELEMENT,
-    bufferSize * 2
-  );
-  
-  color = new Uint8Array(
-    sharedBuffers.colors,
-    bufferEntityStart * 3,
-    bufferSize * 3
-  );
-  
-  alive = new Uint8Array(
-    sharedBuffers.alive,
-    bufferEntityStart,
-    bufferSize
-  );
-  
-  tribeId = new Uint16Array(
-    sharedBuffers.tribeIds,
-    bufferEntityStart * Uint16Array.BYTES_PER_ELEMENT,
-    bufferSize
-  );
-  
-  genes = new Float32Array(
-    sharedBuffers.genes,
-    bufferEntityStart * G * Float32Array.BYTES_PER_ELEMENT,
-    bufferSize * G
-  );
-  
-  energy = new Float32Array(
-    sharedBuffers.energy,
-    bufferEntityStart * Float32Array.BYTES_PER_ELEMENT,
-    bufferSize
-  );
-  
-  age = new Float32Array(bufferSize);
-  orientation = new Float32Array(bufferSize);
-  
-  // Food grid initialization - shared with standalone mode
-  if (foodBuffer) {
-    foodGridUint8 = new Uint8Array(foodBuffer);
-    foodCols = foodMeta?.cols || init.world.foodGrid?.cols || 256;
-    foodRows = foodMeta?.rows || init.world.foodGrid?.rows || 256;
-    foodRegen = init.world.foodGrid?.regen || 0.05;
-    foodCapacity = init.world.foodGrid?.capacity || 1;
-    
-    // Set regrow time based on regen rate
-    FOOD_REGROW_TIME = 10 / foodRegen;
-    
-    foodGrid = new Float32Array(foodCols * foodRows);
-    foodMaxCapacity = new Float32Array(foodCols * foodRows);
-    foodRegrowTimer = new Float32Array(foodCols * foodRows);
-    
-    // Only worker 0 initializes food pattern (others just read the shared buffer)
-    if (workerId === 0) {
-      // Initialize food using shared function
-      initializeFoodGrid(init, init.seed);
-    } else {
-      // Other workers read from shared buffer
-      for (let i = 0; i < foodGridUint8.length; i++) {
-        foodGrid[i] = foodGridUint8[i] / 255;
-        foodMaxCapacity[i] = foodGrid[i]; // Assume current is max for now
-        foodRegrowTimer[i] = 0;
-      }
-    }
-  }
-  
-  // Initialize tracking arrays
-  birthsByTribe = new Uint32Array(init.tribes.length);
-  deathsByTribe = new Uint32Array(init.tribes.length);
-  killsByTribe = new Uint32Array(init.tribes.length);
-  starvedByTribe = new Uint32Array(init.tribes.length);
-  tribeNames = init.tribes.map((t: any) => t.name);
-  tribeColors = init.tribes.map((t: any) => t.genes?.colorHue || 0);
-  
-  // Initialize spatial grid - need to provide cap for sub-worker buffer size
-  grid = new SpatialHash(world.width, world.height, 80, bufferEntityEnd - bufferEntityStart);
-  
-  // Initialize RNG
-  rand = createRng(init.seed + workerId);
-  
-  // Initialize entities using the SAME spawning logic as standalone mode
-  count = 0;
-  
-  // Calculate global entity distribution (which entities belong to this worker)
-  let globalEntityCount = 0;
-  const tribeStartIndices: number[] = [];
-  init.tribes.forEach((tribe: any) => {
-    tribeStartIndices.push(globalEntityCount);
-    globalEntityCount += tribe.count;
-  });
-  
-  // Spawn tribes with the SAME patterns as standalone mode
-  init.tribes.forEach((tribe: any, ix: number) => {
-    const baseGenes = clampGene({
-      ...defaultGenes,
-      ...tribe.genes,
     });
-    tribeColors[ix] = baseGenes.colorHue;
-    
-    // Determine spawn pattern
-    const pattern = tribe.spawn.pattern || 'blob';
-    const diet = baseGenes.diet || -0.5;
-    const carnivoreLevel = Math.max(0, diet);
-    const herbivoreLevel = Math.max(0, -diet);
-    
-    for (let i = 0; i < tribe.count; i++) {
-      // Calculate global index for this entity
-      const globalIdx = tribeStartIndices[ix] + i;
-      
-      // Skip if not in our range
-      if (globalIdx < actualEntityStart || globalIdx >= actualEntityEnd) {
-        continue;
-      }
-      
-      // Local index in our buffer
-      const localIdx = globalIdx - actualEntityStart;
-      if (localIdx >= bufferSize) break;
-      
-      // Use shared spawn position function
-      const [x, y] = getSpawnPosition(tribe, i, pattern, baseGenes);
-      
-      // Use the existing spawnEntity function (matching standalone)
-      spawnEntity(localIdx, x, y, baseGenes, ix, energyConfig.start);
-      count++;
-    }
-  });
+  }
   
-  // Send ready message
-  self.postMessage({ type: 'ready' } as MainMsg);
+  sim.count = totalSpawned;
+  sim.entities.count = totalSpawned;
   
-  // Start simulation loop
-  startSubWorkerLoop();
-}
-
-/**
- * Start the simulation loop for sub-worker mode
- */
-function startSubWorkerLoop() {
-  let last = performance.now();
-  let accumulator = 0;
-  const FIXED_TIMESTEP = 1/60;
-  let statsTimer = 0;
-  let lastStatsTime = performance.now();
-  
-  const tick = () => {
-    const now = performance.now();
-    const frameTime = Math.min(0.1, (now - last) / 1000);
-    last = now;
-    
-    
-    if (!paused && speedMul > 0) {
-      accumulator += frameTime * speedMul;
-      
-      while (accumulator >= FIXED_TIMESTEP) {
-        step(FIXED_TIMESTEP);
-        accumulator -= FIXED_TIMESTEP;
-        
-      }
-    }
-    
-    // Send stats periodically (2Hz for performance)
-    if (now - lastStatsTime > 500) {
-      lastStatsTime = now;
-      const currentStats = stats();
-      self.postMessage({ type: 'stats', payload: currentStats });
-    }
-    
-    // Send performance stats periodically (every 100ms)
-    statsTimer += frameTime * 1000;
-    if (statsTimer >= 100) {
-      statsTimer = 0;
-      
-      // Send aggregated perf stats to coordinator
-      if (perfTimers.samples > 0) {
-        const avgTimers = {
-          spatialHash: perfTimers.spatialHash / perfTimers.samples,
-          foodRegrow: perfTimers.foodRegrow / perfTimers.samples,
-          entityUpdate: perfTimers.entityUpdate / perfTimers.samples,
-          foodConsume: perfTimers.foodConsume / perfTimers.samples,
-          movement: perfTimers.movement / perfTimers.samples,
-          physics: perfTimers.physics / perfTimers.samples,
-          total: perfTimers.total / perfTimers.samples
-        };
-        
-        self.postMessage({ 
-          type: 'perf', 
-          payload: {
-            workerId,
-            ...avgTimers,
-            entities: actualEntityEnd - actualEntityStart
-          }
-        });
-        
-        // Reset counters
-        perfTimers = {
-          spatialHash: 0,
-          foodRegrow: 0,
-          entityUpdate: 0,
-          foodConsume: 0,
-          movement: 0,
-          physics: 0,
-          total: 0,
-          samples: 0
-        };
-      }
-    }
-    
-    // Update food buffer for rendering (only worker 0 in multi-worker mode)
-    if (foodGridUint8 && (!isSubWorker || workerId === 0)) {
-      for (let i = 0; i < foodGrid.length; i++) {
-        foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, foodGrid[i])) * 255);
-      }
-    }
-    
-    setTimeout(tick, 0);
+  // Create SharedArrayBuffers for rendering
+  sharedBuffers = {
+    positions: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap * 2),
+    velocities: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap * 2),
+    colors: new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * cap * 3),
+    alive: new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * cap),
+    energy: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap),
+    tribeIds: new SharedArrayBuffer(Uint16Array.BYTES_PER_ELEMENT * cap),
+    genes: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap * 9),
+    orientations: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap),
+    ages: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap),
   };
   
-  tick();
+  // Add food grid buffer and replace FoodSystem if needed
+  if (init.world?.foodGrid) {
+    const { cols, rows, capacity = 1, distribution } = init.world.foodGrid;
+    sharedBuffers.foodGrid = new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * cols * rows);
+    
+    // Replace the default FoodSystem with one using the shared buffer
+    const foodGridUint8 = new Uint8Array(sharedBuffers.foodGrid);
+    sim.food = new FoodSystem(cols, rows, worldWidth, worldHeight, 0.05, foodGridUint8);
+    
+    // Initialize with distribution config
+    sim.food.initialize(seed, capacity, distribution);
+  }
+  
+  // Create views over shared buffers
+  const pos = new Float32Array(sharedBuffers.positions);
+  const vel = new Float32Array(sharedBuffers.velocities);
+  const color = new Uint8Array(sharedBuffers.colors);
+  const alive = new Uint8Array(sharedBuffers.alive);
+  const energy = new Float32Array(sharedBuffers.energy);
+  const age = new Float32Array(sharedBuffers.ages);
+  const tribeId = new Uint16Array(sharedBuffers.tribeIds);
+  const genes = new Float32Array(sharedBuffers.genes);
+  const orientation = new Float32Array(sharedBuffers.orientations);
+  
+  // Copy initial entity data to shared buffers BEFORE replacing the entity system
+  pos.set(sim.entities.pos);
+  vel.set(sim.entities.vel);
+  color.set(sim.entities.color);
+  alive.set(sim.entities.alive);
+  energy.set(sim.entities.energy);
+  age.set(sim.entities.age);
+  tribeId.set(sim.entities.tribeId);
+  genes.set(sim.entities.genes);
+  orientation.set(sim.entities.orientation);
+  
+  // Now replace EntitySystem's internal buffers with shared views
+  sim.entities = new EntitySystem(cap, {
+    pos, vel, color, alive, energy, age, tribeId, genes, orientation
+  });
+  sim.entities.count = totalSpawned;
+  
+  // Send ready message with expected buffer names
+  const foodMeta = sharedBuffers.foodGrid && sim.food ? 
+    { cols: sim.food.getCols(), rows: sim.food.getRows() } : 
+    undefined;
+    
+  self.postMessage({
+    type: 'ready',
+    payload: {
+      sab: {
+        pos: sharedBuffers.positions,
+        color: sharedBuffers.colors,
+        alive: sharedBuffers.alive,
+        food: sharedBuffers.foodGrid
+      },
+      meta: { count: cap },
+      foodMeta
+    }
+  } as MainMsg);
+  
+  startMainLoop();
+  
+  // Start sending stats periodically (only in main worker mode)
+  setInterval(() => {
+    if (sim) {
+      const stats = sim.getStats();
+      self.postMessage({ type: 'stats', payload: stats } as MainMsg);
+    }
+  }, 500);
 }
 
-// Message handler
-self.onmessage = (e: MessageEvent<WorkerMsg>) => {
-  const msg = e.data;
+function initializeAsSubWorker(msg: any) {
+  console.log(`[Worker] Starting sub-worker initialization`, msg.payload);
+  const { sharedBuffers: buffers, config, workerId: id, entityRange } = msg.payload;
   
-  if (msg.type === 'init') {
-    const init: any = msg.payload;
+  isSubWorker = true;
+  workerId = id;
+  bufferEntityStart = entityRange.start;
+  bufferEntityEnd = entityRange.end;
+  actualEntityStart = entityRange.actualStart;
+  actualEntityEnd = entityRange.actualEnd;
+  
+  const worldWidth = config.world?.width || WORLD_WIDTH;
+  const worldHeight = config.world?.height || WORLD_HEIGHT;
+  const cap = bufferEntityEnd - bufferEntityStart;
+  const seed = config.seed || Date.now();
+  
+  // Create simulation core
+  // Pass totalCap for spatial hash sizing to handle neighbor queries across all workers
+  const totalCap = buffers.positions.byteLength / 8; // Float32Array with x,y = 8 bytes per entity
+  sim = new SimulationCore(worldWidth, worldHeight, cap, seed + workerId, config.tribes?.length || 3, totalCap);
+  sim.allowHybrids = config.allowHybrids !== false;
+  sim.updateFood = workerId === 0;  // Only worker 0 updates food
+  sim.tribeNames = config.tribes?.map((t: any) => t.name) || [];
+  sim.tribeColors = config.tribes?.map((t: any) => t.genes?.colorHue || 0) || [];
+  
+  // Create FULL views for spatial queries (so we can see all entities)
+  const fullPos = new Float32Array(buffers.positions);
+  const fullAlive = new Uint8Array(buffers.alive);
+  const fullTribeId = new Uint16Array(buffers.tribeIds);
+  const fullGenes = new Float32Array(buffers.genes);
+  const fullEnergy = new Float32Array(buffers.energy);
+  const fullVel = new Float32Array(buffers.velocities);
+  
+  // Create sliced views for this worker's entities (for updates)
+  const pos = new Float32Array(buffers.positions, bufferEntityStart * 2 * Float32Array.BYTES_PER_ELEMENT, cap * 2);
+  const vel = new Float32Array(buffers.velocities, bufferEntityStart * 2 * Float32Array.BYTES_PER_ELEMENT, cap * 2);
+  const color = new Uint8Array(buffers.colors, bufferEntityStart * 3, cap * 3);
+  const alive = new Uint8Array(buffers.alive, bufferEntityStart, cap);
+  const energy = new Float32Array(buffers.energy, bufferEntityStart * Float32Array.BYTES_PER_ELEMENT, cap);
+  const age = new Float32Array(buffers.ages, bufferEntityStart * Float32Array.BYTES_PER_ELEMENT, cap);
+  const tribeId = new Uint16Array(buffers.tribeIds, bufferEntityStart * Uint16Array.BYTES_PER_ELEMENT, cap);
+  const genes = new Float32Array(buffers.genes, bufferEntityStart * 9 * Float32Array.BYTES_PER_ELEMENT, cap * 9);
+  const orientation = new Float32Array(buffers.orientations, bufferEntityStart * Float32Array.BYTES_PER_ELEMENT, cap);
+  
+  // Use shared buffers for entity system (sliced for updates)
+  sim.entities = new EntitySystem(cap, {
+    pos, vel, color, alive, energy, age, tribeId, genes, orientation
+  });
+  
+  // Store full views for spatial queries
+  sim.fullPos = fullPos;
+  sim.fullAlive = fullAlive;
+  sim.fullTribeId = fullTribeId;
+  sim.fullGenes = fullGenes;
+  sim.fullEnergy = fullEnergy;
+  sim.fullVel = fullVel;
+  
+  // Initialize food system with shared buffer
+  if (buffers.foodGrid && config.world?.foodGrid) {
+    const { cols, rows, regen = 0.05 } = config.world.foodGrid;
+    const foodGridUint8 = new Uint8Array(buffers.foodGrid);
+    sim.food = new FoodSystem(cols, rows, worldWidth, worldHeight, regen, foodGridUint8);
     
-    // Check if this is a sub-worker from coordinator
-    if (init.sharedBuffers && init.workerId !== undefined) {
-      isSubWorker = true;
-      workerId = init.workerId;
-      bufferEntityStart = init.entityStart;
-      bufferEntityEnd = init.entityEnd;
-      actualEntityStart = init.actualEntityStart || bufferEntityStart;
-      actualEntityEnd = init.actualEntityEnd || bufferEntityEnd;
+    // Only worker 0 initializes the food grid with distribution config
+    if (workerId === 0) {
+      sim.food.initialize(seed, config.world.foodGrid.capacity || 1, config.world.foodGrid.distribution);
+    } else {
+      // Other workers sync from the shared buffer
+      sim.food.syncFromUint8();
+    }
+  }
+  
+  // Spawn initial entities for this worker (sub-worker mode only)
+  if (config.tribes && actualEntityStart < actualEntityEnd) {
+    const rand = createRng(seed + workerId);
+    let globalIdx = 0;
+    let localIdx = 0;
+    
+    config.tribes.forEach((tribe: any, tribeIdx: number) => {
+      const count = tribe.count || 100;
+      // Use provided spawn or generate random position for tribe (consistent across workers)
+      const spawn = tribe.spawn || { 
+        x: worldWidth * (0.2 + 0.6 * (tribeIdx * 0.333 % 1)), 
+        y: worldHeight * (0.2 + 0.6 * ((tribeIdx * 0.577) % 1))
+      };
+      const radius = tribe.spawn?.radius || 200;  // Increased default radius
+      const geneSpec = { ...defaultGenes, ...tribe.genes };
       
-      console.log(`[Sub-Worker ${workerId}] Initializing in sub-worker mode for entities ${actualEntityStart}-${actualEntityEnd}`);
-      
-      // Initialize with shared buffers from coordinator
-      initSubWorker(init);
+      for (let i = 0; i < count; i++) {
+        if (globalIdx >= actualEntityStart && globalIdx < actualEntityEnd && localIdx < cap) {
+          const angle = rand() * Math.PI * 2;
+          const r = Math.sqrt(rand()) * radius;
+          const x = spawn.x + Math.cos(angle) * r;
+          const y = spawn.y + Math.sin(angle) * r;
+          
+          sim!.entities.spawn(localIdx, x, y, geneSpec, tribeIdx);
+          localIdx++;
+        }
+        globalIdx++;
+      }
+    });
+    
+    sim.count = localIdx;
+    sim.entities.count = localIdx;
+  }
+  
+  // Send ready signal
+  console.log(`[Worker ${workerId}] Sending ready signal`);
+  self.postMessage({ type: 'worker-ready', payload: { workerId } });
+  
+  startMainLoop();
+  
+  // Start sending stats periodically to coordinator
+  setInterval(() => {
+    if (sim) {
+      const stats = sim.getStats();
+      self.postMessage({ type: 'worker-stats', payload: { workerId, stats } });
+    }
+  }, 250); // Send stats every 250ms in multi-worker mode
+}
+
+function startMainLoop() {
+  lastTime = performance.now();
+  
+  // Workers don't support requestAnimationFrame, use setInterval
+  const targetFPS = 60;
+  const interval = 1000 / targetFPS;
+  
+  setInterval(() => {
+    try {
+      mainLoop(performance.now());
+    } catch (error) {
+      console.error(`[Worker ${workerId}] SetInterval callback crashed:`, error);
+      console.error(`[Worker ${workerId}] Stack:`, error.stack);
+    }
+  }, interval);
+}
+
+function mainLoop(now: number) {
+  try {
+    if (!sim) {
       return;
     }
     
-    // Regular standalone mode
-    world.width = init.world.width;
-    world.height = init.world.height;
-    cap = init.cap;
+    const dt = Math.min((now - lastTime) / 1000, 0.1);
+    lastTime = now;
     
-    // Update energy config if provided
-    if (init.energy) {
-      energyConfig = init.energy;
+    // Debug: log occasionally
+    if (frameCount % 60 === 0) { // Every 1 second at 60fps
+      console.log(`[Worker ${workerId}] MainLoop: paused=${sim.paused}, speedMul=${sim.speedMul}, count=${sim.count}, time=${sim.time.toFixed(2)}`);
     }
     
-    // Allocate SharedArrayBuffers
-    const sabPos = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap * 2);
-    const sabVel = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap * 2);
-    const sabCol = new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * cap * 3);
-    const sabAlive = new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * cap);
-    const sabTribe = new SharedArrayBuffer(Uint16Array.BYTES_PER_ELEMENT * cap);
-    const sabGenes = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap * G);
-    const sabEnergy = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap);
-    const sabAge = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap);
+    // Fixed timestep with accumulator
+    accumulator += dt * sim.speedMul;
+    let steps = 0;
+  
+  while (accumulator >= FIXED_TIMESTEP && steps < MAX_STEPS_PER_FRAME) {
+    if (steps === 0 && !sim.paused) {
+      console.log(`[Worker ${workerId}] Starting simulation steps, accumulator=${accumulator.toFixed(4)}`);
+    }
+    const stepStart = performance.now();
     
-    pos = new Float32Array(sabPos);
-    vel = new Float32Array(sabVel);
-    color = new Uint8Array(sabCol);
-    alive = new Uint8Array(sabAlive);
-    tribeId = new Uint16Array(sabTribe);
-    genes = new Float32Array(sabGenes);
-    energy = new Float32Array(sabEnergy);
-    age = new Float32Array(sabAge);
-    orientation = new Float32Array(cap); // Initialize orientation array
-    
-    // Initialize food grid with configurable resolution
-    foodCols = init.world.foodGrid?.cols || 256;
-    foodRows = init.world.foodGrid?.rows || 256;
-    
-    // SharedArrayBuffer for food (uint8 for GPU efficiency) - AFTER we know dimensions
-    const sabFood = new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * foodCols * foodRows);
-    foodGridUint8 = new Uint8Array(sabFood); // Initialize the shared uint8 view
-    
-    foodRegen = init.world.foodGrid?.regen || 0.05;
-    foodCapacity = init.world.foodGrid?.capacity || 1;
-    foodGrid = new Float32Array(foodCols * foodRows);
-    foodMaxCapacity = new Float32Array(foodCols * foodRows);
-    foodRegrowTimer = new Float32Array(foodCols * foodRows);
-    
-    // Set regrow time based on regen rate (lower regen = longer time)
-    FOOD_REGROW_TIME = 10 / foodRegen; // e.g., 0.1 regen = 100 seconds
-    
-    // Initialize food using shared function
-    initializeFoodGrid(init, init.seed);
-    
-    // Set hybridization flag
-    allowHybrids = init.hybridization !== false; // Default true for backwards compat
-    
-    birthsByTribe = new Uint32Array(init.tribes.length);
-    deathsByTribe = new Uint32Array(init.tribes.length);
-    killsByTribe = new Uint32Array(init.tribes.length);
-    starvedByTribe = new Uint32Array(init.tribes.length);
-    tribeNames = init.tribes.map(t => t.name);
-    tribeColors = [];
-    
-    // Initialize RNG
-    rand = createRng(init.seed);
-    
-    // Spawn tribes with different distribution patterns
-    count = 0;
-    init.tribes.forEach((tribe, ix) => {
-      const baseGenes = clampGene({
-        ...defaultGenes,
-        ...tribe.genes,
-      });
-      tribeColors[ix] = baseGenes.colorHue;
-      
-      // Determine spawn pattern
-      const pattern = tribe.spawn.pattern || 'blob';
-      const diet = baseGenes.diet || -0.5;
-      const carnivoreLevel = Math.max(0, diet);
-      const herbivoreLevel = Math.max(0, -diet);
-      
-      for (let i = 0; i < tribe.count; i++) {
-        if (count >= cap) break;
-        
-        // Use shared spawn position function
-        const [x, y] = getSpawnPosition(tribe, i, pattern, baseGenes);
-        
-        const initialAge = rand() * 30; // Random age between 0-30 seconds
-        const initialEnergy = energyConfig.start + rand() * 20; // Start energy plus some variation
-        spawnEntity(count++, x, y, baseGenes, ix, initialEnergy, initialAge);
+    if (!sim.paused) {
+      if (steps === 0) { // Log on first step per frame
+        console.log(`[Worker ${workerId}] About to call sim.step(), paused=${sim.paused}, time=${sim.time}`);
       }
-    });
-    
-    // Optimal cell size: slightly larger than average vision range for best performance
-    // Most entities have vision 30-70, so 80 reduces cells to check while maintaining accuracy
-    grid = new SpatialHash(world.width, world.height, 80, cap);
-    
-    // Send ready message with SABs and food metadata
-    const payload: MainMsg = {
-      type: 'ready',
-      payload: {
-        sab: { 
-          pos: sabPos, 
-          color: sabCol, 
-          alive: sabAlive,
-          food: sabFood  // Add food SharedArrayBuffer
-        },
-        meta: { count },
-        foodMeta: { cols: foodCols, rows: foodRows },
-      },
-    };
-    self.postMessage(payload);
-    
-    // Main simulation loop with performance tracking
-    let last = performance.now();
-    let lastStatsTime = 0;
-    let lastPerfTime = 0;
-    let lastFoodTime = 0;
-    let simSteps = 0;
-    
-    // Fixed timestep for deterministic physics
-    const FIXED_TIMESTEP = 1/60; // 60Hz physics
-    let accumulator = 0;
-    
-    const tick = () => {
-      const now = performance.now();
-      const frameTime = Math.min(0.1, (now - last) / 1000); // cap large pause
-      last = now;
-      
-      if (!paused && speedMul > 0) {
-        // Accumulate time based on speed multiplier
-        accumulator += frameTime * speedMul;
-        
-        // Run fixed timestep simulation
-        while (accumulator >= FIXED_TIMESTEP) {
-          step(FIXED_TIMESTEP);
-          accumulator -= FIXED_TIMESTEP;
-          simSteps++;
-        }
+      sim.step(FIXED_TIMESTEP);
+      stepCount++;
+      if (steps === 0) {
+        console.log(`[Worker ${workerId}] sim.step() completed, new time=${sim.time}`);
       }
-      
-      // Send performance metrics (4Hz)
-      if (now - lastPerfTime > 250) {
-        const elapsed = (now - lastPerfTime) / 1000;
-        const perf: PerfStats = {
-          fps: renderFps, // Use the render FPS from main thread
-          simSpeed: Math.round(simSteps / elapsed),
-          speedMul
-        };
-        self.postMessage({ type: 'perf', payload: perf } as MainMsg);
-        lastPerfTime = now;
-        simSteps = 0;
-      }
-      
-      // Convert food to uint8 for GPU (no need to send, it's shared!)
-      // Only update every few frames for performance
-      if (now - lastFoodTime > 100) {
-        lastFoodTime = now;
-        // Convert float food values to uint8 for GPU
-        for (let i = 0; i < foodGrid.length; i++) {
-          foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, foodGrid[i])) * 255);
-        }
-      }
-      
-      // Send stats periodically (2Hz for performance)
-      if (now - lastStatsTime > 500) {
-        lastStatsTime = now;
-        const currentStats = stats();
-        self.postMessage({ type: 'stats', payload: currentStats } as MainMsg);
-        
-        // Check for extinction
-        if (currentStats.population === 0 && count > 0) {
-          // All entities are dead - send extinction event
-          self.postMessage({ type: 'extinction', payload: { 
-            finalTime: t,
-            finalStats: currentStats 
-          }} as MainMsg);
-          // Stop simulation
-          paused = true;
-        }
-      }
-      
-      setTimeout(tick, 0);
-    };
-    tick();
-  } else if (msg.type === 'setSpeed') {
-    speedMul = msg.payload.speedMul;
-  } else if (msg.type === 'pause') {
-    paused = msg.payload.paused;
-  } else if (msg.type === 'renderFps') {
-    renderFps = msg.payload.fps;
+    }
+    
+    const stepTime = performance.now() - stepStart;
+    stepTimeAccum += stepTime;
+    maxStepTime = Math.max(maxStepTime, stepTime);
+    
+    accumulator -= FIXED_TIMESTEP;
+    steps++;
   }
-};
+  
+  frameCount++;
+  
+  // Update performance stats
+  if (now - lastPerfUpdate > 250) {
+    simHz = stepCount * 4;
+    stepCount = 0;
+    
+    // Send performance stats
+    if (!isSubWorker) {
+      const avgStepTime = frameCount > 0 ? stepTimeAccum / frameCount : 0;
+      const perfStats: PerfStats = {
+        simHz,
+        renderFps,
+        entityCount: sim.count,
+        avgStepTime,
+        maxStepTime,
+        workerCount: 1
+      };
+      
+      self.postMessage({
+        type: 'perf',
+        payload: perfStats
+      } as MainMsg);
+    }
+    
+    lastPerfUpdate = now;
+    frameCount = 0;
+    stepTimeAccum = 0;
+    maxStepTime = 0;
+  }
+  } catch (error) {
+    console.error(`[Worker ${workerId}] MainLoop crashed:`, error);
+    console.error(`[Worker ${workerId}] Stack:`, error.stack);
+    // Don't crash the worker, just log and continue
+  }
+}
+
+// Message handler
+self.addEventListener('message', (e: MessageEvent<WorkerMsg>) => {
+  const msg = e.data;
+  
+  switch (msg.type) {
+    case 'init':
+      initializeAsMainWorker(msg);
+      break;
+      
+    case 'init-sub-worker':
+      initializeAsSubWorker(msg);
+      break;
+      
+    case 'setSpeed':
+      if (sim) {
+        sim.speedMul = msg.payload.speedMul;
+      }
+      break;
+      
+    case 'pause':
+      console.log(`[Worker ${workerId}] Received pause=${msg.payload.paused}`);
+      if (sim) {
+        sim.paused = msg.payload.paused;
+        console.log(`[Worker ${workerId}] Set sim.paused = ${sim.paused}`);
+      } else {
+        console.log(`[Worker ${workerId}] No sim instance to pause!`);
+      }
+      break;
+      
+    case 'stats':
+      if (sim) {
+        const stats = sim.getStats();
+        if (isSubWorker) {
+          // Sub-workers send stats to coordinator
+          self.postMessage({ type: 'worker-stats', payload: { workerId, stats } });
+        } else {
+          // Main worker sends directly to main thread
+          self.postMessage({ type: 'stats', payload: stats } as MainMsg);
+        }
+      }
+      break;
+      
+    case 'renderFps':
+      renderFps = msg.payload.fps;
+      break;
+      
+    case 'perf':
+      if (sim && isSubWorker) {
+        // Sub-workers send perf stats to coordinator
+        const avgStepTime = frameCount > 0 ? stepTimeAccum / frameCount : 0;
+        self.postMessage({
+          type: 'worker-perf',
+          payload: {
+            workerId,
+            simHz,
+            entityCount: sim.count,
+            avgStepTime,
+            maxStepTime
+          }
+        });
+      }
+      break;
+  }
+});

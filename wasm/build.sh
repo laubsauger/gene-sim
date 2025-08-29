@@ -8,7 +8,25 @@ echo "Building WASM module..."
 if command -v wasm-pack &> /dev/null; then
     echo "wasm-pack found, building WASM module..."
     
-    if wasm-pack build --target web --out-dir pkg --release; then
+    # Build without wasm-opt first, then optimize manually with correct flags
+    if wasm-pack build --target web --out-dir pkg --release --no-opt; then
+        echo "Running wasm-opt with correct flags..."
+        # Check if wasm-opt is available
+        if command -v wasm-opt &> /dev/null; then
+            wasm-opt pkg/gene_sim_core_bg.wasm \
+                -O3 \
+                --enable-bulk-memory \
+                --enable-nontrapping-float-to-int \
+                -o pkg/gene_sim_core_bg_opt.wasm
+            if [ $? -eq 0 ]; then
+                mv pkg/gene_sim_core_bg_opt.wasm pkg/gene_sim_core_bg.wasm
+                echo "wasm-opt successful!"
+            else
+                echo "wasm-opt failed, using unoptimized version"
+            fi
+        else
+            echo "wasm-opt not found, using unoptimized version"
+        fi
         echo "WASM build successful!"
         
         # Copy the generated files to the src directory

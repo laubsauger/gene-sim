@@ -25,16 +25,6 @@ export function Controls({ client, isRunning, onStart }: ControlsProps) {
     return speedValues[index];
   };
   
-  const speedToSlider = (speedMul: number) => {
-    const index = speedValues.indexOf(speedMul);
-    if (index === -1) {
-      const closest = speedValues.reduce((prev, curr) => 
-        Math.abs(curr - speedMul) < Math.abs(prev - speedMul) ? curr : prev
-      );
-      return (speedValues.indexOf(closest) / (speedValues.length - 1)) * 100;
-    }
-    return (index / (speedValues.length - 1)) * 100;
-  };
   
   const handleSpeed = (speedMul: number) => {
     setSpeed(speedMul);
@@ -141,36 +131,6 @@ export function Controls({ client, isRunning, onStart }: ControlsProps) {
             opacity: isRunning ? 1 : 0.5,
           }}
         />
-        <style>{`
-          input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 18px;
-            height: 18px;
-            background: #3b82f6;
-            border: 2px solid white;
-            border-radius: 50%;
-            cursor: pointer;
-            transition: all 0.2s;
-          }
-          input[type="range"]::-webkit-slider-thumb:hover {
-            transform: scale(1.2);
-            background: #60a5fa;
-          }
-          input[type="range"]::-moz-range-thumb {
-            width: 18px;
-            height: 18px;
-            background: #3b82f6;
-            border: 2px solid white;
-            border-radius: 50%;
-            cursor: pointer;
-            transition: all 0.2s;
-          }
-          input[type="range"]::-moz-range-thumb:hover {
-            transform: scale(1.2);
-            background: #60a5fa;
-          }
-        `}</style>
       </div>
     </div>
   );

@@ -51,11 +51,24 @@ export function efficientMovementOptimized(
   birthsByTribe?: Uint32Array,
   allowHybrids?: boolean,
   orientation?: Float32Array,
-  age?: Float32Array
+  age?: Float32Array,
+  // Full arrays for multi-worker neighbor queries
+  fullPos?: Float32Array,
+  fullAlive?: Uint8Array,
+  fullTribeId?: Uint16Array,
+  fullGenes?: Float32Array,
+  fullEnergy?: Float32Array
 ): void {
   const G = 9;
   const base = i * G;
   const px = pos[i * 2], py = pos[i * 2 + 1];
+  
+  // Use full arrays for neighbor queries if available (multi-worker mode)
+  const queryPos = fullPos || pos;
+  const queryAlive = fullAlive || alive;
+  const queryTribeId = fullTribeId || tribeId;
+  const queryGenes = fullGenes || genes;
+  const queryEnergy = fullEnergy || energy;
   
   // Pre-fetch all genes for better cache locality
   const rawSpeed = genes[base];
@@ -111,10 +124,14 @@ export function efficientMovementOptimized(
   
   // Single neighbor search - collect everything we need
   grid.forNeighborsWithLimit(px, py, maxVision, MAX_NEIGHBORS, (j) => {
-    if (j === i || !alive[j]) return false;
+    if (j === i || !queryAlive[j]) return false;
     
-    const dx = pos[j * 2] - px;
-    const dy = pos[j * 2 + 1] - py;
+    if (j >= queryPos.length / 2) {
+      return false;
+    }
+    
+    const dx = queryPos[j * 2] - px;
+    const dy = queryPos[j * 2 + 1] - py;
     const distSq = dx * dx + dy * dy;
     
     // Skip if beyond max vision
@@ -132,8 +149,8 @@ export function efficientMovementOptimized(
     }
     
     // Cache neighbor data
-    const otherTribe = tribeId[j];
-    const otherEnergy = energy[j];
+    const otherTribe = queryTribeId[j];
+    const otherEnergy = queryEnergy[j];
     const isAlly = otherTribe === myTribe;
     
     // Store in cache for reuse
@@ -340,8 +357,8 @@ export function efficientMovementOptimized(
           if (!alive[j]) {
             // Create hybrid (keeping exact same logic as original)
             const mateBase = potentialMate * G;
-            const parentX = (pos[i * 2] + pos[potentialMate * 2]) / 2;
-            const parentY = (pos[i * 2 + 1] + pos[potentialMate * 2 + 1]) / 2;
+            const parentX = (pos[i * 2] + queryPos[potentialMate * 2]) / 2;
+            const parentY = (pos[i * 2 + 1] + queryPos[potentialMate * 2 + 1]) / 2;
             const spawnOffset = 10 + rand() * 10;
             const spawnAngle = rand() * Math.PI * 2;
             
@@ -349,8 +366,8 @@ export function efficientMovementOptimized(
             pos[j * 2 + 1] = parentY + Math.sin(spawnAngle) * spawnOffset;
             
             const ang = rand() * Math.PI * 2;
-            const hybridRawSpeed = (genes[base] + genes[mateBase]) / 2;
-            const hybridMetabolism = (genes[base + 2] + genes[mateBase + 2]) / 2;
+            const hybridRawSpeed = (genes[base] + queryGenes[mateBase]) / 2;
+            const hybridMetabolism = (genes[base + 2] + queryGenes[mateBase + 2]) / 2;
             const hybridMetabEfficiency = Math.min(1, hybridMetabolism / 0.15);
             const hybridSpeed = hybridRawSpeed * hybridMetabEfficiency;
             
@@ -364,14 +381,14 @@ export function efficientMovementOptimized(
             // Set hybrid genes
             const jBase = j * G;
             genes[jBase] = hybridSpeed * (0.9 + rand() * 0.2);
-            genes[jBase + 1] = (genes[base + 1] + genes[mateBase + 1]) / 2 * (0.9 + rand() * 0.2);
-            genes[jBase + 2] = (genes[base + 2] + genes[mateBase + 2]) / 2 * (0.9 + rand() * 0.2);
-            genes[jBase + 3] = (genes[base + 3] + genes[mateBase + 3]) / 2 * (0.9 + rand() * 0.2);
-            genes[jBase + 4] = (genes[base + 4] + genes[mateBase + 4]) / 2 * 0.7;
-            genes[jBase + 5] = (genes[base + 5] + genes[mateBase + 5]) / 2 * 1.2;
-            genes[jBase + 6] = (genes[base + 6] + genes[mateBase + 6]) / 2 * (0.9 + rand() * 0.2);
-            genes[jBase + 7] = (genes[base + 7] + genes[mateBase + 7]) / 2 * (0.9 + rand() * 0.2);
-            genes[jBase + 8] = (genes[base + 8] + genes[mateBase + 8]) / 2 * (0.9 + rand() * 0.2);
+            genes[jBase + 1] = (genes[base + 1] + queryGenes[mateBase + 1]) / 2 * (0.9 + rand() * 0.2);
+            genes[jBase + 2] = (genes[base + 2] + queryGenes[mateBase + 2]) / 2 * (0.9 + rand() * 0.2);
+            genes[jBase + 3] = (genes[base + 3] + queryGenes[mateBase + 3]) / 2 * (0.9 + rand() * 0.2);
+            genes[jBase + 4] = (genes[base + 4] + queryGenes[mateBase + 4]) / 2 * 0.7;
+            genes[jBase + 5] = (genes[base + 5] + queryGenes[mateBase + 5]) / 2 * 1.2;
+            genes[jBase + 6] = (genes[base + 6] + queryGenes[mateBase + 6]) / 2 * (0.9 + rand() * 0.2);
+            genes[jBase + 7] = (genes[base + 7] + queryGenes[mateBase + 7]) / 2 * (0.9 + rand() * 0.2);
+            genes[jBase + 8] = (genes[base + 8] + queryGenes[mateBase + 8]) / 2 * (0.9 + rand() * 0.2);
             
             // Set hybrid color
             if (color) {

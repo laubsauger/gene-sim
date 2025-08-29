@@ -91,9 +91,9 @@ export type TribeStats = {
 };
 
 export type SimStats = {
-  t: number; // sim time in seconds
+  time: number; // sim time in seconds
   population: number;
-  byTribe: Record<string, TribeStats>;
+  byTribe: Record<string, any>;
   global: {
     mean: {
       speed: number;
@@ -122,16 +122,22 @@ export type SimStats = {
 
 export type WorkerMsg =
   | { type: 'init'; payload: SimInit }
+  | { type: 'init-sub-worker'; payload: any }
   | { type: 'setSpeed'; payload: { speedMul: number } }
   | { type: 'pause'; payload: { paused: boolean } }
   | { type: 'requestSnapshot' }
   | { type: 'setViewport'; payload: { x: number; y: number; w: number; h: number; zoom: number } }
-  | { type: 'renderFps'; payload: { fps: number } };
+  | { type: 'renderFps'; payload: { fps: number } }
+  | { type: 'stats' }
+  | { type: 'perf' };
 
 export type PerfStats = {
-  fps: number;      // render frame rate
-  simSpeed: number; // simulation Hz
-  speedMul: number; // current speed multiplier
+  simHz: number;     // simulation Hz
+  renderFps: number; // render frame rate
+  entityCount: number;
+  avgStepTime: number;
+  maxStepTime: number;
+  workerCount: number;
 };
 
 export interface PerfBreakdown {
@@ -148,12 +154,21 @@ export interface PerfBreakdown {
 export type MainMsg =
   | { type: 'ready'; payload: { 
       sab: { 
-        pos: SharedArrayBuffer; 
-        color: SharedArrayBuffer; 
+        positions?: SharedArrayBuffer;
+        pos?: SharedArrayBuffer; 
+        colors?: SharedArrayBuffer;
+        color?: SharedArrayBuffer; 
         alive: SharedArrayBuffer;
         food?: SharedArrayBuffer;  // Food SharedArrayBuffer
+        foodGrid?: SharedArrayBuffer;
+        velocities?: SharedArrayBuffer;
+        energy?: SharedArrayBuffer;
+        tribeIds?: SharedArrayBuffer;
+        genes?: SharedArrayBuffer;
+        orientations?: SharedArrayBuffer;
+        ages?: SharedArrayBuffer;
       };
-      meta: { count: number };
+      meta: { count: number; actualCount?: number };
       foodMeta?: { cols: number; rows: number };
     }}
   | { type: 'stats'; payload: SimStats }

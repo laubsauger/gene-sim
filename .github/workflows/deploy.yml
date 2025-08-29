@@ -37,9 +37,13 @@ jobs:
           toolchain: stable
           targets: wasm32-unknown-unknown
       
-      - name: Install wasm-pack
+      - name: Install wasm-pack and wasm-opt
         run: |
+          # Install wasm-pack
           curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          
+          # Install binaryen (includes wasm-opt)
+          npm install -g wasm-opt
           
       - name: Cache Rust dependencies
         uses: actions/cache@v3
@@ -60,7 +64,25 @@ jobs:
       - name: Build WASM module
         run: |
           cd wasm
-          wasm-pack build --target web --out-dir pkg --release
+          # Build without wasm-opt first
+          wasm-pack build --target web --out-dir pkg --release --no-opt
+          
+          # Run wasm-opt manually with correct flags
+          if command -v wasm-opt &> /dev/null; then
+            echo "Running wasm-opt with bulk-memory and nontrapping-float-to-int..."
+            wasm-opt pkg/gene_sim_core_bg.wasm \
+              -O3 \
+              --enable-bulk-memory \
+              --enable-nontrapping-float-to-int \
+              -o pkg/gene_sim_core_bg_opt.wasm
+            if [ $? -eq 0 ]; then
+              mv pkg/gene_sim_core_bg_opt.wasm pkg/gene_sim_core_bg.wasm
+              echo "wasm-opt successful!"
+            else
+              echo "wasm-opt failed, using unoptimized version"
+            fi
+          fi
+          
           cd ..
           # Copy WASM files to src directory for bundling
           mkdir -p src/wasm
