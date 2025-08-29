@@ -13,10 +13,17 @@ export type GeneSpec = {
   viewAngle?: number;   // field of view in degrees (30-180)
 };
 
+export type SpawnPattern = 'blob' | 'scattered' | 'herd' | 'adaptive';
+
 export type TribeInit = {
   name: string;
   count: number;
-  spawn: { x: number; y: number; radius: number };
+  spawn: { 
+    x: number; 
+    y: number; 
+    radius: number;
+    pattern?: SpawnPattern; // 'blob' (default), 'scattered', 'herd', 'adaptive' (based on diet)
+  };
   genes?: Partial<GeneSpec>;
 };
 
@@ -129,7 +136,8 @@ export type MainMsg =
       sab: { 
         pos: SharedArrayBuffer; 
         color: SharedArrayBuffer; 
-        alive: SharedArrayBuffer 
+        alive: SharedArrayBuffer;
+        food?: SharedArrayBuffer;  // Food SharedArrayBuffer
       };
       meta: { count: number };
       foodMeta?: { cols: number; rows: number };

@@ -131,3 +131,4 @@ type MainMsg =
 - **Low FPS at high entity count**: Reduce point size, throttle updates
 - **Worker not responding**: Check message protocol, avoid blocking operations
 - **Non-deterministic behavior**: Ensure all randomness uses seeded RNG
+- server is running

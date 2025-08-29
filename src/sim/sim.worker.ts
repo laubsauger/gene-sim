@@ -26,6 +26,7 @@ let energyConfig = { start: 50, max: 100, repro: 60 }; // Default energy setting
 
 // Food grid
 let foodGrid!: Float32Array;
+let foodGridUint8!: Uint8Array; // Food grid as uint8 for GPU (SharedArrayBuffer)
 let foodMaxCapacity!: Float32Array; // Max capacity per cell (from noise distribution)
 let foodRegrowTimer!: Float32Array; // Timer for each cell's regrowth
 let foodCols = 0, foodRows = 0;
@@ -70,8 +71,6 @@ function spawnEntity(i: number, x: number, y: number, g: GeneSpec, tribeIx: numb
   
   alive[i] = 1;
   tribeId[i] = tribeIx;
-  energy[i] = initialEnergy;
-  age[i] = initialAge;
   
   const base = i * G;
   genes[base] = g.speed;
@@ -83,6 +82,12 @@ function spawnEntity(i: number, x: number, y: number, g: GeneSpec, tribeIx: numb
   genes[base + 6] = g.foodStandards || 0.3;
   genes[base + 7] = g.diet || -0.5;
   genes[base + 8] = g.viewAngle || 120;
+  
+  // Carnivores start with more energy reserves (can last longer between meals)
+  const carnivoreLevel = Math.max(0, g.diet || -0.5);
+  const energyBonus = 1 + carnivoreLevel * 0.5; // Up to 50% more starting energy
+  energy[i] = initialEnergy * energyBonus;
+  age[i] = initialAge;
   
   const [r, gc, b] = hueToRgb(g.colorHue);
   color[i * 3] = r | 0;
@@ -115,16 +120,21 @@ function step(dt: number) {
   perfTimers.spatialHash += performance.now() - hashStart;
   
   // Regenerate food based on timers (respecting initial distribution)
+  // OPTIMIZATION: Only update food every 10 frames (6 Hz) instead of 60 Hz
   const foodStart = performance.now();
-  for (let i = 0; i < foodGrid.length; i++) {
-    const maxCap = foodMaxCapacity[i]; // Respect noise-based max capacity
-    if (foodGrid[i] < maxCap && maxCap > 0) {
-      foodRegrowTimer[i] += dt;
-      if (foodRegrowTimer[i] >= FOOD_REGROW_TIME) {
-        foodGrid[i] = maxCap;
-        foodRegrowTimer[i] = 0;
-      } else {
-        foodGrid[i] = (foodRegrowTimer[i] / FOOD_REGROW_TIME) * maxCap;
+  const shouldUpdateFood = Math.floor(t * 10) !== Math.floor((t - dt) * 10);
+  
+  if (shouldUpdateFood) {
+    for (let i = 0; i < foodGrid.length; i++) {
+      const maxCap = foodMaxCapacity[i]; // Respect noise-based max capacity
+      if (foodGrid[i] < maxCap && maxCap > 0) {
+        foodRegrowTimer[i] += dt * 10; // Compensate for reduced update rate
+        if (foodRegrowTimer[i] >= FOOD_REGROW_TIME) {
+          foodGrid[i] = maxCap;
+          foodRegrowTimer[i] = 0;
+        } else {
+          foodGrid[i] = (foodRegrowTimer[i] / FOOD_REGROW_TIME) * maxCap;
+        }
       }
     }
   }
@@ -155,6 +165,7 @@ function step(dt: number) {
     // const vision = genes[base + 1]; // unused but kept for future use
     const metab = genes[base + 2];
     const repro = genes[base + 3];
+    const diet = genes[base + 7] || -0.5; // -1=herbivore, 0=omnivore, 1=carnivore
     
     // Age entity
     age[i] += dt;
@@ -184,81 +195,104 @@ function step(dt: number) {
     const ageFactor = 1 + (age[i] / 200); // Older entities consume slightly more energy (reduced)
     // currentSpeed already calculated above for orientation
     
-    // Movement cost scales with speed² and metabolism (physics: kinetic energy ~ v²)
-    const moveCost = (currentSpeed * currentSpeed) * 0.00001 * metab;
+    // Diet-based energy efficiency
+    // Carnivores are more efficient at rest and movement (like big cats)
+    // Herbivores have higher constant energy drain (constant grazing)
+    const carnivoreLevel = Math.max(0, diet); // 0-1 for carnivorous
+    const herbivoreLevel = Math.max(0, -diet); // 0-1 for herbivorous
     
-    // Base metabolic cost scales with metabolism (maintaining cellular processes)
-    const baseCost = metab * 2.0; // Increased base cost for high metabolism
+    // Movement cost scales with speed² and metabolism
+    // Carnivores use 50% less energy when moving (efficient hunters)
+    const dietMovementEfficiency = 1 - (carnivoreLevel * 0.5);
+    const moveCost = (currentSpeed * currentSpeed) * 0.000005 * metab * dietMovementEfficiency;
+    
+    // Base metabolic cost
+    // Herbivores have 50% higher base metabolism (constant digestion)
+    // Carnivores have 30% lower base metabolism (can rest between hunts)
+    const dietMetabolismFactor = 1 + (herbivoreLevel * 0.5) - (carnivoreLevel * 0.3);
+    const baseCost = metab * 1.5 * dietMetabolismFactor;
     
     energy[i] -= (baseCost + moveCost) * dt * ageFactor;
     
     // Check food at current position
-    const foodCheckStart = performance.now();
-    const px = pos[i * 2];
-    const py = pos[i * 2 + 1];
+    // OPTIMIZATION: Only check food every 3rd frame for each entity (staggered)
+    const shouldCheckFood = (i + Math.floor(t * 20)) % 3 === 0;
+    const foodCheckStart = shouldCheckFood ? performance.now() : 0;
     
-    // Only check food if entity is within world bounds and hungry
-    if (energy[i] < 80 && px >= 0 && px < world.width && py >= 0 && py < world.height) {
-      // Pre-calculated cell dimensions
-      const cellWidth = world.width / foodCols;
-      const cellHeight = world.height / foodRows;
-      const radiusInCells = 1; // Simplified: check 3x3 grid instead of variable radius
+    if (shouldCheckFood) {
+      const px = pos[i * 2];
+      const py = pos[i * 2 + 1];
       
-      const centerFx = Math.floor((px / world.width) * foodCols);
-      const centerFy = Math.floor((py / world.height) * foodRows);
-      
-      let totalFoodConsumed = 0;
-      
-      // Simplified food consumption - check 3x3 grid around entity
-      for (let dy = -radiusInCells; dy <= radiusInCells; dy++) {
-        for (let dx = -radiusInCells; dx <= radiusInCells; dx++) {
-          const fx = centerFx + dx;
-          const fy = centerFy + dy;
+      // Only check food if entity is within world bounds and hungry
+      if (energy[i] < 80 && px >= 0 && px < world.width && py >= 0 && py < world.height) {
+        // OPTIMIZATION: Direct cell lookup instead of 3x3 grid
+        const fx = Math.floor((px / world.width) * foodCols);
+        const fy = Math.floor((py / world.height) * foodRows);
+        
+        let totalFoodConsumed = 0;
+        
+        // Only check the exact cell we're in and immediate neighbors if very close to edge
+        const cellWidth = world.width / foodCols;
+        const cellHeight = world.height / foodRows;
+        const cellX = px - fx * cellWidth;
+        const cellY = py - fy * cellHeight;
+        
+        // Check current cell
+        const foodIdx = fy * foodCols + fx;
+        if (foodGrid[foodIdx] > 0.3) {
+          foodGrid[foodIdx] = 0;
+          foodRegrowTimer[foodIdx] = 0;
+          totalFoodConsumed++;
+        }
+        
+        // Only check neighbors if very close to cell edge (within 25% of edge)
+        if (cellX < cellWidth * 0.25 && fx > 0) {
+          const leftIdx = fy * foodCols + (fx - 1);
+          if (foodGrid[leftIdx] > 0.3) {
+            foodGrid[leftIdx] = 0;
+            foodRegrowTimer[leftIdx] = 0;
+            totalFoodConsumed++;
+          }
+        } else if (cellX > cellWidth * 0.75 && fx < foodCols - 1) {
+          const rightIdx = fy * foodCols + (fx + 1);
+          if (foodGrid[rightIdx] > 0.3) {
+            foodGrid[rightIdx] = 0;
+            foodRegrowTimer[rightIdx] = 0;
+            totalFoodConsumed++;
+          }
+        }
+        
+        // Gain energy based on amount consumed and diet
+        if (totalFoodConsumed > 0) {
+          // Diet affects plant food efficiency
+          const dietGene = genes[base + 7] || -0.5;
+          const herbivoreLevel = Math.max(0, -dietGene); // 0-1 for herbivorous tendency
           
-          // Check bounds
-          if (fx >= 0 && fx < foodCols && fy >= 0 && fy < foodRows) {
-            // Calculate world position of food cell center
-            const foodWorldX = (fx + 0.5) * cellWidth;
-            const foodWorldY = (fy + 0.5) * cellHeight;
-            
-            // Simple distance check - consume if close enough (faster than circular check)
-            if (Math.abs(foodWorldX - px) <= 20 && Math.abs(foodWorldY - py) <= 20) {
-              const foodIdx = fy * foodCols + fx;
-              if (foodGrid[foodIdx] > 0.3) { // Only eat if food has some substance
-                foodGrid[foodIdx] = 0;
-                foodRegrowTimer[foodIdx] = 0; // Start regrow timer
-                totalFoodConsumed++;
-              }
-            }
+          // Pure carnivores (diet=1) get 0% from plants, pure herbivores (diet=-1) get 100%
+          // Omnivores (diet=0) get 50% efficiency
+          const plantFoodEfficiency = herbivoreLevel; // 0-1 based on how herbivorous
+          
+          // Only herbivores and omnivores can get energy from plants
+          if (herbivoreLevel > 0) {
+            // Compensate for reduced check frequency by increasing energy gain
+            energy[i] += Math.min(30, totalFoodConsumed * 8 * plantFoodEfficiency);
+            energy[i] = Math.min(energy[i], energyConfig.max); // Max energy cap
           }
         }
       }
-      
-      // Gain energy based on amount consumed and diet
-      if (totalFoodConsumed > 0) {
-        // Diet affects plant food efficiency
-        const dietGene = genes[base + 7] || -0.5;
-        const herbivoreLevel = Math.max(0, -dietGene); // 0-1 for herbivorous tendency
-        
-        // Pure carnivores (diet=1) get 0% from plants, pure herbivores (diet=-1) get 100%
-        // Omnivores (diet=0) get 50% efficiency
-        const plantFoodEfficiency = herbivoreLevel; // 0-1 based on how herbivorous
-        
-        // Only herbivores and omnivores can get energy from plants
-        if (herbivoreLevel > 0) {
-          energy[i] += Math.min(30, totalFoodConsumed * 5 * plantFoodEfficiency);
-          energy[i] = Math.min(energy[i], energyConfig.max); // Max energy cap
-        }
-      }
     }
-    perfTimers.foodConsume += performance.now() - foodCheckStart;
+    
+    if (shouldCheckFood) {
+      perfTimers.foodConsume += performance.now() - foodCheckStart;
+    }
     
     // Use spatial hashing for efficient movement and combat
     const moveStart = performance.now();
     efficientMovement(
       i, pos, vel, alive, energy, tribeId, genes, grid,
       foodGrid, foodCols, foodRows, world, rand, dt,
-      killsByTribe, deathsByTribe, color, birthsByTribe, allowHybrids
+      killsByTribe, deathsByTribe, color, birthsByTribe, allowHybrids,
+      orientation, age
     );
     perfTimers.movement += performance.now() - moveStart;
     
@@ -278,28 +312,25 @@ function step(dt: number) {
     pos[i * 2] += velx * dt;
     pos[i * 2 + 1] += vely * dt;
     
-    // Hard boundaries - bounce off walls with some randomness to prevent accumulation
-    const bounceForce = 10; // Push away from walls
-    const margin = 5; // Boundary margin
+    // Improved boundary handling - prevent vacuum effect at edges
+    const bounceMargin = 2; // Small margin to prevent exact edge sticking
+    const bounceDamping = 0.7; // Dampen velocity on bounce to prevent rapid oscillation
+    const repulsionForce = 10; // Push entities away from exact boundaries
     
-    if (pos[i * 2] <= margin) {
-      pos[i * 2] = margin;
-      vel[i * 2] = Math.abs(vel[i * 2]) + bounceForce; // Bounce with extra force
-      vel[i * 2 + 1] += (rand() - 0.5) * sp * 0.5; // Add random perpendicular velocity
-    } else if (pos[i * 2] >= world.width - margin) {
-      pos[i * 2] = world.width - margin;
-      vel[i * 2] = -Math.abs(vel[i * 2]) - bounceForce;
-      vel[i * 2 + 1] += (rand() - 0.5) * sp * 0.5;
+    if (pos[i * 2] <= 0) {
+      pos[i * 2] = bounceMargin; // Place slightly inside boundary
+      vel[i * 2] = Math.abs(vel[i * 2]) * bounceDamping + repulsionForce; // Bounce with damping + push inward
+    } else if (pos[i * 2] >= world.width) {
+      pos[i * 2] = world.width - bounceMargin; // Place slightly inside boundary
+      vel[i * 2] = -Math.abs(vel[i * 2]) * bounceDamping - repulsionForce; // Bounce with damping + push inward
     }
     
-    if (pos[i * 2 + 1] <= margin) {
-      pos[i * 2 + 1] = margin;
-      vel[i * 2 + 1] = Math.abs(vel[i * 2 + 1]) + bounceForce;
-      vel[i * 2] += (rand() - 0.5) * sp * 0.5; // Add random perpendicular velocity
-    } else if (pos[i * 2 + 1] >= world.height - margin) {
-      pos[i * 2 + 1] = world.height - margin;
-      vel[i * 2 + 1] = -Math.abs(vel[i * 2 + 1]) - bounceForce;
-      vel[i * 2] += (rand() - 0.5) * sp * 0.5;
+    if (pos[i * 2 + 1] <= 0) {
+      pos[i * 2 + 1] = bounceMargin; // Place slightly inside boundary
+      vel[i * 2 + 1] = Math.abs(vel[i * 2 + 1]) * bounceDamping + repulsionForce; // Bounce with damping + push inward
+    } else if (pos[i * 2 + 1] >= world.height) {
+      pos[i * 2 + 1] = world.height - bounceMargin; // Place slightly inside boundary
+      vel[i * 2 + 1] = -Math.abs(vel[i * 2 + 1]) * bounceDamping - repulsionForce; // Bounce with damping + push inward
     }
     perfTimers.physics += performance.now() - physicsStart;
     
@@ -434,7 +465,7 @@ function stats(): SimStats {
   const tribeData: Record<string, number[][]> = {}; // Store gene values per tribe
   
   let aliveCount = 0;
-  const globalGenes: number[][] = [[], [], [], [], [], [], [], []]; // speed, vision, metab, repro, aggro, cohesion, foodStandards, diet
+  const globalGenes: number[][] = [[], [], [], [], [], [], [], [], []]; // speed, vision, metab, repro, aggro, cohesion, foodStandards, diet, viewAngle
   
   // Collect data
   for (let i = 0; i < count; i++) {
@@ -445,10 +476,10 @@ function stats(): SimStats {
       
       // Initialize tribe data if needed
       if (!tribeData[tribeName]) {
-        tribeData[tribeName] = [[], [], [], [], [], [], [], []];
+        tribeData[tribeName] = [[], [], [], [], [], [], [], [], []]; // 9 arrays for 9 genes
       }
       
-      // Collect gene values (speed, vision, metabolism, reproChance, aggression, cohesion, foodStandards, diet)
+      // Collect gene values (speed, vision, metabolism, reproChance, aggression, cohesion, foodStandards, diet, viewAngle)
       tribeData[tribeName][0].push(genes[base]);        // speed
       tribeData[tribeName][1].push(genes[base + 1]);    // vision
       tribeData[tribeName][2].push(genes[base + 2]);    // metabolism
@@ -457,6 +488,7 @@ function stats(): SimStats {
       tribeData[tribeName][5].push(genes[base + 5]);    // cohesion
       tribeData[tribeName][6].push(genes[base + 6] || 0.3);  // foodStandards
       tribeData[tribeName][7].push(genes[base + 7] || -0.5); // diet
+      tribeData[tribeName][8].push(genes[base + 8] || 120); // viewAngle
       
       globalGenes[0].push(genes[base]);
       globalGenes[1].push(genes[base + 1]);
@@ -466,6 +498,7 @@ function stats(): SimStats {
       globalGenes[5].push(genes[base + 5]);
       globalGenes[6].push(genes[base + 6] || 0.3);
       globalGenes[7].push(genes[base + 7] || -0.5);
+      globalGenes[8].push(genes[base + 8] || 120);  // viewAngle
     }
   }
   
@@ -505,7 +538,7 @@ function stats(): SimStats {
     const cohesionStats = calcStats(geneArrays[5]);
     const foodStandardsStats = calcStats(geneArrays[6]);
     const dietStats = calcStats(geneArrays[7]);
-    const viewAngleStats = calcStats(geneArrays[8] || []);
+    const viewAngleStats = calcStats(geneArrays[8]);
     
     byTribe[tribeName] = {
       count: geneArrays[0].length,
@@ -548,7 +581,7 @@ function stats(): SimStats {
   const globalCohesion = calcStats(globalGenes[5]);
   const globalFoodStandards = calcStats(globalGenes[6]);
   const globalDiet = calcStats(globalGenes[7]);
-  const globalViewAngle = calcStats(globalGenes[8] || []);
+  const globalViewAngle = calcStats(globalGenes[8]);
   
   return {
     t,
@@ -619,6 +652,11 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
     // Initialize food grid with configurable resolution
     foodCols = init.world.foodGrid?.cols || 256;
     foodRows = init.world.foodGrid?.rows || 256;
+    
+    // SharedArrayBuffer for food (uint8 for GPU efficiency) - AFTER we know dimensions
+    const sabFood = new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * foodCols * foodRows);
+    foodGridUint8 = new Uint8Array(sabFood); // Initialize the shared uint8 view
+    
     foodRegen = init.world.foodGrid?.regen || 0.05;
     foodCapacity = init.world.foodGrid?.capacity || 1;
     foodGrid = new Float32Array(foodCols * foodRows);
@@ -681,6 +719,11 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
       }
     }
     
+    // Initialize foodGridUint8 with initial food values
+    for (let i = 0; i < foodGrid.length; i++) {
+      foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, foodGrid[i])) * 255);
+    }
+    
     // Set hybridization flag
     allowHybrids = init.hybridization !== false; // Default true for backwards compat
     
@@ -694,7 +737,7 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
     // Initialize RNG
     rand = createRng(init.seed);
     
-    // Spawn tribes
+    // Spawn tribes with different distribution patterns
     count = 0;
     init.tribes.forEach((tribe, ix) => {
       const baseGenes = clampGene({
@@ -703,12 +746,106 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
       });
       tribeColors[ix] = baseGenes.colorHue;
       
+      // Determine spawn pattern
+      const pattern = tribe.spawn.pattern || 'blob';
+      const diet = baseGenes.diet || -0.5;
+      const carnivoreLevel = Math.max(0, diet);
+      const herbivoreLevel = Math.max(0, -diet);
+      
       for (let i = 0; i < tribe.count; i++) {
         if (count >= cap) break;
-        const ang = rand() * Math.PI * 2;
-        const r = Math.sqrt(rand()) * tribe.spawn.radius;
-        const x = tribe.spawn.x + Math.cos(ang) * r;
-        const y = tribe.spawn.y + Math.sin(ang) * r;
+        
+        let x: number, y: number;
+        
+        if (pattern === 'blob') {
+          // Original tight blob spawn
+          const ang = rand() * Math.PI * 2;
+          const r = Math.sqrt(rand()) * tribe.spawn.radius;
+          x = tribe.spawn.x + Math.cos(ang) * r;
+          y = tribe.spawn.y + Math.sin(ang) * r;
+          
+        } else if (pattern === 'scattered') {
+          // Random scatter across entire map
+          x = rand() * world.width;
+          y = rand() * world.height;
+          
+        } else if (pattern === 'herd') {
+          // Multiple small groups (herbivore-like)
+          const numHerds = 3 + Math.floor(rand() * 3); // 3-5 herds
+          const herdIndex = i % numHerds;
+          const herdAngle = (herdIndex / numHerds) * Math.PI * 2;
+          const herdDistance = tribe.spawn.radius * 2;
+          const herdCenterX = tribe.spawn.x + Math.cos(herdAngle) * herdDistance;
+          const herdCenterY = tribe.spawn.y + Math.sin(herdAngle) * herdDistance;
+          
+          // Small blob around herd center
+          const ang = rand() * Math.PI * 2;
+          const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.5);
+          x = herdCenterX + Math.cos(ang) * r;
+          y = herdCenterY + Math.sin(ang) * r;
+          
+        } else if (pattern === 'adaptive') {
+          // Pattern based on diet
+          if (carnivoreLevel > 0.7) {
+            // Carnivores: very sparse, wide distribution
+            // Scattered across map with preference for edges
+            if (rand() < 0.3) {
+              // 30% spawn near edges (hunting grounds)
+              const edge = Math.floor(rand() * 4);
+              const margin = 100;
+              if (edge === 0) {
+                x = margin + rand() * 200;
+                y = rand() * world.height;
+              } else if (edge === 1) {
+                x = world.width - margin - rand() * 200;
+                y = rand() * world.height;
+              } else if (edge === 2) {
+                x = rand() * world.width;
+                y = margin + rand() * 200;
+              } else {
+                x = rand() * world.width;
+                y = world.height - margin - rand() * 200;
+              }
+            } else {
+              // 70% scattered across map
+              x = 200 + rand() * (world.width - 400);
+              y = 200 + rand() * (world.height - 400);
+            }
+            
+          } else if (herbivoreLevel > 0.7) {
+            // Herbivores: tight herds
+            const numHerds = 2 + Math.floor(herbivoreLevel * 3); // 2-4 herds based on how herbivorous
+            const herdIndex = i % numHerds;
+            const herdAngle = (herdIndex / numHerds) * Math.PI * 2;
+            const herdDistance = tribe.spawn.radius * (1.5 + rand());
+            const herdCenterX = tribe.spawn.x + Math.cos(herdAngle) * herdDistance;
+            const herdCenterY = tribe.spawn.y + Math.sin(herdAngle) * herdDistance;
+            
+            // Tight blob around herd center
+            const ang = rand() * Math.PI * 2;
+            const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.3 * (2 - herbivoreLevel)); // Tighter for pure herbivores
+            x = herdCenterX + Math.cos(ang) * r;
+            y = herdCenterY + Math.sin(ang) * r;
+            
+          } else {
+            // Omnivores: medium scatter
+            const ang = rand() * Math.PI * 2;
+            const r = Math.sqrt(rand()) * tribe.spawn.radius * 2; // Wider than blob but not fully scattered
+            x = tribe.spawn.x + Math.cos(ang) * r;
+            y = tribe.spawn.y + Math.sin(ang) * r;
+          }
+        } else {
+          // Fallback to blob
+          const ang = rand() * Math.PI * 2;
+          const r = Math.sqrt(rand()) * tribe.spawn.radius;
+          x = tribe.spawn.x + Math.cos(ang) * r;
+          y = tribe.spawn.y + Math.sin(ang) * r;
+        }
+        
+        // Clamp to world bounds with better margin
+        x = Math.max(50, Math.min(world.width - 50, x));
+        y = Math.max(50, Math.min(world.height - 50, y));
+        
         const initialAge = rand() * 30; // Random age between 0-30 seconds
         const initialEnergy = energyConfig.start + rand() * 20; // Start energy plus some variation
         spawnEntity(count++, x, y, baseGenes, ix, initialEnergy, initialAge);
@@ -723,7 +860,12 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
     const payload: MainMsg = {
       type: 'ready',
       payload: {
-        sab: { pos: sabPos, color: sabCol, alive: sabAlive },
+        sab: { 
+          pos: sabPos, 
+          color: sabCol, 
+          alive: sabAlive,
+          food: sabFood  // Add food SharedArrayBuffer
+        },
         meta: { count },
         foodMeta: { cols: foodCols, rows: foodRows },
       },
@@ -771,15 +913,14 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
         simSteps = 0;
       }
       
-      // Send food updates frequently for smooth rendering (10Hz)
+      // Convert food to uint8 for GPU (no need to send, it's shared!)
+      // Only update every few frames for performance
       if (now - lastFoodTime > 100) {
         lastFoodTime = now;
-        const foodBuffer = foodGrid.buffer.slice(0);
-        const foodUpdate: MainMsg = {
-          type: 'foodUpdate',
-          payload: { foodGrid: foodBuffer }
-        };
-        self.postMessage(foodUpdate);
+        // Convert float food values to uint8 for GPU
+        for (let i = 0; i < foodGrid.length; i++) {
+          foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, foodGrid[i])) * 255);
+        }
       }
       
       // Send stats periodically (2Hz for performance)

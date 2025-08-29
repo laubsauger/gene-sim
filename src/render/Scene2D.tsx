@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrthographicCamera, OrbitControls, Stats } from '@react-three/drei';
 import { EntityPoints } from './EntityPoints';
-import { FoodMesh } from './FoodMesh';
+import { FoodTexture } from './FoodTexture';
 import type { SimClient } from '../client/setupSimClient';
 
 // FPS tracking component
@@ -33,36 +33,35 @@ function FPSTracker({ client }: { client: SimClient }) {
 }
 
 function FoodLayer({ client, world }: { client: SimClient; world: { width: number; height: number } }) {
-  const [foodGrid, setFoodGrid] = useState<Float32Array | null>(null);
-  const [foodCols, setFoodCols] = useState(256);
-  const [foodRows, setFoodRows] = useState(256);
+  const { buffers } = client;
+  const [ready, setReady] = useState(false);
   
   useEffect(() => {
+    // Check if food buffer exists immediately
+    if (buffers?.food) {
+      setReady(true);
+      return;
+    }
+
+    // Listen for ready message
     const unsubscribe = client.onMessage((msg) => {
-      if (msg.type === 'foodUpdate' && msg.payload.foodGrid) {
-        // Convert ArrayBuffer to Float32Array
-        const newFoodGrid = new Float32Array(msg.payload.foodGrid);
-        setFoodGrid(newFoodGrid);
-      } else if (msg.type === 'ready' && msg.payload.foodMeta) {
-        // Get grid dimensions from worker
-        setFoodCols(msg.payload.foodMeta.cols);
-        setFoodRows(msg.payload.foodMeta.rows);
+      if (msg.type === 'ready' && msg.payload.sab.food) {
+        setReady(true);
       }
     });
-    
-    // Initialize with empty grid until we get actual data
-    setFoodGrid(new Float32Array(foodCols * foodRows).fill(0));
-    
+
     return unsubscribe;
-  }, [client, foodCols, foodRows]);
+  }, [client, buffers]);
   
-  if (!foodGrid) return null;
+  if (!ready || !buffers?.food || !buffers?.foodCols || !buffers?.foodRows) {
+    return null;
+  }
   
   return (
-    <FoodMesh
-      foodGrid={foodGrid}
-      cols={foodCols}
-      rows={foodRows}
+    <FoodTexture
+      foodData={buffers.food}
+      cols={buffers.foodCols}
+      rows={buffers.foodRows}
       world={world}
     />
   );
@@ -72,6 +71,7 @@ function EntitiesLayer({ client }: { client: SimClient }) {
   const { buffers } = client;
   const [ready, setReady] = useState(false);
   const [updateKey, setUpdateKey] = useState(0);
+  const [renderSize, setRenderSize] = useState(48);
 
   // Force re-render on config updates
   useEffect(() => {
@@ -82,6 +82,18 @@ function EntitiesLayer({ client }: { client: SimClient }) {
     window.addEventListener('simConfigUpdate', handleConfigUpdate);
     return () => {
       window.removeEventListener('simConfigUpdate', handleConfigUpdate);
+    };
+  }, []);
+
+  // Listen for render size changes
+  useEffect(() => {
+    const handleSizeChange = (e: CustomEvent) => {
+      setRenderSize(e.detail);
+    };
+
+    window.addEventListener('entityRenderSizeChange', handleSizeChange as EventListener);
+    return () => {
+      window.removeEventListener('entityRenderSizeChange', handleSizeChange as EventListener);
     };
   }, []);
 
@@ -124,7 +136,7 @@ function EntitiesLayer({ client }: { client: SimClient }) {
       color={buffers.color}
       alive={buffers.alive}
       count={buffers.count}
-      pointSize={25}
+      pointSize={renderSize}
     />
   );
 }

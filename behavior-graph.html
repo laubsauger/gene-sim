@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gene-Sim Behavior System Graph</title>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        h1 {
+            text-align: center;
+            color: #fff;
+        }
+        #network {
+            width: 100%;
+            height: 80vh;
+            border: 2px solid #333;
+            background: #0a0a0a;
+        }
+        .legend {
+            margin-top: 20px;
+            padding: 15px;
+            background: #222;
+            border-radius: 8px;
+        }
+        .legend-item {
+            display: inline-block;
+            margin: 0 15px;
+        }
+        .legend-color {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            margin-right: 5px;
+            vertical-align: middle;
+            border-radius: 3px;
+        }
+        .controls {
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        button {
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 8px 16px;
+            margin: 0 5px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #444;
+        }
+    </style>
+</head>
+<body>
+    <h1>Gene-Sim Behavior System Interactive Graph</h1>
+    <div class="controls">
+        <button onclick="switchLayout('hierarchical')">Hierarchical View</button>
+        <button onclick="switchLayout('radial')">Radial View</button>
+        <button onclick="switchLayout('force')">Force-Directed View</button>
+        <button onclick="resetView()">Reset View</button>
+    </div>
+    <div id="network"></div>
+    <div class="legend">
+        <div class="legend-item">
+            <span class="legend-color" style="background: #4CAF50;"></span>
+            <span>Genes</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #2196F3;"></span>
+            <span>Behaviors</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #FF9800;"></span>
+            <span>Environmental</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #9C27B0;"></span>
+            <span>Emergent</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #F44336;"></span>
+            <span>Energy/Combat</span>
+        </div>
+    </div>
+
+    <script>
+        // Create nodes with explicit positioning hints
+        const nodes = new vis.DataSet([
+            // LAYER 1: Genes (Green) - Input layer
+            { id: 'speed', label: 'Speed\nGene', color: '#4CAF50', group: 'gene', level: 0, x: -400, y: -300, title: 'Base movement velocity (0-100)' },
+            { id: 'vision', label: 'Vision\nGene', color: '#4CAF50', group: 'gene', level: 0, x: -300, y: -300, title: 'Detection range (20-150)' },
+            { id: 'metabolism', label: 'Metabolism\nGene', color: '#4CAF50', group: 'gene', level: 0, x: -200, y: -300, title: 'Energy consumption rate (0.05-0.30)' },
+            { id: 'reproduction', label: 'Reproduction\nGene', color: '#4CAF50', group: 'gene', level: 0, x: -100, y: -300, title: 'Reproduction chance (0.01-0.20)' },
+            { id: 'aggression', label: 'Aggression\nGene', color: '#4CAF50', group: 'gene', level: 0, x: 0, y: -300, title: 'Combat probability (0.0-1.0)' },
+            { id: 'cohesion', label: 'Cohesion\nGene', color: '#4CAF50', group: 'gene', level: 0, x: 100, y: -300, title: 'Flocking strength (0.0-1.0)' },
+            { id: 'foodStandards', label: 'Food Standards\nGene', color: '#4CAF50', group: 'gene', level: 0, x: 200, y: -300, title: 'Pickiness about food (0.0-1.0)' },
+            { id: 'diet', label: 'Diet\nGene', color: '#4CAF50', group: 'gene', level: 0, x: 300, y: -300, title: 'Carnivore/Herbivore (-1.0 to 1.0)' },
+            { id: 'viewAngle', label: 'View Angle\nGene', color: '#4CAF50', group: 'gene', level: 0, x: 400, y: -300, title: 'Field of vision (60-180°)' },
+            
+            // LAYER 2: Environmental Factors (Orange) - Context layer
+            { id: 'energy', label: 'Energy\nLevel', color: '#FF9800', group: 'env', level: 1, x: -350, y: -150, size: 30, title: 'Current energy (0-100)' },
+            { id: 'crowdStress', label: 'Crowd\nStress', color: '#FF9800', group: 'env', level: 1, x: -200, y: -150, size: 25, title: 'Nearby entity density' },
+            { id: 'foodDensity', label: 'Food\nDensity', color: '#FF9800', group: 'env', level: 1, x: -50, y: -150, size: 25, title: 'Local plant food availability' },
+            { id: 'nearbyPrey', label: 'Nearby\nPrey', color: '#FF9800', group: 'env', level: 1, x: 100, y: -150, size: 25, title: 'Huntable targets in vision' },
+            { id: 'borderProximity', label: 'Border\nProximity', color: '#FF9800', group: 'env', level: 1, x: 250, y: -150, size: 25, title: 'Distance to world edge' },
+            { id: 'tribalPresence', label: 'Tribal\nPresence', color: '#FF9800', group: 'env', level: 1, x: 400, y: -150, size: 25, title: 'Allies vs enemies ratio' },
+            
+            // LAYER 3: Core Behaviors (Blue) - Processing layer
+            { id: 'movement', label: 'Movement\nSystem', color: '#2196F3', group: 'behavior', level: 2, x: -400, y: 0, size: 35, title: 'Core movement and velocity calculations' },
+            { id: 'hunting', label: 'Hunting\nBehavior', color: '#2196F3', group: 'behavior', level: 2, x: -250, y: 0, size: 30, title: 'Prey targeting and pursuit' },
+            { id: 'flocking', label: 'Flocking\nBehavior', color: '#2196F3', group: 'behavior', level: 2, x: -100, y: 0, size: 30, title: 'Group movement coordination' },
+            { id: 'foodSeeking', label: 'Food\nSeeking', color: '#2196F3', group: 'behavior', level: 2, x: 50, y: 0, size: 30, title: 'Plant food location and consumption' },
+            { id: 'combat', label: 'Combat\nSystem', color: '#F44336', group: 'behavior', level: 2, x: 200, y: 0, size: 30, title: 'Fighting and energy stealing' },
+            { id: 'mating', label: 'Mating\nBehavior', color: '#2196F3', group: 'behavior', level: 2, x: 350, y: 0, size: 30, title: 'Reproduction with same/different tribes' },
+            { id: 'migration', label: 'Migration\nBehavior', color: '#2196F3', group: 'behavior', level: 2, x: 500, y: 0, size: 30, title: 'Long-range exploration' },
+            
+            // LAYER 4: Emergent Behaviors (Purple) - Pattern layer
+            { id: 'packHunting', label: 'Pack\nHunting', color: '#9C27B0', group: 'emergent', level: 3, x: -300, y: 150, size: 28, title: 'Coordinated group hunting' },
+            { id: 'herding', label: 'Grazing\nHerds', color: '#9C27B0', group: 'emergent', level: 3, x: -100, y: 150, size: 28, title: 'Herbivore group movement' },
+            { id: 'territorial', label: 'Territorial\nControl', color: '#9C27B0', group: 'emergent', level: 3, x: 100, y: 150, size: 28, title: 'Area domination' },
+            { id: 'nomadic', label: 'Nomadic\nCarnivores', color: '#9C27B0', group: 'emergent', level: 3, x: 300, y: 150, size: 28, title: 'Long-range hunting patterns' },
+            
+            // LAYER 5: Outcomes (Red) - Result layer
+            { id: 'energyGain', label: 'Energy\nGain', color: '#4CAF50', group: 'outcome', level: 4, x: -200, y: 300, shape: 'triangle', title: 'Food consumption results' },
+            { id: 'energyLoss', label: 'Energy\nLoss', color: '#F44336', group: 'outcome', level: 4, x: -50, y: 300, shape: 'triangleDown', title: 'Metabolism and movement costs' },
+            { id: 'death', label: 'Death', color: '#F44336', group: 'outcome', level: 4, x: 100, y: 300, shape: 'triangleDown', title: 'Starvation or combat death' },
+            { id: 'birth', label: 'Birth', color: '#4CAF50', group: 'outcome', level: 4, x: 250, y: 300, shape: 'triangle', title: 'New entity creation' }
+        ]);
+
+        // Create edges with better organization
+        const edges = new vis.DataSet([
+            // Gene to Behavior connections (primary influences)
+            { from: 'speed', to: 'movement', width: 3, color: {color: '#66BB6A'} },
+            { from: 'vision', to: 'hunting', width: 2, color: {color: '#66BB6A'} },
+            { from: 'vision', to: 'foodSeeking', width: 2, color: {color: '#66BB6A'} },
+            { from: 'vision', to: 'flocking', width: 2, color: {color: '#66BB6A'} },
+            { from: 'metabolism', to: 'movement', width: 2, color: {color: '#66BB6A'} },
+            { from: 'aggression', to: 'combat', width: 3, color: {color: '#66BB6A'} },
+            { from: 'cohesion', to: 'flocking', width: 3, color: {color: '#66BB6A'} },
+            { from: 'diet', to: 'hunting', width: 3, color: {color: '#66BB6A'} },
+            { from: 'diet', to: 'foodSeeking', width: 3, color: {color: '#66BB6A'} },
+            { from: 'foodStandards', to: 'migration', width: 2, color: {color: '#66BB6A'} },
+            { from: 'viewAngle', to: 'vision', width: 2, color: {color: '#66BB6A'}, dashes: true },
+            { from: 'reproduction', to: 'mating', width: 3, color: {color: '#66BB6A'} },
+            
+            // Environmental to Behavior influences
+            { from: 'energy', to: 'hunting', width: 2, color: {color: '#FFA726'} },
+            { from: 'energy', to: 'mating', width: 2, color: {color: '#FFA726'} },
+            { from: 'crowdStress', to: 'movement', width: 2, color: {color: '#FFA726'} },
+            { from: 'crowdStress', to: 'mating', width: 2, color: {color: '#FF6F00'}, dashes: true },
+            { from: 'foodDensity', to: 'foodSeeking', width: 3, color: {color: '#FFA726'} },
+            { from: 'foodDensity', to: 'migration', width: 2, color: {color: '#FFA726'} },
+            { from: 'nearbyPrey', to: 'hunting', width: 3, color: {color: '#FFA726'} },
+            { from: 'borderProximity', to: 'movement', width: 2, color: {color: '#FFA726'} },
+            { from: 'tribalPresence', to: 'combat', width: 2, color: {color: '#FFA726'} },
+            { from: 'tribalPresence', to: 'flocking', width: 2, color: {color: '#FFA726'} },
+            
+            // Behavior to Emergent patterns
+            { from: 'hunting', to: 'packHunting', width: 2, color: {color: '#42A5F5'} },
+            { from: 'flocking', to: 'packHunting', width: 2, color: {color: '#42A5F5'} },
+            { from: 'flocking', to: 'herding', width: 3, color: {color: '#42A5F5'} },
+            { from: 'foodSeeking', to: 'herding', width: 2, color: {color: '#42A5F5'} },
+            { from: 'combat', to: 'territorial', width: 3, color: {color: '#42A5F5'} },
+            { from: 'migration', to: 'nomadic', width: 3, color: {color: '#42A5F5'} },
+            { from: 'hunting', to: 'nomadic', width: 2, color: {color: '#42A5F5'} },
+            
+            // Behavior to Outcome connections
+            { from: 'combat', to: 'energyGain', width: 2, color: {color: '#66BB6A'} },
+            { from: 'combat', to: 'death', width: 2, color: {color: '#F44336'} },
+            { from: 'foodSeeking', to: 'energyGain', width: 3, color: {color: '#66BB6A'} },
+            { from: 'movement', to: 'energyLoss', width: 3, color: {color: '#FF5722'} },
+            { from: 'migration', to: 'energyLoss', width: 2, color: {color: '#FF5722'} },
+            { from: 'mating', to: 'birth', width: 3, color: {color: '#66BB6A'} },
+            { from: 'mating', to: 'energyLoss', width: 2, color: {color: '#FF5722'} },
+            
+            // Emergent to Outcome
+            { from: 'packHunting', to: 'energyGain', width: 2, color: {color: '#AB47BC'} },
+            { from: 'territorial', to: 'combat', width: 2, color: {color: '#AB47BC'}, arrows: 'to', smooth: {type: 'curvedCW'} },
+            { from: 'nomadic', to: 'energyLoss', width: 2, color: {color: '#AB47BC'} },
+            
+            // Feedback loops (curved)
+            { from: 'energyGain', to: 'energy', width: 2, color: {color: '#4CAF50'}, smooth: {type: 'curvedCW', roundness: 0.4} },
+            { from: 'energyLoss', to: 'energy', width: 2, color: {color: '#F44336'}, smooth: {type: 'curvedCW', roundness: 0.4} },
+            { from: 'death', to: 'crowdStress', width: 1, color: {color: '#888'}, smooth: {type: 'curvedCW', roundness: 0.4}, dashes: true },
+            { from: 'birth', to: 'crowdStress', width: 1, color: {color: '#888'}, smooth: {type: 'curvedCW', roundness: 0.4}, dashes: true },
+            
+            // Cross-layer energy connections
+            { from: 'metabolism', to: 'energyLoss', width: 2, color: {color: '#FF5722'}, smooth: {type: 'curvedCW'} },
+            { from: 'speed', to: 'energyLoss', width: 2, color: {color: '#FF5722'}, smooth: {type: 'curvedCW'} },
+            { from: 'diet', to: 'energyGain', width: 2, color: {color: '#66BB6A'}, smooth: {type: 'curvedCW'} },
+            { from: 'diet', to: 'energyLoss', width: 2, color: {color: '#FF5722'}, smooth: {type: 'curvedCW'} },
+            { from: 'aggression', to: 'mating', width: 1, color: {color: '#888'}, dashes: true, smooth: {type: 'curvedCW'} },
+            { from: 'cohesion', to: 'packHunting', width: 2, color: {color: '#66BB6A'}, smooth: {type: 'curvedCW'} },
+            { from: 'energy', to: 'death', width: 2, color: {color: '#F44336'}, smooth: {type: 'curvedCW'} },
+            { from: 'nearbyPrey', to: 'nomadic', width: 1, color: {color: '#FFA726'}, dashes: true, smooth: {type: 'curvedCW'} },
+            { from: 'hunting', to: 'combat', width: 2, color: {color: '#42A5F5'} },
+            { from: 'flocking', to: 'movement', width: 2, color: {color: '#42A5F5'} }
+        ]);
+
+        // Create network
+        const container = document.getElementById('network');
+        const data = { nodes: nodes, edges: edges };
+        
+        let network;
+        
+        // Hierarchical layout options
+        const hierarchicalOptions = {
+            physics: {
+                enabled: false
+            },
+            layout: {
+                hierarchical: {
+                    enabled: true,
+                    direction: 'UD',
+                    sortMethod: 'directed',
+                    shakeTowards: 'roots',
+                    levelSeparation: 150,
+                    nodeSpacing: 120,
+                    treeSpacing: 200,
+                    blockShifting: true,
+                    edgeMinimization: true,
+                    parentCentralization: true
+                }
+            },
+            nodes: {
+                shape: 'box',
+                margin: 10,
+                font: {
+                    color: '#ffffff',
+                    size: 12,
+                    bold: true
+                },
+                borderWidth: 2,
+                shadow: true,
+                widthConstraint: {
+                    minimum: 80,
+                    maximum: 120
+                }
+            },
+            edges: {
+                font: {
+                    size: 10,
+                    color: '#aaa',
+                    strokeWidth: 0
+                },
+                smooth: {
+                    enabled: true,
+                    type: 'dynamic'
+                },
+                hoverWidth: 3,
+                shadow: false,
+                arrows: {
+                    to: {
+                        enabled: true,
+                        scaleFactor: 0.5
+                    }
+                }
+            },
+            interaction: {
+                hover: true,
+                zoomView: true,
+                dragView: true,
+                tooltipDelay: 200
+            },
+            groups: {
+                gene: {
+                    shape: 'ellipse',
+                    color: { background: '#4CAF50', border: '#2E7D32' }
+                },
+                behavior: {
+                    shape: 'box',
+                    color: { background: '#2196F3', border: '#1565C0' }
+                },
+                env: {
+                    shape: 'diamond',
+                    color: { background: '#FF9800', border: '#E65100' }
+                },
+                emergent: {
+                    shape: 'star',
+                    color: { background: '#9C27B0', border: '#6A1B9A' }
+                },
+                outcome: {
+                    color: { background: '#F44336', border: '#C62828' }
+                }
+            }
+        };
+        
+        // Force-directed layout options
+        const forceOptions = {
+            physics: {
+                enabled: true,
+                forceAtlas2Based: {
+                    gravitationalConstant: -50,
+                    centralGravity: 0.01,
+                    springLength: 200,
+                    springConstant: 0.08,
+                    damping: 0.4,
+                    avoidOverlap: 1
+                },
+                maxVelocity: 50,
+                minVelocity: 0.1,
+                solver: 'forceAtlas2Based',
+                stabilization: {
+                    enabled: true,
+                    iterations: 1000,
+                    updateInterval: 100,
+                    onlyDynamicEdges: false,
+                    fit: true
+                }
+            },
+            layout: {
+                randomSeed: 2,
+                improvedLayout: true
+            },
+            nodes: hierarchicalOptions.nodes,
+            edges: hierarchicalOptions.edges,
+            interaction: hierarchicalOptions.interaction,
+            groups: hierarchicalOptions.groups
+        };
+        
+        // Radial layout options
+        const radialOptions = {
+            physics: {
+                enabled: false
+            },
+            layout: {
+                randomSeed: 2
+            },
+            nodes: hierarchicalOptions.nodes,
+            edges: hierarchicalOptions.edges,
+            interaction: hierarchicalOptions.interaction,
+            groups: hierarchicalOptions.groups
+        };
+
+        // Initialize with hierarchical layout
+        network = new vis.Network(container, data, hierarchicalOptions);
+        
+        // Layout switching functions
+        function switchLayout(type) {
+            if (type === 'hierarchical') {
+                network.setOptions(hierarchicalOptions);
+            } else if (type === 'force') {
+                network.setOptions(forceOptions);
+            } else if (type === 'radial') {
+                // Custom radial layout
+                const nodePositions = {};
+                const layers = {
+                    0: [], // genes
+                    1: [], // env
+                    2: [], // behaviors
+                    3: [], // emergent
+                    4: []  // outcomes
+                };
+                
+                nodes.forEach(node => {
+                    if (node.level !== undefined) {
+                        layers[node.level].push(node.id);
+                    }
+                });
+                
+                const centerX = 0;
+                const centerY = 0;
+                const radiusStep = 150;
+                
+                Object.keys(layers).forEach(level => {
+                    const levelNodes = layers[level];
+                    const radius = (parseInt(level) + 1) * radiusStep;
+                    const angleStep = (2 * Math.PI) / levelNodes.length;
+                    
+                    levelNodes.forEach((nodeId, index) => {
+                        const angle = index * angleStep - Math.PI / 2;
+                        nodePositions[nodeId] = {
+                            x: centerX + radius * Math.cos(angle),
+                            y: centerY + radius * Math.sin(angle)
+                        };
+                    });
+                });
+                
+                network.setOptions(radialOptions);
+                network.once('stabilized', () => {
+                    Object.keys(nodePositions).forEach(nodeId => {
+                        network.moveNode(nodeId, nodePositions[nodeId].x, nodePositions[nodeId].y);
+                    });
+                });
+                network.stabilize();
+            }
+        }
+        
+        function resetView() {
+            network.fit({
+                animation: {
+                    duration: 1000,
+                    easingFunction: 'easeInOutQuad'
+                }
+            });
+        }
+        
+        // Add double-click to focus on node connections
+        network.on("doubleClick", function(params) {
+            if (params.nodes.length > 0) {
+                const nodeId = params.nodes[0];
+                const connectedNodes = network.getConnectedNodes(nodeId);
+                const connectedEdges = network.getConnectedEdges(nodeId);
+                
+                network.setSelection({
+                    nodes: [nodeId, ...connectedNodes],
+                    edges: connectedEdges
+                });
+                
+                network.focus(nodeId, {
+                    scale: 1.2,
+                    animation: {
+                        duration: 1000,
+                        easingFunction: 'easeInOutQuad'
+                    }
+                });
+            }
+        });
+        
+        // Add hover highlighting
+        network.on("hoverNode", function(params) {
+            const nodeId = params.node;
+            const connectedNodes = network.getConnectedNodes(nodeId);
+            const allNodes = nodes.getIds();
+            
+            const updateNodes = allNodes.map(id => {
+                if (id === nodeId || connectedNodes.includes(id)) {
+                    return { id: id, opacity: 1 };
+                } else {
+                    return { id: id, opacity: 0.3 };
+                }
+            });
+            
+            nodes.update(updateNodes);
+        });
+        
+        network.on("blurNode", function() {
+            const allNodes = nodes.getIds();
+            const updateNodes = allNodes.map(id => ({ id: id, opacity: 1 }));
+            nodes.update(updateNodes);
+        });
+    </script>
+</body>
+</html>

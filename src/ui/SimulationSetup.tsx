@@ -1,87 +1,27 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { SimClient } from '../client/setupSimClient';
-import type { SimInit, TribeInit } from '../sim/types';
+import type { SimInit, TribeInit, SpawnPattern } from '../sim/types';
 import { throttle } from '../utils/throttle';
 
 interface SimulationSetupProps {
   client: SimClient;
   onStart: () => void;
   isRunning: boolean;
+  onSeedChange?: (seed: number) => void;
 }
 
-const defaultTribes: TribeInit[] = [
-  {
-    name: 'Warmongers',
-    count: 1000,
-    spawn: { x: 500, y: 500, radius: 200 },  // Top-left corner
-    genes: {
-      speed: 70,
-      vision: 35,
-      metabolism: 0.25,
-      reproChance: 0.01,
-      aggression: 0.9,
-      cohesion: 0.7,
-      colorHue: 0,
-      foodStandards: 0.2,
-      diet: 0.3,  // Carnivore-leaning
-      viewAngle: 90  // Narrow FOV for hunting focus
-    }
-  },
-  {
-    name: 'Swarm',
-    count: 1000,
-    spawn: { x: 3500, y: 500, radius: 200 },  // Top-right corner
-    genes: {
-      speed: 40,
-      vision: 30,
-      metabolism: 0.15,
-      reproChance: 0.02,
-      cohesion: 0.95,
-      aggression: 0.4,
-      colorHue: 270,  // Purple
-      foodStandards: 0.5,
-      diet: -0.5,  // Herbivore-leaning
-      viewAngle: 140  // Wide FOV for predator detection
-    }
-  },
-  {
-    name: 'Survivors',
-    count: 1000,
-    spawn: { x: 500, y: 3500, radius: 200 },  // Bottom-left corner
-    genes: {
-      speed: 30,
-      vision: 45,
-      metabolism: 0.08,
-      reproChance: 0.015,
-      aggression: 0.2,
-      cohesion: 0.55,
-      colorHue: 210,
-      foodStandards: 0.7,
-      diet: -0.8,  // Strong herbivore
-      viewAngle: 160  // Very wide FOV for maximum awareness
-    }
-  },
-  {
-    name: 'Nomads',
-    count: 1000,
-    spawn: { x: 3500, y: 3500, radius: 200 },  // Bottom-right corner
-    genes: {
-      speed: 60,
-      vision: 50,
-      metabolism: 0.18,
-      reproChance: 0.008,
-      aggression: 0.5,
-      cohesion: 0.3,
-      colorHue: 120,  // Green
-      foodStandards: 0.1,
-      diet: 0,  // Omnivore
-      viewAngle: 120  // Balanced FOV
-    }
-  },
-];
 
 // Custom slider with styled track
-const StyledSlider = ({ min, max, value, onChange, step = 1, style = {} }: any) => {
+interface StyledSliderProps {
+  min: number;
+  max: number;
+  value: number;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  step?: number;
+  style?: React.CSSProperties;
+}
+
+const StyledSlider = ({ min, max, value, onChange, step = 1, style = {} }: StyledSliderProps) => {
   const percentage = ((value - min) / (max - min)) * 100;
   return (
     <input
@@ -104,9 +44,119 @@ const StyledSlider = ({ min, max, value, onChange, step = 1, style = {} }: any) 
   );
 };
 
-export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupProps) {
+// Simple seeded random number generator
+function seededRandom(seed: number) {
+  let s = seed;
+  return () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
+
+// Generate deterministic tribe configs based on seed
+function generateTribesFromSeed(seed: number): TribeInit[] {
+  const rng = seededRandom(seed);
+  const tribesCount = 3 + Math.floor(rng() * 2); // 3-4 tribes
+  const tribes: TribeInit[] = [];
+
+  const archetypes = [
+    // Carnivore Pack Hunters
+    {
+      name: 'Hunters',
+      genes: {
+        speed: 70 + rng() * 30,
+        vision: 60 + rng() * 40,
+        metabolism: 0.2 + rng() * 0.15,
+        reproChance: 0.005 + rng() * 0.01,
+        aggression: 0.7 + rng() * 0.3,
+        cohesion: 0.5 + rng() * 0.4,
+        diet: 0.5 + rng() * 0.5, // 0.5 to 1.0 (carnivore)
+        foodStandards: 0.1 + rng() * 0.2,
+        viewAngle: 100 + rng() * 60,
+        colorHue: 0 + rng() * 30 // Red spectrum
+      },
+      spawnPattern: 'scattered' as const
+    },
+    // Herbivore Herds
+    {
+      name: 'Grazers',
+      genes: {
+        speed: 20 + rng() * 40,
+        vision: 40 + rng() * 30,
+        metabolism: 0.08 + rng() * 0.12,
+        reproChance: 0.01 + rng() * 0.02,
+        aggression: 0.1 + rng() * 0.3,
+        cohesion: 0.6 + rng() * 0.4,
+        diet: -1.0 + rng() * 0.5, // -1.0 to -0.5 (herbivore)
+        foodStandards: 0.4 + rng() * 0.4,
+        viewAngle: 120 + rng() * 60,
+        colorHue: 90 + rng() * 60 // Green spectrum
+      },
+      spawnPattern: 'herd' as const
+    },
+    // Balanced Omnivores
+    {
+      name: 'Adaptors',
+      genes: {
+        speed: 40 + rng() * 40,
+        vision: 30 + rng() * 40,
+        metabolism: 0.12 + rng() * 0.13,
+        reproChance: 0.008 + rng() * 0.012,
+        aggression: 0.3 + rng() * 0.4,
+        cohesion: 0.3 + rng() * 0.4,
+        diet: -0.3 + rng() * 0.6, // -0.3 to 0.3 (omnivore)
+        foodStandards: 0.2 + rng() * 0.4,
+        viewAngle: 100 + rng() * 40,
+        colorHue: 180 + rng() * 60 // Blue spectrum
+      },
+      spawnPattern: 'adaptive' as const
+    },
+    // Fast Scavengers
+    {
+      name: 'Nomads',
+      genes: {
+        speed: 60 + rng() * 40,
+        vision: 50 + rng() * 30,
+        metabolism: 0.15 + rng() * 0.15,
+        reproChance: 0.006 + rng() * 0.008,
+        aggression: 0.4 + rng() * 0.3,
+        cohesion: 0.2 + rng() * 0.3,
+        diet: -0.2 + rng() * 0.7, // Mostly omnivore with variation
+        foodStandards: 0.1 + rng() * 0.3,
+        viewAngle: 140 + rng() * 40,
+        colorHue: 270 + rng() * 60 // Purple spectrum
+      },
+      spawnPattern: 'scattered' as const
+    }
+  ];
+
+  // Shuffle and pick tribes
+  const shuffled = archetypes.sort(() => rng() - 0.5);
+
+  for (let i = 0; i < tribesCount && i < shuffled.length; i++) {
+    const archetype = shuffled[i];
+    const angle = (i / tribesCount) * Math.PI * 2;
+    const distance = 1200 + rng() * 800;
+
+    tribes.push({
+      name: archetype.name,
+      count: 800 + Math.floor(rng() * 400), // 800-1200 entities
+      spawn: {
+        x: 2000 + Math.cos(angle) * distance,
+        y: 2000 + Math.sin(angle) * distance,
+        radius: 150 + rng() * 100,
+        pattern: archetype.spawnPattern
+      },
+      genes: archetype.genes
+    });
+  }
+
+  return tribes;
+}
+
+export function SimulationSetup({ client, onStart, isRunning, onSeedChange }: SimulationSetupProps) {
   const [seed, setSeed] = useState(Date.now());
-  const [tribes, setTribes] = useState(defaultTribes);
+  const [tribes, setTribes] = useState(() => generateTribesFromSeed(Date.now()));
   const [worldWidth, setWorldWidth] = useState(4000);
   const [worldHeight, setWorldHeight] = useState(4000);
   const [foodCols, setFoodCols] = useState(256);
@@ -121,6 +171,7 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
   const [maxEnergy, setMaxEnergy] = useState(100);
   const [reproEnergy, setReproEnergy] = useState(60);
   const [allowHybrids, setAllowHybrids] = useState(false);
+  const [entityRenderSize, setEntityRenderSize] = useState(48);
   const [initialized, setInitialized] = useState(false);
 
   const updateConfigImmediate = useCallback(() => {
@@ -179,7 +230,14 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
   const randomizeSeed = () => {
     const newSeed = Date.now() + Math.floor(Math.random() * 1000000);
     setSeed(newSeed);
+    setTribes(generateTribesFromSeed(newSeed));
+    if (onSeedChange) onSeedChange(newSeed);
   };
+
+  // Update parent when seed changes manually
+  useEffect(() => {
+    if (onSeedChange) onSeedChange(seed);
+  }, [seed, onSeedChange]);
 
   const addTribe = () => {
     const colors = [60, 180, 240, 300];
@@ -275,7 +333,11 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
                 <input
                   type="number"
                   value={seed}
-                  onChange={(e) => setSeed(Number(e.target.value))}
+                  onChange={(e) => {
+                    const newSeed = Number(e.target.value);
+                    setSeed(newSeed);
+                    setTribes(generateTribesFromSeed(newSeed));
+                  }}
                   style={{
                     flex: 1,
                     padding: '8px',
@@ -365,9 +427,59 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
                     </button>
                   </summary>
                   <div style={{ padding: '10px', fontSize: '12px' }}>
+                    {/* Special Diet Slider */}
+                    <div style={{ marginBottom: '12px', padding: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }}>
+                      <label style={{ color: '#a0aec0', fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>
+                        Diet Type: {(() => {
+                          const diet = tribe.genes?.diet ?? -0.5;
+                          if (diet < -0.7) return '🌿 Herbivore';
+                          if (diet < -0.3) return '🥗 Mostly Herbivore';
+                          if (diet < 0.3) return '🍽️ Omnivore';
+                          if (diet < 0.7) return '🥩 Mostly Carnivore';
+                          return '🦁 Pure Carnivore';
+                        })()}
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '11px', color: '#4ade80' }}>🌿</span>
+                        <input
+                          type="range"
+                          min="-1"
+                          max="1"
+                          step="0.05"
+                          value={tribe.genes?.diet ?? -0.5}
+                          onChange={(e) => updateTribeGene(i, 'diet', Number(e.target.value))}
+                          style={{
+                            flex: 1,
+                            height: '12px',
+                            background: `linear-gradient(to right, 
+                              #4ade80 0%, 
+                              #22c55e 25%, 
+                              #fbbf24 50%, 
+                              #f97316 75%, 
+                              #ef4444 100%)`,
+                            borderRadius: '10px',
+                            outline: 'none',
+                            WebkitAppearance: 'none',
+                            cursor: 'pointer',
+                          }}
+                          className="diet-slider"
+                        />
+                        <span style={{ fontSize: '11px', color: '#ef4444' }}>🥩</span>
+                        <span style={{
+                          minWidth: '35px',
+                          textAlign: 'right',
+                          fontSize: '11px',
+                          color: '#cbd5e0',
+                          fontFamily: 'monospace'
+                        }}>
+                          {(tribe.genes?.diet ?? -0.5).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-                      {['speed', 'vision', 'metabolism', 'reproChance', 'aggression', 'cohesion', 'foodStandards', 'diet', 'colorHue'].map((gene) => {
-                        const value = (tribe.genes as any)?.[gene] ?? {
+                      {(['speed', 'vision', 'metabolism', 'reproChance', 'aggression', 'cohesion', 'foodStandards', 'viewAngle', 'colorHue'] as const).map((gene) => {
+                        const value = tribe.genes?.[gene] ?? {
                           speed: 50,
                           vision: 35,
                           metabolism: 0.15,
@@ -388,6 +500,7 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
                           cohesion: 'Cohesion',
                           foodStandards: 'Pickiness',
                           diet: 'Diet (-1=Herb, 1=Carn)',
+                          viewAngle: 'View Angle',
                           colorHue: 'Color Hue'
                         };
                         return (
@@ -397,7 +510,9 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
                             </label>
                             <input
                               type="number"
-                              step={gene === 'colorHue' ? 10 : gene === 'diet' ? 0.1 : 0.01}
+                              step={gene === 'colorHue' ? 10 : gene === 'viewAngle' ? 5 : 0.01}
+                              min={gene === 'viewAngle' ? 30 : undefined}
+                              max={gene === 'viewAngle' ? 180 : undefined}
                               value={value}
                               onChange={(e) => updateTribeGene(i, gene, Number(e.target.value))}
                               style={{
@@ -447,6 +562,54 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
                           })}
                           style={{
                             flex: 1,
+                            padding: '4px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: '1px solid rgba(255,255,255,0.2)',
+                            borderRadius: '3px',
+                            color: '#fff',
+                            fontSize: '12px',
+                          }}
+                        />
+                      </div>
+                      <div style={{ marginTop: '6px' }}>
+                        <label style={{ color: '#a0aec0', fontSize: '11px', display: 'block', marginBottom: '2px' }}>
+                          Spawn Pattern
+                        </label>
+                        <select
+                          value={tribe.spawn.pattern || 'blob'}
+                          onChange={(e) => updateTribe(i, {
+                            ...tribe,
+                            spawn: { ...tribe.spawn, pattern: e.target.value as SpawnPattern }
+                          })}
+                          style={{
+                            width: '100%',
+                            padding: '4px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: '1px solid rgba(255,255,255,0.2)',
+                            borderRadius: '3px',
+                            color: '#fff',
+                            fontSize: '12px',
+                          }}
+                        >
+                          <option value="blob">Blob (tight cluster)</option>
+                          <option value="scattered">Scattered (random)</option>
+                          <option value="herd">Herd (multiple groups)</option>
+                          <option value="adaptive">Adaptive (diet-based)</option>
+                        </select>
+                      </div>
+                      <div style={{ marginTop: '6px' }}>
+                        <label style={{ color: '#a0aec0', fontSize: '11px' }}>
+                          Spawn Radius
+                        </label>
+                        <input
+                          type="number"
+                          value={tribe.spawn.radius}
+                          onChange={(e) => updateTribe(i, {
+                            ...tribe,
+                            spawn: { ...tribe.spawn, radius: Number(e.target.value) }
+                          })}
+                          style={{
+                            width: '100%',
                             padding: '4px',
                             background: 'rgba(255,255,255,0.1)',
                             border: '1px solid rgba(255,255,255,0.2)',
@@ -736,6 +899,34 @@ export function SimulationSetup({ client, onStart, isRunning }: SimulationSetupP
                         Enable cross-tribe mating (hybrid evolution)
                       </span>
                     </label>
+                  </div>
+
+                  {/* Visual Settings */}
+                  <div>
+                    <label style={{ color: '#a0aec0', fontSize: '12px', fontWeight: '500', marginBottom: '8px', display: 'block' }}>
+                      Visual Settings
+                    </label>
+                    <div>
+                      <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                        Entity Render Size ({entityRenderSize}px)
+                      </label>
+                      <StyledSlider
+                        min={5}
+                        max={100}
+                        value={entityRenderSize}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          const newSize = Number(e.target.value);
+                          setEntityRenderSize(newSize);
+                          // Dispatch event so Scene2D can update
+                          window.dispatchEvent(new CustomEvent('entityRenderSizeChange', { detail: newSize }));
+                        }}
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                        <span style={{ fontSize: '10px', color: '#4a5568' }}>Tiny</span>
+                        <span style={{ fontSize: '10px', color: '#4a5568' }}>Normal</span>
+                        <span style={{ fontSize: '10px', color: '#4a5568' }}>Large</span>
+                      </div>
+                    </div>
                   </div>
 
                 </div>

@@ -10,9 +10,10 @@ import { PerformancePanel } from './PerformancePanel';
 
 export interface StatsPanelProps {
   client: SimClient;
+  currentSeed?: number;
 }
 
-export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) {
+export const StatsPanel = memo(function StatsPanel({ client, currentSeed }: StatsPanelProps) {
   const [stats, setStats] = useState<SimStats | null>(null);
   const [viewMode, setViewMode] = useState<'dominance' | 'compare' | 'details'>('dominance');
   const [simPerf, setSimPerf] = useState({ fps: 0, simSpeed: 0, speedMul: 1 });
@@ -67,6 +68,17 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
     }}>
       <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 'bold' }}>
         Simulation Stats
+        {currentSeed && (
+          <span style={{ 
+            fontSize: '10px', 
+            fontWeight: 'normal', 
+            color: '#888',
+            marginLeft: '8px',
+            fontFamily: 'monospace'
+          }}>
+            Seed: {currentSeed}
+          </span>
+        )}
       </h3>
       <div style={{ display: 'grid', gap: '6px' }}>
         {/* Population and time stats */}
@@ -165,6 +177,7 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
                   <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Aggr</th>
                   <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Pick</th>
                   <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>Diet</th>
+                  <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>View</th>
                   <th style={{ textAlign: 'center', color: '#888', padding: '2px' }}>K/S</th>
                 </tr>
               </thead>
@@ -202,6 +215,9 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
                       <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
                         {tribe.mean.diet?.toFixed(1) || '-0.5'}
                       </td>
+                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
+                        {tribe.mean.viewAngle?.toFixed(0) || '120'}
+                      </td>
                       <td style={{ textAlign: 'center', color: '#999', padding: '2px', fontSize: '10px' }}>
                         {tribe.kills || 0}/{tribe.starved || 0}
                       </td>
@@ -235,6 +251,9 @@ export const StatsPanel = memo(function StatsPanel({ client }: StatsPanelProps) 
                   </td>
                   <td style={{ textAlign: 'center', color: '#bbb', padding: '2px' }}>
                     {stats.global.mean.diet?.toFixed(1) || '-0.5'}
+                  </td>
+                  <td style={{ textAlign: 'center', color: '#bbb', padding: '2px' }}>
+                    {stats.global.mean.viewAngle?.toFixed(0) || '120'}
                   </td>
                   <td style={{ textAlign: 'center', color: '#999', padding: '2px', fontSize: '10px' }}>
                     -

@@ -20,7 +20,9 @@ export function efficientMovement(
   deathsByTribe?: Uint32Array,
   color?: Uint8Array,
   birthsByTribe?: Uint32Array,
-  allowHybrids?: boolean
+  allowHybrids?: boolean,
+  orientation?: Float32Array,
+  age?: Float32Array
 ): void {
   const G = 9; // Now includes foodStandards, diet, and viewAngle genes
   const base = i * G;
@@ -42,6 +44,18 @@ export function efficientMovement(
   const myTribe = tribeId[i];
   const myEnergy = energy[i];
   
+  // CARNIVORE HUNTING: Calculate diet-based variables early
+  const carnivoreLevel = Math.max(0, diet); // 0-1 for carnivorous tendency
+  const isHunter = carnivoreLevel > 0.2; // Even slightly carnivorous = hunter
+
+  // Hunt proactively unless satiated - INCREASED thresholds for more aggressive hunting
+  // Pure carnivores (1.0) hunt until 95% full, omnivores until ~60%
+  const huntingThreshold = 95 - (carnivoreLevel * 35); // 95 to 60 based on carnivore level
+  const shouldHunt = isHunter && myEnergy < huntingThreshold;
+
+  // Desperation factor - hungrier carnivores become more aggressive
+  const hungerDesperation = isHunter ? Math.max(0, (huntingThreshold - myEnergy) / huntingThreshold) : 0;
+
   // Use actual position for lookup
   
   // Accumulate neighbor influences (limited to spatial cells)
@@ -63,7 +77,8 @@ export function efficientMovement(
   const maxChecks = Math.max(25, Math.min(40, 600000 / alive.length)); // 25-40 checks adaptive
   
   // Get entity orientation for view angle calculation
-  const myOrientation = _dt > 0 ? Math.atan2(vel[i * 2 + 1], vel[i * 2]) : 0;
+  // Use stored orientation if available, otherwise calculate from velocity
+  const myOrientation = orientation ? orientation[i] : (_dt > 0 ? Math.atan2(vel[i * 2 + 1], vel[i * 2]) : 0);
   
   // Use optimized neighbor search with early exit
   grid.forNeighborsWithLimit(px, py, vision, maxChecks, (j) => {
@@ -78,12 +93,13 @@ export function efficientMovement(
     
     // Check if entity is within view angle
     const angleToTarget = Math.atan2(dy, dx);
-    let angleDiff = Math.abs(angleToTarget - myOrientation);
+    let angleDiff = angleToTarget - myOrientation;
     // Normalize angle difference to [-π, π]
-    if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+    if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+    if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
     
     // Skip if outside view angle (viewAngle is full FOV, so half on each side)
-    if (angleDiff > viewAngle / 2) return false;
+    if (Math.abs(angleDiff) > viewAngle / 2) return false;
     
     totalNearby++;
     const otherTribe = tribeId[j];
@@ -140,9 +156,33 @@ export function efficientMovement(
   let vx = vel[i * 2];
   let vy = vel[i * 2 + 1];
   
+  // PACK HUNTING: Carnivores with high cohesion hunt together
+  let packHuntBonus = 0;
+  if (nearbyAllies > 0 && isHunter && cohesion > 0.4) {
+    // Check if allies are also hunting
+    let huntingAllies = 0;
+    grid.forNeighborsWithLimit(px, py, vision, 10, (j) => {
+      if (j !== i && alive[j] && tribeId[j] === myTribe) {
+        const allyEnergy = energy[j];
+        const allyBase = j * G;
+        const allyDiet = genes[allyBase + 7] || -0.5;
+        const allyCarnivore = Math.max(0, allyDiet);
+
+        // Count ally as hunting if carnivorous and hungry
+        if (allyCarnivore > 0.2 && allyEnergy < 70) {
+          huntingAllies++;
+        }
+      }
+      return true;
+    });
+
+    // Pack hunting bonus - more effective with more hunters
+    packHuntBonus = Math.min(1, huntingAllies * 0.2) * cohesion;
+  }
+
   if (nearbyAllies > 0) {
     // Normalize and apply forces with cohesion factor
-    const cohesionFactor = cohesion * 0.1;
+    const cohesionFactor = cohesion * 0.1 * (1 + packHuntBonus); // Stronger cohesion when pack hunting
     
     // Alignment
     if (nearbyAllies > 1) {
@@ -169,16 +209,7 @@ export function efficientMovement(
   // Calculate crowd stress for use in multiple behaviors
   const crowdStress = Math.min(1, totalNearby / 15); // Crowding stress (15 is optimal max)
   const reproductiveCrowdLimit = 0.7; // Above this crowd level, no reproduction
-  
-  // CARNIVORE HUNTING: Proactive hunting based on diet
-  const carnivoreLevel = Math.max(0, diet); // 0-1 for carnivorous tendency
-  const isHunter = carnivoreLevel > 0.2; // Even slightly carnivorous = hunter
-  
-  // Hunt proactively unless satiated
-  // Pure carnivores (1.0) hunt until 90% full, herbivores never hunt
-  const huntingThreshold = 90 - (carnivoreLevel * 60); // 90 to 30 based on carnivore level
-  const shouldHunt = isHunter && myEnergy < huntingThreshold;
-  
+
   // Conservation instinct: Check if neighbors are well-fed to prevent overhunting
   let neighborhoodSatiation = 0;
   let satiatedNeighbors = 0;
@@ -196,23 +227,27 @@ export function efficientMovement(
   const conservationMode = neighborhoodSatiation > 0.7 && myEnergy > 40;
   
   if (shouldHunt && !conservationMode) {
-    // Actively seek best prey target
+    // Actively seek best prey target - EXPANDED vision when hungry
     let bestPrey = -1;
     let bestPreyScore = -1;
     
-    grid.forNeighborsWithLimit(px, py, vision * 1.5, 30, (j) => {
+    // Hungry carnivores can see further (adrenaline boost)
+    const huntVision = vision * (1.5 + hungerDesperation * 0.5); // Up to 2x vision when desperate
+
+    grid.forNeighborsWithLimit(px, py, huntVision, 40, (j) => {
       if (j !== i && alive[j]) {
         const dx = pos[j * 2] - px;
         const dy = pos[j * 2 + 1] - py;
         const dist = Math.sqrt(dx * dx + dy * dy);
         
-        if (dist < vision * 1.5) {
+        if (dist < huntVision) {
           const targetEnergy = energy[j];
           const isAlly = tribeId[j] === myTribe;
           
           // Score prey: prefer enemies, weak targets, close targets
           let preyScore = (100 - targetEnergy) / 100; // Prefer weak
-          preyScore += (1 - dist / (vision * 1.5)) * 0.5; // Prefer close
+          preyScore += (1 - dist / huntVision) * 0.5; // Prefer close
+          preyScore *= (1 + hungerDesperation * 0.5); // Hunger makes less picky
           
           if (!isAlly) {
             preyScore += 1; // Strong preference for other tribes
@@ -239,6 +274,22 @@ export function efficientMovement(
         Math.pow(pos[bestPrey * 2] - px, 2) + 
         Math.pow(pos[bestPrey * 2 + 1] - py, 2)
       );
+
+      // GROUP HUNTING: Signal nearby allies about prey
+      // High cohesion carnivores coordinate hunts
+      if (cohesion > 0.5 && carnivoreLevel > 0.3) {
+        // Move toward prey with pack coordination
+        const preyX = pos[bestPrey * 2];
+        const preyY = pos[bestPrey * 2 + 1];
+        const toPrey = Math.atan2(preyY - py, preyX - px);
+
+        // Pack hunting formation - spread out to surround
+        const packAngle = toPrey + (rand() - 0.5) * Math.PI * 0.5; // Spread ±45 degrees
+        const packSpeed = speed * (1 + cohesion * 0.3); // Cohesive packs move faster
+
+        vx += Math.cos(packAngle) * packSpeed * 0.4;
+        vy += Math.sin(packAngle) * packSpeed * 0.4;
+      }
     }
   }
   
@@ -255,8 +306,11 @@ export function efficientMovement(
     const huntingDrive = Math.max(0, diet); // 0-1 for carnivorous tendency
     const dietFightBonus = huntingDrive * 0.5; // Up to 50% bonus for carnivores
     
-    // Calculate fight chance with diet factor
-    const fightChance = (aggression + dietFightBonus) * (0.3 + stressFactor * 0.2 + crowdStress * 0.2) * Math.min(1.5, 1 + groupSupport * 0.1);
+    // Calculate fight chance with diet factor - BOOSTED for hungry carnivores
+    const hungerAggressionBoost = isHunter ? hungerDesperation * 0.4 : 0;
+    // Pack hunting increases success rate
+    const packHuntingMultiplier = 1 + packHuntBonus * 0.5;
+    const fightChance = (aggression + dietFightBonus + hungerAggressionBoost) * (0.3 + stressFactor * 0.2 + crowdStress * 0.2) * Math.min(2, 1 + groupSupport * 0.2) * packHuntingMultiplier;
     
     if (rand() < fightChance) {
       // PREDATION/FIGHT - carnivores get more energy from kills
@@ -264,7 +318,9 @@ export function efficientMovement(
       
       // Damage based on aggression, diet, and group support
       const carnivoreBonus = 1 + huntingDrive * 0.5; // Carnivores deal more damage
-      const damage = (8 + nearbyAllies * 1.5) * aggression * carnivoreBonus;
+      // Pack hunting deals more damage
+      const packDamageBonus = 1 + packHuntBonus * 0.5;
+      const damage = (8 + nearbyAllies * 1.5) * aggression * carnivoreBonus * packDamageBonus;
       energy[target] -= damage;
       
       // Energy absorption based on diet
@@ -273,7 +329,8 @@ export function efficientMovement(
       const carnivoreLevel = Math.max(0, diet); // 0-1 for carnivorous tendency
       if (carnivoreLevel > 0) {
         const absorptionRate = carnivoreLevel; // 0-1 based on how carnivorous
-        const stolen = Math.min(damage * absorptionRate, targetEnergy * 0.5);
+        // INCREASED energy steal to make hunting more rewarding
+        const stolen = Math.min(damage * absorptionRate * 1.5, targetEnergy * 0.7); // Increased from 0.5 to 0.7
         energy[i] += stolen;
       }
       
@@ -282,8 +339,9 @@ export function efficientMovement(
         alive[target] = 0;
         // Only carnivores and omnivores gain energy from kills
         if (carnivoreLevel > 0) {
-          const corpseEnergy = Math.max(20, targetEnergy * 0.5);
-          energy[i] += corpseEnergy * carnivoreLevel; // Scale by how carnivorous
+          // BOOSTED energy from kills to make carnivore lifestyle viable
+          const corpseEnergy = Math.max(40, targetEnergy * 0.75); // Increased from 20/0.5 to 40/0.75
+          energy[i] += corpseEnergy * carnivoreLevel * 1.5; // Added 1.5x multiplier
         }
         // Track kill stats
         if (killsByTribe && deathsByTribe) {
@@ -366,14 +424,28 @@ export function efficientMovement(
   const plantFoodInterest = herbivoreLevel; // 0 for pure carnivore, 1 for pure herbivore
   
   // Carnivores need to migrate if no prey available
-  if (carnivoreLevel > 0.5 && nearestEnemy < 0) {
-    // Strong carnivore with no prey nearby - need to migrate!
-    const preyMigrationUrge = carnivoreLevel * (80 - myEnergy) / 80;
+  if (carnivoreLevel > 0.3 && nearestEnemy < 0) { // Lower threshold for migration
+    // Carnivore with no prey nearby - need to migrate!
+    const preyMigrationUrge = carnivoreLevel * Math.max(0.3, (80 - myEnergy) / 80);
     
-    // Apply strong migration pressure - carnivores need to roam to find prey
-    const migrationAngle = rand() * Math.PI * 2;
-    vx += Math.cos(migrationAngle) * speed * preyMigrationUrge * 0.7;
-    vy += Math.sin(migrationAngle) * speed * preyMigrationUrge * 0.7;
+    // EXPLORATORY HUNTING: Maintain direction for better exploration
+    // Use entity ID to get consistent migration direction that changes gradually
+    const entityAge = age ? age[i] : 0;
+    const migrationSeed = i * 0.618033988749895 + Math.floor(entityAge / 30); // Changes every 30 time units
+    const baseAngle = (migrationSeed % 1) * Math.PI * 2;
+    const migrationAngle = baseAngle + (rand() - 0.5) * Math.PI * 0.3; // Small variation
+
+    // Strong migration pressure with pack coordination
+    const migrationSpeed = speed * preyMigrationUrge * (0.8 + cohesion * 0.2); // Packs migrate together
+    vx += Math.cos(migrationAngle) * migrationSpeed;
+    vy += Math.sin(migrationAngle) * migrationSpeed;
+
+    // If in a pack, influence allies to follow
+    if (cohesion > 0.5 && nearbyAllies > 2) {
+      // Pack leader effect - stronger influence on movement
+      vx *= 1.2;
+      vy *= 1.2;
+    }
   }
   
   if (myEnergy < 70 && plantFoodInterest > 0.1) {
@@ -590,6 +662,152 @@ export function efficientMovement(
   vx += (rand() * 2 - 1) * speed * 0.3 * wanderFactor;
   vy += (rand() * 2 - 1) * speed * 0.3 * wanderFactor;
   
+  // INTELLIGENT WALL AVOIDANCE: Detect walls early and turn away
+  const wallDetectionRange = vision * 0.8; // Use vision range for wall detection
+  const wallAvoidanceStrength = speed * 1.5;
+
+  // Calculate distances to all borders
+  const distToLeft = px;
+  const distToRight = world.width - px;
+  const distToTop = py;
+  const distToBottom = world.height - py;
+
+  // Check if we're heading toward a wall and need to turn
+  let wallAvoidanceX = 0;
+  let wallAvoidanceY = 0;
+  let nearWall = false;
+
+  // Left wall detection - improved to prevent vacuum effect
+  if (distToLeft < wallDetectionRange) {
+    nearWall = true;
+    // Turn away from wall - stronger the closer we get
+    const avoidanceForce = Math.pow((wallDetectionRange - distToLeft) / wallDetectionRange, 2);
+    wallAvoidanceX += wallAvoidanceStrength * avoidanceForce * 1.5; // Stronger repulsion
+
+    // Add perpendicular movement to avoid getting stuck
+    if (distToLeft < 5) {
+      // Very close - strong perpendicular push with randomization
+      const perpAngle = (orientation ? orientation[i] : Math.atan2(vy, vx)) + (rand() - 0.5) * Math.PI * 0.5;
+      wallAvoidanceY += Math.sin(perpAngle) * speed * 3; // Stronger perpendicular force
+      wallAvoidanceX += speed * 2; // Always push away from wall
+    }
+  }
+
+  // Right wall detection - improved to prevent vacuum effect
+  if (distToRight < wallDetectionRange) {
+    nearWall = true;
+    const avoidanceForce = Math.pow((wallDetectionRange - distToRight) / wallDetectionRange, 2);
+    wallAvoidanceX -= wallAvoidanceStrength * avoidanceForce * 1.5; // Stronger repulsion
+
+    if (distToRight < 5) {
+      const perpAngle = (orientation ? orientation[i] : Math.atan2(vy, vx)) + (rand() - 0.5) * Math.PI * 0.5;
+      wallAvoidanceY += Math.sin(perpAngle) * speed * 3;
+      wallAvoidanceX -= speed * 2; // Always push away from wall
+    }
+  }
+
+  // Top wall detection - improved to prevent vacuum effect
+  if (distToTop < wallDetectionRange) {
+    nearWall = true;
+    const avoidanceForce = Math.pow((wallDetectionRange - distToTop) / wallDetectionRange, 2);
+    wallAvoidanceY += wallAvoidanceStrength * avoidanceForce * 1.5; // Stronger repulsion
+
+    if (distToTop < 5) {
+      const perpAngle = (orientation ? orientation[i] : Math.atan2(vy, vx)) + (rand() - 0.5) * Math.PI * 0.5;
+      wallAvoidanceX += Math.cos(perpAngle) * speed * 3;
+      wallAvoidanceY += speed * 2; // Always push away from wall
+    }
+  }
+
+  // Bottom wall detection - improved to prevent vacuum effect
+  if (distToBottom < wallDetectionRange) {
+    nearWall = true;
+    const avoidanceForce = Math.pow((wallDetectionRange - distToBottom) / wallDetectionRange, 2);
+    wallAvoidanceY -= wallAvoidanceStrength * avoidanceForce * 1.5; // Stronger repulsion
+
+    if (distToBottom < 5) {
+      const perpAngle = (orientation ? orientation[i] : Math.atan2(vy, vx)) + (rand() - 0.5) * Math.PI * 0.5;
+      wallAvoidanceX += Math.cos(perpAngle) * speed * 3;
+      wallAvoidanceY -= speed * 2; // Always push away from wall
+    }
+  }
+
+  // Apply wall avoidance
+  if (nearWall) {
+    // Override other behaviors when near wall
+    vx = vx * 0.3 + wallAvoidanceX; // Reduce original direction, add avoidance
+    vy = vy * 0.3 + wallAvoidanceY;
+
+    // Add randomness but only in directions away from walls
+    // Calculate the safe angle range based on which walls we're near
+    let minSafeAngle = 0;
+    let maxSafeAngle = Math.PI * 2;
+
+    // Constrain angle based on nearby walls
+    if (distToLeft < wallDetectionRange) {
+      // Near left wall - can go from -45° to 45° (pointing right)
+      minSafeAngle = -Math.PI / 4;
+      maxSafeAngle = Math.PI / 4;
+    } else if (distToRight < wallDetectionRange) {
+      // Near right wall - can go from 135° to 225° (pointing left)
+      minSafeAngle = Math.PI * 0.75;
+      maxSafeAngle = Math.PI * 1.25;
+    }
+
+    if (distToTop < wallDetectionRange) {
+      // Near top wall - limit to downward angles
+      if (distToLeft < wallDetectionRange) {
+        // Top-left corner: 0° to 90° (right-down quadrant)
+        minSafeAngle = 0;
+        maxSafeAngle = Math.PI / 2;
+      } else if (distToRight < wallDetectionRange) {
+        // Top-right corner: 90° to 180° (left-down quadrant)
+        minSafeAngle = Math.PI / 2;
+        maxSafeAngle = Math.PI;
+      } else {
+        // Just top wall: 45° to 135° (downward)
+        minSafeAngle = Math.PI / 4;
+        maxSafeAngle = Math.PI * 0.75;
+      }
+    } else if (distToBottom < wallDetectionRange) {
+      // Near bottom wall - limit to upward angles
+      if (distToLeft < wallDetectionRange) {
+        // Bottom-left corner: -90° to 0° (right-up quadrant)
+        minSafeAngle = -Math.PI / 2;
+        maxSafeAngle = 0;
+      } else if (distToRight < wallDetectionRange) {
+        // Bottom-right corner: 180° to 270° (left-up quadrant)
+        minSafeAngle = Math.PI;
+        maxSafeAngle = Math.PI * 1.5;
+      } else {
+        // Just bottom wall: -135° to -45° (upward)
+        minSafeAngle = -Math.PI * 0.75;
+        maxSafeAngle = -Math.PI / 4;
+      }
+    }
+
+    // Apply random movement within safe angle range
+    const safeRandomAngle = minSafeAngle + rand() * (maxSafeAngle - minSafeAngle);
+    vx += Math.cos(safeRandomAngle) * speed * 0.3;
+    vy += Math.sin(safeRandomAngle) * speed * 0.3;
+
+    // If stuck in corner (near two walls), use the calculated safe angle
+    const nearCorner =
+      (distToLeft < 30 || distToRight < 30) &&
+      (distToTop < 30 || distToBottom < 30);
+
+    if (nearCorner) {
+      // Use a much stronger push in the safe direction to escape corner
+      const escapeAngle = minSafeAngle + rand() * (maxSafeAngle - minSafeAngle);
+      vx = Math.cos(escapeAngle) * speed * 3; // Doubled escape force
+      vy = Math.sin(escapeAngle) * speed * 3; // Doubled escape force
+
+      // Add extra random turbulence to break out of corner traps
+      vx += (rand() - 0.5) * speed;
+      vy += (rand() - 0.5) * speed;
+    }
+  }
+
   // Update velocity with less damping for more dynamic movement
   vel[i * 2] = vx * 0.92; // Reduced damping from 0.95
   vel[i * 2 + 1] = vy * 0.92;

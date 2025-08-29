@@ -88,3 +88,54 @@ input[type="range"]:focus::-moz-range-thumb {
   width: 14px;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
 }
+/* Diet slider special styling */
+.diet-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.diet-slider::-webkit-slider-track {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.diet-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+  margin-top: -2px;
+  border: 2px solid #1f2937;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  transition: all 0.15s ease;
+}
+
+.diet-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.1);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.6);
+}
+
+.diet-slider::-moz-range-track {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.diet-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+  border: 2px solid #1f2937;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  transition: all 0.15s ease;
+}
+
+.diet-slider:hover::-moz-range-thumb {
+  transform: scale(1.1);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.6);
+}

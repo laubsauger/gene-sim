@@ -44,16 +44,25 @@ export function EntityPoints({
         float ageInDays = aAge / 10.0; // Convert to days
         float ageFactor = 1.0;
         if (ageInDays < 2.0) {
-          ageFactor = 0.8; // Young - smaller
+          ageFactor = 0.9; // Young - slightly smaller
         } else if (ageInDays < 4.0) {
           ageFactor = 1.0; // Adult - normal
         } else if (ageInDays < 6.0) {
-          ageFactor = 1.1; // Old - larger
+          ageFactor = 1.05; // Old - slightly larger
         } else {
-          ageFactor = 1.2; // Very old - largest
+          ageFactor = 1.1; // Very old - bit larger
         }
 
-        gl_PointSize = uSize * ageFactor;
+        // Account for perspective - make points scale with distance
+        // For orthographic camera, this will be constant
+        float perspectiveFactor = 1.0;
+        #ifdef USE_PERSPECTIVE
+          perspectiveFactor = 300.0 / -mvPosition.z;
+        #endif
+        
+        // Base size is more important than age variation
+        // Debug: Set a minimum size to ensure visibility
+        gl_PointSize = max(2.0, uSize * perspectiveFactor * ageFactor);
         gl_Position = projectionMatrix * mvPosition;
       }
     `,
@@ -133,11 +142,11 @@ export function EntityPoints({
 
     // Scale point size based on camera zoom (for OrthographicCamera)
     if (camera && 'zoom' in camera) {
-      const baseSize = 22; // Base size when at zoom level 1 (larger for better visibility)
+      // Use the pointSize prop as the base size (from UI slider)
       const zoom = (camera as THREE.OrthographicCamera).zoom;
       // Scale proportionally with zoom - entities maintain relative size to world
-      const scaledSize = baseSize * zoom;
-      mat.uniforms.uSize.value = Math.max(4, Math.min(80, scaledSize));
+      const scaledSize = pointSize * zoom;
+      mat.uniforms.uSize.value = Math.max(4, Math.min(200, scaledSize));
     }
   });
 
