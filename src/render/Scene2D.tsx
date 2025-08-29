@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrthographicCamera, OrbitControls, Stats } from '@react-three/drei';
 import { EntityPoints } from './EntityPoints';
@@ -252,35 +252,37 @@ export function Scene2D({ client, world }: Scene2DProps) {
         <lineBasicMaterial color="#666" linewidth={1} />
       </line>
       
-      {/* Grid lines for reference */}
-      <group>
-        {Array.from({ length: 9 }, (_, i) => {
-          const x = (i + 1) * (world.width / 9);
-          const y = (i + 1) * (world.height / 9);
-          return (
-            <group key={i}>
-              <line>
-                <bufferGeometry>
-                  <bufferAttribute
-                    attach="attributes-position"
-                    args={[new Float32Array([x, 0, 0, x, world.height, 0]), 3]}
-                  />
-                </bufferGeometry>
-                <lineBasicMaterial color="#444" />
-              </line>
-              <line>
-                <bufferGeometry>
-                  <bufferAttribute
-                    attach="attributes-position"
-                    args={[new Float32Array([0, y, 0, world.width, y, 0]), 3]}
-                  />
-                </bufferGeometry>
-                <lineBasicMaterial color="#444" />
-              </line>
-            </group>
-          );
-        })}
-      </group>
+      {/* Grid lines for reference - memoized for performance */}
+      {useMemo(() => (
+        <group>
+          {Array.from({ length: 9 }, (_, i) => {
+            const x = (i + 1) * (world.width / 9);
+            const y = (i + 1) * (world.height / 9);
+            return (
+              <group key={i}>
+                <line>
+                  <bufferGeometry>
+                    <bufferAttribute
+                      attach="attributes-position"
+                      args={[new Float32Array([x, 0, 0, x, world.height, 0]), 3]}
+                    />
+                  </bufferGeometry>
+                  <lineBasicMaterial color="#444" />
+                </line>
+                <line>
+                  <bufferGeometry>
+                    <bufferAttribute
+                      attach="attributes-position"
+                      args={[new Float32Array([0, y, 0, world.width, y, 0]), 3]}
+                    />
+                  </bufferGeometry>
+                  <lineBasicMaterial color="#444" />
+                </line>
+              </group>
+            );
+          })}
+        </group>
+      ), [world.width, world.height])}
       
       <FoodLayer client={client} world={world} />
       <EntitiesLayer client={client} />

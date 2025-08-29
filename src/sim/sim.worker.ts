@@ -2,7 +2,7 @@
 import { createRng } from './random';
 import { clampGene, mutate, defaultGenes } from './genes';
 import { SpatialHash } from './spatialHash';
-import { efficientMovement } from './spatialBehaviors';
+import { efficientMovementOptimized } from './spatialBehaviorsOptimized';
 import { createFractalNoise2D } from './noise';
 import type { WorkerMsg, MainMsg, SimStats, GeneSpec, TribeStats, PerfStats } from './types';
 
@@ -143,22 +143,18 @@ function step(dt: number) {
   // Update entities with better cache locality
   const entityStart = performance.now();
   
-  // Process entities in chunks for better CPU cache usage
-  const CHUNK_SIZE = 64; // Typical CPU cache line aligned
-  
-  // Process all entities properly - no skipping
-  for (let chunk = 0; chunk < n; chunk += CHUNK_SIZE) {
-    const chunkEnd = Math.min(chunk + CHUNK_SIZE, n);
-    for (let i = chunk; i < chunkEnd; i++) {
+  // Process all entities - removed chunking as it adds overhead
+  for (let i = 0; i < n; i++) {
       if (!alive[i]) continue;
       
-    // Update orientation based on velocity
+    // Update orientation based on velocity - avoid hypot
     const vx = vel[i * 2];
     const vy = vel[i * 2 + 1];
-    const currentSpeed = Math.hypot(vx, vy);
-    if (currentSpeed > 1) { // Only update if moving
+    const currentSpeedSq = vx * vx + vy * vy;
+    if (currentSpeedSq > 1) { // Only update if moving
       orientation[i] = Math.atan2(vy, vx);
     }
+    const currentSpeed = Math.sqrt(currentSpeedSq);
     
     const base = i * G;
     const sp = genes[base];
@@ -170,25 +166,26 @@ function step(dt: number) {
     // Age entity
     age[i] += dt;
     
-    // Update color brightness based on age (keep more visible, especially for dark colors)
-    const ageInDays = age[i] / 10; // 10 sim seconds = 1 "day"
-    let brightness = 1.0;
-    if (ageInDays < 2) {
-      brightness = 1.3; // Young - brighter
-    } else if (ageInDays < 4) {
-      brightness = 1.1; // Adult - slightly bright
-    } else if (ageInDays < 6) {
-      brightness = 0.9; // Old - slightly darker
-    } else {
-      brightness = 0.75; // Very old - darker but still visible
+    // Update color only every 30 frames for this entity (staggered)
+    if ((i + Math.floor(t * 20)) % 30 === 0) {
+      const ageInDays = age[i] / 10;
+      let brightness = 1.0;
+      if (ageInDays < 2) {
+        brightness = 1.3;
+      } else if (ageInDays < 4) {
+        brightness = 1.1;
+      } else if (ageInDays < 6) {
+        brightness = 0.9;
+      } else {
+        brightness = 0.75;
+      }
+      
+      const tribeHue = tribeColors[tribeId[i]] || 0;
+      const [r, g, b] = hueToRgb(tribeHue);
+      color[i * 3] = Math.min(255, (r * brightness) | 0);
+      color[i * 3 + 1] = Math.min(255, (g * brightness) | 0);
+      color[i * 3 + 2] = Math.min(255, (b * brightness) | 0);
     }
-    
-    // Get base color from tribe
-    const tribeHue = tribeColors[tribeId[i]] || 0;
-    const [r, g, b] = hueToRgb(tribeHue);
-    color[i * 3] = Math.min(255, (r * brightness) | 0);
-    color[i * 3 + 1] = Math.min(255, (g * brightness) | 0);
-    color[i * 3 + 2] = Math.min(255, (b * brightness) | 0);
     
     // Energy consumption based on metabolism, speed, and age
     // Higher metabolism means higher base cost but enables higher effective speeds
@@ -288,7 +285,7 @@ function step(dt: number) {
     
     // Use spatial hashing for efficient movement and combat
     const moveStart = performance.now();
-    efficientMovement(
+    efficientMovementOptimized(
       i, pos, vel, alive, energy, tribeId, genes, grid,
       foodGrid, foodCols, foodRows, world, rand, dt,
       killsByTribe, deathsByTribe, color, birthsByTribe, allowHybrids,
@@ -404,7 +401,6 @@ function step(dt: number) {
         }
       }
     }
-    } // End of chunk loop
   }
   perfTimers.entityUpdate += performance.now() - entityStart;
   
@@ -767,14 +763,14 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
           // Multiple small groups (herbivore-like)
           const numHerds = 3 + Math.floor(rand() * 3); // 3-5 herds
           const herdIndex = i % numHerds;
-          const herdAngle = (herdIndex / numHerds) * Math.PI * 2;
-          const herdDistance = tribe.spawn.radius * 2;
+          const herdAngle = (herdIndex / numHerds) * Math.PI * 2 + rand() * 0.3; // Add some randomness
+          const herdDistance = tribe.spawn.radius * (3 + rand()); // 3-4x radius for better separation
           const herdCenterX = tribe.spawn.x + Math.cos(herdAngle) * herdDistance;
           const herdCenterY = tribe.spawn.y + Math.sin(herdAngle) * herdDistance;
           
-          // Small blob around herd center
+          // Smaller, tighter groups
           const ang = rand() * Math.PI * 2;
-          const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.5);
+          const r = Math.sqrt(rand()) * (tribe.spawn.radius * 0.3); // Smaller, denser herds
           x = herdCenterX + Math.cos(ang) * r;
           y = herdCenterY + Math.sin(ang) * r;
           

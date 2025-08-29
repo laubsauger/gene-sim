@@ -85,8 +85,9 @@ export function FoodTexture({ foodData, cols, rows, world }: FoodTextureProps) {
       textureRef.current.needsUpdate = true;
     }
     
-    // Update time uniform for subtle animation
-    if (materialRef.current) {
+    // Update time uniform less frequently for subtle animation
+    // Only update every 10 frames to reduce uniform updates
+    if (materialRef.current && frameCount.current % 10 === 0) {
       materialRef.current.uniforms.time.value = state.clock.elapsedTime;
     }
   });

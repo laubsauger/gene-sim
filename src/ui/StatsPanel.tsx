@@ -7,6 +7,8 @@ import { TraitHistogram } from './TraitHistogram';
 import { PopulationDominance } from './PopulationDominance';
 import { CollapsibleSection } from './CollapsibleSection';
 import { PerformancePanel } from './PerformancePanel';
+import { TribeRow } from './TribeRow';
+import { PerformanceGraph } from './PerformanceGraph';
 
 export interface StatsPanelProps {
   client: SimClient;
@@ -187,43 +189,14 @@ export const StatsPanel = memo(function StatsPanel({ client, currentSeed }: Stat
                     if (!tribe) return null;
                     const isExtinct = !stats.byTribe[name];
                     return (
-                      <tr key={name} style={{ opacity: isExtinct ? 0.4 : 1 }}>
-                        <td style={{ color: tribe.color, fontWeight: 'bold', padding: '4px' }}>
-                        {name} {isExtinct && '†'}
-                      </td>
-                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#fff', padding: '2px' }}>
-                        {tribe.count}
-                      </td>
-                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
-                        {tribe.mean.speed.toFixed(0)}
-                      </td>
-                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
-                        {tribe.mean.vision.toFixed(0)}
-                      </td>
-                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
-                        {tribe.mean.metabolism.toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
-                        {tribe.mean.reproChance.toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
-                        {tribe.mean.aggression.toFixed(1)}
-                      </td>
-                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
-                        {tribe.mean.foodStandards?.toFixed(1) || '0.3'}
-                      </td>
-                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
-                        {tribe.mean.diet?.toFixed(1) || '-0.5'}
-                      </td>
-                      <td style={{ textAlign: 'center', color: isExtinct ? '#666' : '#bbb', padding: '2px' }}>
-                        {tribe.mean.viewAngle?.toFixed(0) || '120'}
-                      </td>
-                      <td style={{ textAlign: 'center', color: '#999', padding: '2px', fontSize: '10px' }}>
-                        {tribe.kills || 0}/{tribe.starved || 0}
-                      </td>
-                    </tr>
-                  );
-                })}
+                      <TribeRow
+                        key={name}
+                        name={name}
+                        tribe={tribe}
+                        isExtinct={isExtinct}
+                      />
+                    );
+                  })}
                 <tr style={{ borderTop: '1px solid #444' }}>
                   <td style={{ color: '#fff', fontWeight: 'bold', padding: '4px' }}>
                     Global
@@ -321,6 +294,10 @@ export const StatsPanel = memo(function StatsPanel({ client, currentSeed }: Stat
       
       <CollapsibleSection title="Population History" defaultOpen={false}>
         <PopulationGraph client={client} />
+      </CollapsibleSection>
+      
+      <CollapsibleSection title="Performance Metrics" defaultOpen={false}>
+        <PerformanceGraph client={client} />
       </CollapsibleSection>
       
       <PerformancePanel client={client} />

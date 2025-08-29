@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 
 interface EntityPointsProps {
@@ -24,7 +24,7 @@ export function EntityPoints({
   const mat = useMemo(() => new THREE.ShaderMaterial({
     depthWrite: true,
     depthTest: true,
-    transparent: true,
+    transparent: false, // No transparency needed - all entities are opaque
     vertexShader: `
       attribute vec2 aPos;
       attribute vec3 aCol;
@@ -122,31 +122,50 @@ export function EntityPoints({
     }
   }, [geom, pos, color, alive, age, count]);
 
-  // Update every frame to reflect SharedArrayBuffer changes
+  // Update buffers smartly based on what actually changes
   const { camera } = useThree();
+  const frameCountRef = useRef(0);
+  const lastZoomRef = useRef(0);
+  
   useFrame(() => {
+    frameCountRef.current++;
+    
     const posAttr = geom.getAttribute('aPos') as THREE.BufferAttribute;
     const colAttr = geom.getAttribute('aCol') as THREE.BufferAttribute;
     const aliveAttr = geom.getAttribute('aAlive') as THREE.BufferAttribute;
     const ageAttr = geom.getAttribute('aAge') as THREE.BufferAttribute;
     
     if (posAttr && colAttr && aliveAttr) {
+      // Position always updates (entities move every frame)
       posAttr.needsUpdate = true;
-      colAttr.needsUpdate = true;
-      aliveAttr.needsUpdate = true;
-      if (ageAttr) {
+      
+      // Color rarely changes - only on age transitions (slow) or mutations (rare)
+      // Update every 60 frames (~1 Hz) is plenty for color changes
+      if (frameCountRef.current % 60 === 0) {
+        colAttr.needsUpdate = true;
+      }
+      
+      // Alive status rarely changes - update every 30 frames (~2 Hz)
+      if (frameCountRef.current % 30 === 0) {
+        aliveAttr.needsUpdate = true;
+      }
+      
+      // Age changes slowly - update every 60 frames (~1 Hz)
+      if (ageAttr && frameCountRef.current % 60 === 0) {
         ageAttr.needsUpdate = true;
       }
+      
       geom.setDrawRange(0, count);
     }
 
-    // Scale point size based on camera zoom (for OrthographicCamera)
+    // Only update point size when camera zoom actually changes
     if (camera && 'zoom' in camera) {
-      // Use the pointSize prop as the base size (from UI slider)
       const zoom = (camera as THREE.OrthographicCamera).zoom;
-      // Scale proportionally with zoom - entities maintain relative size to world
-      const scaledSize = pointSize * zoom;
-      mat.uniforms.uSize.value = Math.max(4, Math.min(200, scaledSize));
+      if (Math.abs(zoom - lastZoomRef.current) > 0.001) {
+        lastZoomRef.current = zoom;
+        const scaledSize = pointSize * zoom;
+        mat.uniforms.uSize.value = Math.max(4, Math.min(200, scaledSize));
+      }
     }
   });
 

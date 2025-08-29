@@ -195,6 +195,9 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
   }
 
   let tribeIndex = 0;
+  // Ensure colors are visually distinct
+  const usedHues = new Set<number>();
+  
   for (const archetype of selectedArchetypes) {
     // Add random offset to angle so tribes don't always spawn in same pattern
     const angleOffset = rng() * Math.PI * 0.5; // Random offset up to 90 degrees
@@ -205,6 +208,21 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
     const isHunter = archetype.name === 'Hunters';
     const baseCount = isHunter ? 400 : 800;
     const varCount = isHunter ? 200 : 400;
+    
+    // Make sure colors are distinct - if too similar to existing, shift hue
+    let finalGenes = { ...archetype.genes };
+    let hue = finalGenes.colorHue;
+    
+    // Check if hue is too close to any existing
+    for (const usedHue of usedHues) {
+      const hueDiff = Math.min(Math.abs(hue - usedHue), 360 - Math.abs(hue - usedHue));
+      if (hueDiff < 40) { // Too similar
+        // Shift hue by at least 60 degrees
+        hue = (usedHue + 60 + rng() * 60) % 360;
+      }
+    }
+    finalGenes.colorHue = hue;
+    usedHues.add(hue);
 
     tribes.push({
       name: archetype.name,
@@ -215,7 +233,7 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
         radius: 150 + rng() * 100,
         pattern: archetype.spawnPattern
       },
-      genes: archetype.genes
+      genes: finalGenes
     });
     tribeIndex++;
   }

@@ -131,6 +131,17 @@ export type PerfStats = {
   speedMul: number; // current speed multiplier
 };
 
+export interface PerfBreakdown {
+  spatialHash: string;
+  foodRegrow: string;
+  entityUpdate: string;
+  foodConsume: string;
+  movement: string;
+  physics: string;
+  total: string;
+  entities: number;
+}
+
 export type MainMsg =
   | { type: 'ready'; payload: { 
       sab: { 
@@ -144,5 +155,6 @@ export type MainMsg =
     }}
   | { type: 'stats'; payload: SimStats }
   | { type: 'perf'; payload: PerfStats }
+  | { type: 'perfBreakdown'; payload: PerfBreakdown }
   | { type: 'foodUpdate'; payload: { foodGrid: ArrayBuffer } }
   | { type: 'extinction'; payload: { finalTime: number; finalStats: SimStats } };
