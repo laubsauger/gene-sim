@@ -30,10 +30,12 @@ function FPSTracker({ client }: { client: SimClient }) {
 function FoodLayer({ client, world }: { client: SimClient; world: { width: number; height: number } }) {
   const { buffers } = client;
   const [ready, setReady] = useState(false);
+  const lastValidFoodBuffers = useRef<any>(null);
   
   useEffect(() => {
     // Check if food buffer exists immediately
     if (buffers?.food) {
+      lastValidFoodBuffers.current = buffers; // Store valid food buffers
       setReady(true);
       return;
     }
@@ -41,6 +43,8 @@ function FoodLayer({ client, world }: { client: SimClient; world: { width: numbe
     // Listen for ready message
     const unsubscribe = client.onMessage((msg) => {
       if (msg.type === 'ready' && msg.payload.sab.food) {
+        const { buffers: currentBuffers } = client;
+        lastValidFoodBuffers.current = currentBuffers; // Store valid food buffers
         setReady(true);
       }
     });
@@ -48,15 +52,35 @@ function FoodLayer({ client, world }: { client: SimClient; world: { width: numbe
     return unsubscribe;
   }, [client, buffers]);
   
-  if (!ready || !buffers?.food || !buffers?.foodCols || !buffers?.foodRows) {
+  // Force re-render on config updates
+  useEffect(() => {
+    const handleConfigUpdate = () => {
+      console.log('[FoodLayer] Config update detected, forcing re-render');
+      // Force refresh by checking buffers again
+      if (buffers?.food) {
+        lastValidFoodBuffers.current = buffers;
+        setReady(true);
+      }
+    };
+
+    window.addEventListener('simConfigUpdate', handleConfigUpdate);
+    return () => {
+      window.removeEventListener('simConfigUpdate', handleConfigUpdate);
+    };
+  }, [buffers]);
+  
+  // Use current buffers if available, otherwise use last valid buffers during transition
+  const activeFoodBuffers = (buffers?.food) ? buffers : lastValidFoodBuffers.current;
+  
+  if (!ready || !activeFoodBuffers?.food || !activeFoodBuffers?.foodCols || !activeFoodBuffers?.foodRows) {
     return null;
   }
   
   return (
     <FoodTexture
-      foodData={buffers.food}
-      cols={buffers.foodCols}
-      rows={buffers.foodRows}
+      foodData={activeFoodBuffers.food}
+      cols={activeFoodBuffers.foodCols}
+      rows={activeFoodBuffers.foodRows}
       world={world}
     />
   );
@@ -67,6 +91,7 @@ function EntitiesLayer({ client }: { client: SimClient }) {
   const [ready, setReady] = useState(false);
   const [updateKey, setUpdateKey] = useState(0);
   const [renderSize, setRenderSize] = useState(48);
+  const lastValidBuffers = useRef<any>(null);
 
   // Force re-render on config updates
   useEffect(() => {
@@ -96,6 +121,7 @@ function EntitiesLayer({ client }: { client: SimClient }) {
     // Check if buffers exist immediately
     if (buffers?.pos && buffers?.color && buffers?.alive) {
       console.log('[EntitiesLayer] Buffers already available, count:', buffers.count);
+      lastValidBuffers.current = buffers; // Store valid buffers
       setReady(true);
       return;
     }
@@ -109,8 +135,11 @@ function EntitiesLayer({ client }: { client: SimClient }) {
           hasPos: !!currentBuffers?.pos,
           hasColor: !!currentBuffers?.color,
           hasAlive: !!currentBuffers?.alive,
-          count: currentBuffers?.count
+          count: currentBuffers?.count,
+          posLength: currentBuffers?.pos?.length,
+          aliveSum: currentBuffers?.alive?.reduce((sum, val) => sum + val, 0) // Count alive entities
         });
+        lastValidBuffers.current = currentBuffers; // Store valid buffers  
         setReady(true);
       }
     });
@@ -129,17 +158,20 @@ function EntitiesLayer({ client }: { client: SimClient }) {
     };
   }, [client, buffers]);
   
-  if (!ready || !buffers?.pos || !buffers?.color || !buffers?.alive) {
+  // Use current buffers if available, otherwise use last valid buffers during transition
+  const activeBuffers = (buffers?.pos && buffers?.color && buffers?.alive) ? buffers : lastValidBuffers.current;
+  
+  if (!ready || !activeBuffers?.pos || !activeBuffers?.color || !activeBuffers?.alive) {
     return null;
   }
 
   return (
     <EntityPoints
       key={updateKey}
-      pos={buffers.pos}
-      color={buffers.color}
-      alive={buffers.alive}
-      count={buffers.count}
+      pos={activeBuffers.pos}
+      color={activeBuffers.color}
+      alive={activeBuffers.alive}
+      count={activeBuffers.count}
       pointSize={renderSize}
     />
   );

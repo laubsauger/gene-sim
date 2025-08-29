@@ -70,18 +70,16 @@ export class FoodSystem {
   update(dt: number) {
     for (let i = 0; i < this.foodGrid.length; i++) {
       if (this.foodGrid[i] < this.foodMaxCapacity[i]) {
-        this.foodRegrowTimer[i] += dt;
-        if (this.foodRegrowTimer[i] >= 10) {
-          const newValue = Math.min(
-            this.foodMaxCapacity[i],
-            this.foodGrid[i] + this.regen * dt
-          );
-          this.foodGrid[i] = newValue;
-          
-          // Update shared buffer immediately if available
-          if (this.foodGridUint8 && this.isShared) {
-            this.foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, newValue)) * 255);
-          }
+        // Regrow food continuously, not after 10 second delay
+        const newValue = Math.min(
+          this.foodMaxCapacity[i],
+          this.foodGrid[i] + this.regen * dt
+        );
+        this.foodGrid[i] = newValue;
+        
+        // Update shared buffer immediately if available
+        if (this.foodGridUint8 && this.isShared) {
+          this.foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, newValue)) * 255);
         }
       }
     }

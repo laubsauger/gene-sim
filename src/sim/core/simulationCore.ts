@@ -28,6 +28,9 @@ export class SimulationCore {
   fullGenes?: Float32Array;
   fullEnergy?: Float32Array;
   fullVel?: Float32Array;
+  fullAge?: Float32Array;
+  fullColor?: Uint8Array;
+  fullOrientation?: Float32Array;
   
   // World
   worldWidth: number;
@@ -44,6 +47,8 @@ export class SimulationCore {
   // Config
   allowHybrids: boolean = true;
   updateFood: boolean = true;  // Whether this instance should update food
+  workerRegion?: { x: number; y: number; width: number; height: number; x2: number; y2: number };
+  isMultiWorker: boolean = false;
   
   constructor(
     worldWidth: number,
@@ -90,28 +95,138 @@ export class SimulationCore {
       this.food.update(dt);
     }
     
-    // Update entities
-    for (let i = 0; i < this.count; i++) {
-      if (!this.entities.alive[i]) continue;
-      
-      // Age and metabolism
-      this.entities.age[i] += dt;
-      const base = i * GENE_COUNT;
-      const metabolism = this.entities.genes[base + 2];
-      this.entities.energy[i] -= energyConfig.metabolismBase * metabolism * dt;
-      
-      // Death checks
-      if (this.entities.energy[i] <= 0 || this.entities.age[i] > energyConfig.deathAge) {
-        if (i < 5) {
-          console.log(`[Debug] Entity ${i} died: energy=${this.entities.energy[i]}, age=${this.entities.age[i]}, metabolism=${metabolism}`);
-        }
-        this.entities.kill(i);
-        this.deathsByTribe[this.entities.tribeId[i]]++;
-        if (this.entities.energy[i] <= 0) {
-          this.starvedByTribe[this.entities.tribeId[i]]++;
-        }
-        continue;
+    // Update entities based on spatial region
+    const entitiesToCheck = this.isMultiWorker && this.fullPos ? this.fullPos.length / 2 : this.count;
+    
+    // Log once per second what each worker is processing
+    if (this.isMultiWorker && Math.floor(this.time) % 5 === 0 && Math.floor(this.time) !== Math.floor(this.time - dt)) {
+      let inRegion = 0;
+      let outRegion = 0;
+      for (let i = 0; i < entitiesToCheck; i++) {
+        if (!this.fullAlive![i]) continue;
+        const px = this.fullPos![i * 2];
+        const py = this.fullPos![i * 2 + 1];
+        const inOur = px >= this.workerRegion!.x && px < this.workerRegion!.x2 &&
+                     py >= this.workerRegion!.y && py < this.workerRegion!.y2;
+        if (inOur) inRegion++;
+        else outRegion++;
       }
+      console.log(`[Worker Region ${this.workerRegion!.x},${this.workerRegion!.y}] Processing ${inRegion} entities (${outRegion} outside)`);
+    }
+
+    for (let i = 0; i < entitiesToCheck; i++) {
+      // In multi-worker mode, only process entities in our region
+      if (this.isMultiWorker && this.workerRegion && this.fullPos && this.fullAlive) {
+        if (!this.fullAlive[i]) continue;
+
+        const px = this.fullPos[i * 2];
+        const py = this.fullPos[i * 2 + 1];
+        const inOurRegion = px >= this.workerRegion.x && px < this.workerRegion.x2 &&
+          py >= this.workerRegion.y && py < this.workerRegion.y2;
+
+        if (!inOurRegion) continue;
+
+        // Process using full arrays
+        this.updateEntityMultiWorker(i, dt);
+      } else {
+        // Single worker mode
+        if (!this.entities.alive[i]) continue;
+        this.updateEntitySingleWorker(i, dt);
+      }
+    }
+  }
+
+  private updateEntityMultiWorker(i: number, dt: number) {
+    // Multi-worker: use full arrays for everything
+    const base = i * GENE_COUNT;
+    const metabolism = this.fullGenes![base + 2];
+
+    // Age and metabolism
+    if (this.fullAge) {
+      this.fullAge[i] += dt;
+    }
+    this.fullEnergy![i] -= energyConfig.metabolismBase * metabolism * dt;
+
+    // Death checks
+    const maxAge = this.fullAge ? this.fullAge[i] > energyConfig.deathAge : false;
+    if (this.fullEnergy![i] <= 0 || maxAge) {
+      this.fullAlive![i] = 0;
+      this.deathsByTribe[this.fullTribeId![i]]++;
+      if (this.fullEnergy![i] <= 0) {
+        this.starvedByTribe[this.fullTribeId![i]]++;
+      }
+      return;
+    }
+
+    // Movement - use full arrays
+    if (this.fullPos && this.fullVel) {
+      efficientMovementOptimized(
+        i,
+        this.fullPos,
+        this.fullVel,
+        this.fullAlive,
+        this.fullEnergy,
+        this.fullTribeId,
+        this.fullGenes,
+        this.grid,
+        this.food.getGrid(),
+        this.food.getCols(),
+        this.food.getRows(),
+        { width: this.worldWidth, height: this.worldHeight },
+        this.rand,
+        dt,
+        this.killsByTribe,
+        this.deathsByTribe,
+        this.fullColor,
+        this.birthsByTribe,
+        this.allowHybrids,
+        this.fullOrientation,
+        this.fullAge,
+        this.fullPos,
+        this.fullAlive,
+        this.fullTribeId,
+        this.fullGenes,
+        this.fullEnergy,
+        this.fullVel
+      );
+
+      // Apply velocity
+      const vx = this.fullVel[i * 2];
+      const vy = this.fullVel[i * 2 + 1];
+      this.fullPos[i * 2] += vx * dt;
+      this.fullPos[i * 2 + 1] += vy * dt;
+
+      // Wrap world
+      this.fullPos[i * 2] = ((this.fullPos[i * 2] % this.worldWidth) + this.worldWidth) % this.worldWidth;
+      this.fullPos[i * 2 + 1] = ((this.fullPos[i * 2 + 1] % this.worldHeight) + this.worldHeight) % this.worldHeight;
+    }
+
+    // Food consumption
+    const consumed = this.food.consumeAt(this.fullPos![i * 2], this.fullPos![i * 2 + 1]);
+    if (consumed > 0) {
+      const diet = this.fullGenes![base + 7];
+      const plantFoodEfficiency = diet < 0 ? 1.0 : Math.max(0.3, 1.0 - Math.abs(diet));
+      this.fullEnergy![i] += Math.min(30, consumed * 8 * plantFoodEfficiency);
+      this.fullEnergy![i] = Math.min(this.fullEnergy![i], energyConfig.max);
+    }
+  }
+
+  private updateEntitySingleWorker(i: number, dt: number) {
+    // Age and metabolism
+    this.entities.age[i] += dt;
+    const base = i * GENE_COUNT;
+    const metabolism = this.entities.genes[base + 2];
+    this.entities.energy[i] -= energyConfig.metabolismBase * metabolism * dt;
+
+    // Death checks
+    if (this.entities.energy[i] <= 0 || this.entities.age[i] > energyConfig.deathAge) {
+      this.entities.kill(i);
+      this.deathsByTribe[this.entities.tribeId[i]]++;
+      if (this.entities.energy[i] <= 0) {
+        this.starvedByTribe[this.entities.tribeId[i]]++;
+      }
+      return;  // Exit early for dead entities
+    }
       
       // Movement and interactions
       if (this.fullPos && this.fullAlive) {
@@ -170,9 +285,6 @@ export class SimulationCore {
           this.entities.orientation,
           this.entities.age
         );
-        if (i === 0) {
-          console.log(`[SimCore] movement function returned successfully for first entity (local mode)`);
-        }
       }
       
       // Apply velocity to position (physics integration)
@@ -216,9 +328,6 @@ export class SimulationCore {
           }
         }
       }
-    }
-    
-    // No need to sync here anymore - food updates directly to shared buffer
   }
 
   getStats(): SimStats {

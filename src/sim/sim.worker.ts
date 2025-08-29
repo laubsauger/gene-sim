@@ -7,6 +7,32 @@ import { defaultGenes } from './genes';
 import type { WorkerMsg, MainMsg, PerfStats } from './types';
 import { WORLD_WIDTH, WORLD_HEIGHT } from './core/constants';
 
+// Helper function for color conversion
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  let r, g, b;
+
+  if (s === 0) {
+    r = g = b = l; // achromatic
+  } else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
 // Sub-worker mode detection
 let isSubWorker = false;
 let workerId = -1;
@@ -179,7 +205,7 @@ function initializeAsMainWorker(msg: any) {
 
 function initializeAsSubWorker(msg: any) {
   console.log(`[Worker] Starting sub-worker initialization`, msg.payload);
-  const { sharedBuffers: buffers, config, workerId: id, entityRange } = msg.payload;
+  const { sharedBuffers: buffers, config, workerId: id, entityRange, region } = msg.payload;
   
   isSubWorker = true;
   workerId = id;
@@ -193,14 +219,28 @@ function initializeAsSubWorker(msg: any) {
   const cap = bufferEntityEnd - bufferEntityStart;
   const seed = config.seed || Date.now();
   
+  // Store worker's spatial region
+  const workerRegion = region ? {
+    x: region.x,
+    y: region.y,
+    width: region.width,
+    height: region.height,
+    x2: region.x + region.width,
+    y2: region.y + region.height
+  } : null;
+  
+  console.log(`[Worker ${id}] Region: (${region?.x},${region?.y}) to (${region?.x + region?.width},${region?.y + region?.height})`);
+  
   // Create simulation core
   // Pass totalCap for spatial hash sizing to handle neighbor queries across all workers
   const totalCap = buffers.positions.byteLength / 8; // Float32Array with x,y = 8 bytes per entity
   sim = new SimulationCore(worldWidth, worldHeight, cap, seed + workerId, config.tribes?.length || 3, totalCap);
   sim.allowHybrids = config.allowHybrids !== false;
-  sim.updateFood = workerId === 0;  // Only worker 0 updates food
+  sim.updateFood = workerId === 0;  // Only worker 0 updates food regrowth to avoid races
   sim.tribeNames = config.tribes?.map((t: any) => t.name) || [];
   sim.tribeColors = config.tribes?.map((t: any) => t.genes?.colorHue || 0) || [];
+  sim.workerRegion = workerRegion;
+  sim.isMultiWorker = true;
   
   // Create FULL views for spatial queries (so we can see all entities)
   const fullPos = new Float32Array(buffers.positions);
@@ -209,6 +249,9 @@ function initializeAsSubWorker(msg: any) {
   const fullGenes = new Float32Array(buffers.genes);
   const fullEnergy = new Float32Array(buffers.energy);
   const fullVel = new Float32Array(buffers.velocities);
+  const fullAge = new Float32Array(buffers.ages);
+  const fullColor = new Uint8Array(buffers.colors);
+  const fullOrientation = new Float32Array(buffers.orientations);
   
   // Create sliced views for this worker's entities (for updates)
   const pos = new Float32Array(buffers.positions, bufferEntityStart * 2 * Float32Array.BYTES_PER_ELEMENT, cap * 2);
@@ -233,54 +276,92 @@ function initializeAsSubWorker(msg: any) {
   sim.fullGenes = fullGenes;
   sim.fullEnergy = fullEnergy;
   sim.fullVel = fullVel;
+  sim.fullAge = fullAge;
+  sim.fullColor = fullColor;
+  sim.fullOrientation = fullOrientation;
   
   // Initialize food system with shared buffer
   if (buffers.foodGrid && config.world?.foodGrid) {
-    const { cols, rows, regen = 0.05 } = config.world.foodGrid;
+    const { cols, rows, regen, capacity } = config.world.foodGrid;
+    const actualRegen = regen || 0.08;
+    const actualCapacity = capacity || 3;
     const foodGridUint8 = new Uint8Array(buffers.foodGrid);
-    sim.food = new FoodSystem(cols, rows, worldWidth, worldHeight, regen, foodGridUint8);
+    sim.food = new FoodSystem(cols, rows, worldWidth, worldHeight, actualRegen, foodGridUint8);
     
     // Only worker 0 initializes the food grid with distribution config
     if (workerId === 0) {
-      sim.food.initialize(seed, config.world.foodGrid.capacity || 1, config.world.foodGrid.distribution);
+      sim.food.initialize(seed, actualCapacity, config.world.foodGrid.distribution);
+      console.log(`[Worker 0] Initialized food with capacity=${actualCapacity}, regen=${actualRegen}, distribution=`, config.world.foodGrid.distribution);
+      console.log(`[Worker 0] Energy config:`, config.energy);
     } else {
       // Other workers sync from the shared buffer
       sim.food.syncFromUint8();
     }
   }
   
-  // Spawn initial entities for this worker (sub-worker mode only)
-  if (config.tribes && actualEntityStart < actualEntityEnd) {
-    const rand = createRng(seed + workerId);
-    let globalIdx = 0;
-    let localIdx = 0;
+  // CRITICAL FIX: Worker 0 spawns ALL entities to shared buffers
+  // Other workers just read the already-spawned entities
+  if (config.tribes && workerId === 0) {
+    const rand = createRng(seed);
+    let totalIdx = 0;
     
     config.tribes.forEach((tribe: any, tribeIdx: number) => {
       const count = tribe.count || 100;
-      // Use provided spawn or generate random position for tribe (consistent across workers)
       const spawn = tribe.spawn || { 
         x: worldWidth * (0.2 + 0.6 * (tribeIdx * 0.333 % 1)), 
         y: worldHeight * (0.2 + 0.6 * ((tribeIdx * 0.577) % 1))
       };
-      const radius = tribe.spawn?.radius || 200;  // Increased default radius
+      const radius = tribe.spawn?.radius || 200;
       const geneSpec = { ...defaultGenes, ...tribe.genes };
       
-      for (let i = 0; i < count; i++) {
-        if (globalIdx >= actualEntityStart && globalIdx < actualEntityEnd && localIdx < cap) {
-          const angle = rand() * Math.PI * 2;
-          const r = Math.sqrt(rand()) * radius;
-          const x = spawn.x + Math.cos(angle) * r;
-          const y = spawn.y + Math.sin(angle) * r;
-          
-          sim!.entities.spawn(localIdx, x, y, geneSpec, tribeIdx);
-          localIdx++;
-        }
-        globalIdx++;
+      for (let i = 0; i < count && totalIdx < totalCap; i++) {
+        const angle = rand() * Math.PI * 2;
+        const r = Math.sqrt(rand()) * radius;
+        const x = spawn.x + Math.cos(angle) * r;
+        const y = spawn.y + Math.sin(angle) * r;
+        
+        // Spawn directly to full buffers
+        fullPos[totalIdx * 2] = x;
+        fullPos[totalIdx * 2 + 1] = y;
+        fullAlive[totalIdx] = 1;
+        fullTribeId[totalIdx] = tribeIdx;
+        fullEnergy[totalIdx] = config.energy?.start || 50;
+        fullAge[totalIdx] = 0;
+        fullOrientation[totalIdx] = rand() * Math.PI * 2;
+        
+        // Set color based on tribe
+        const hue = geneSpec.colorHue || (tribeIdx * 120);
+        const rgb = hslToRgb(hue / 360, 0.8, 0.5);
+        fullColor[totalIdx * 3] = rgb[0];
+        fullColor[totalIdx * 3 + 1] = rgb[1];
+        fullColor[totalIdx * 3 + 2] = rgb[2];
+        
+        // Set genes in full buffer
+        const base = totalIdx * 9;
+        fullGenes[base] = geneSpec.speed;
+        fullGenes[base + 1] = geneSpec.vision;
+        fullGenes[base + 2] = geneSpec.metabolism;
+        fullGenes[base + 3] = geneSpec.reproChance;
+        fullGenes[base + 4] = geneSpec.aggression;
+        fullGenes[base + 5] = geneSpec.cohesion;
+        fullGenes[base + 6] = geneSpec.foodStandards;
+        fullGenes[base + 7] = geneSpec.diet;
+        fullGenes[base + 8] = geneSpec.viewAngle;
+        
+        totalIdx++;
       }
     });
     
-    sim.count = localIdx;
-    sim.entities.count = localIdx;
+    console.log(`[Worker 0] Spawned ${totalIdx} entities total across all tribes`);
+    sim.count = totalIdx;  // Track total for spatial processing
+  } else {
+    // Other workers: count entities already spawned by worker 0
+    let count = 0;
+    for (let i = 0; i < totalCap; i++) {
+      if (fullAlive[i]) count++;
+    }
+    sim.count = count;
+    console.log(`[Worker ${workerId}] Found ${count} entities already spawned`);
   }
   
   // Send ready signal
@@ -324,30 +405,18 @@ function mainLoop(now: number) {
     const dt = Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
     
-    // Debug: log occasionally
-    if (frameCount % 60 === 0) { // Every 1 second at 60fps
-      console.log(`[Worker ${workerId}] MainLoop: paused=${sim.paused}, speedMul=${sim.speedMul}, count=${sim.count}, time=${sim.time.toFixed(2)}`);
-    }
+    // Remove debug spam
     
     // Fixed timestep with accumulator
     accumulator += dt * sim.speedMul;
     let steps = 0;
   
   while (accumulator >= FIXED_TIMESTEP && steps < MAX_STEPS_PER_FRAME) {
-    if (steps === 0 && !sim.paused) {
-      console.log(`[Worker ${workerId}] Starting simulation steps, accumulator=${accumulator.toFixed(4)}`);
-    }
     const stepStart = performance.now();
     
     if (!sim.paused) {
-      if (steps === 0) { // Log on first step per frame
-        console.log(`[Worker ${workerId}] About to call sim.step(), paused=${sim.paused}, time=${sim.time}`);
-      }
       sim.step(FIXED_TIMESTEP);
       stepCount++;
-      if (steps === 0) {
-        console.log(`[Worker ${workerId}] sim.step() completed, new time=${sim.time}`);
-      }
     }
     
     const stepTime = performance.now() - stepStart;
@@ -415,12 +484,8 @@ self.addEventListener('message', (e: MessageEvent<WorkerMsg>) => {
       break;
       
     case 'pause':
-      console.log(`[Worker ${workerId}] Received pause=${msg.payload.paused}`);
       if (sim) {
         sim.paused = msg.payload.paused;
-        console.log(`[Worker ${workerId}] Set sim.paused = ${sim.paused}`);
-      } else {
-        console.log(`[Worker ${workerId}] No sim instance to pause!`);
       }
       break;
       

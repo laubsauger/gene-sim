@@ -12,6 +12,7 @@ export class HybridSimClient {
   private _worker: Worker | null = null;
   private listeners: Array<(msg: MainMsg) => void> = [];
   private ready = false;
+  private initializing = false;
   private mode: SimMode;
   private config: SimClientConfig;
   private pos: Float32Array | null = null;
@@ -28,12 +29,14 @@ export class HybridSimClient {
     console.log(`[SimClient] Initializing in ${this.mode} mode`);
   }
   
-  async init(params: SimInit) {
-    // Prevent re-initialization
-    if (this.ready) {
-      console.warn('[SimClient] Already initialized, skipping re-init');
+  async init(params: SimInit, force: boolean = false) {
+    // Prevent concurrent initialization, but allow forced reinit
+    if (this.initializing) {
+      console.warn('[SimClient] Initialization already in progress, skipping concurrent init');
       return;
     }
+    
+    this.initializing = true;
     
     // Choose worker based on mode
     switch (this.mode) {
@@ -67,6 +70,7 @@ export class HybridSimClient {
       
       if (msg.type === 'ready') {
         this.ready = true;
+        this.initializing = false;
         console.log(`[SimClient] Worker ready in ${this.mode} mode`);
         
         // Extract shared buffers
@@ -124,7 +128,6 @@ export class HybridSimClient {
   }
   
   pause(paused: boolean) {
-    console.log(`[SimClient] Sending pause=${paused} to coordinator`);
     this._worker?.postMessage({
       type: 'pause',
       payload: { paused },
@@ -153,11 +156,18 @@ export class HybridSimClient {
     this._worker?.terminate();
     this._worker = null;
     this.ready = false;
+    this.initializing = false;
     this.listeners = [];
     this.pos = null;
     this.color = null;
     this.alive = null;
     this.food = null;
+  }
+  
+  async reinit(params: SimInit) {
+    console.log('[SimClient] Reinitializing...');
+    this.terminate();
+    return this.init(params, true);
   }
   
   getMode(): SimMode {

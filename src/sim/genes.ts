@@ -1,7 +1,7 @@
 import type { GeneSpec } from './types';
 
 export const clampGene = (g: GeneSpec): GeneSpec => ({
-  speed: Math.min(200, Math.max(10, g.speed)),  // Higher speed range
+  speed: Math.min(40, Math.max(10, g.speed)),  // 10-40 units/s as per docs
   vision: Math.min(100, Math.max(5, g.vision)),  // Higher vision range
   metabolism: Math.min(2, Math.max(0.01, g.metabolism)),
   reproChance: Math.min(0.2, Math.max(0, g.reproChance)),

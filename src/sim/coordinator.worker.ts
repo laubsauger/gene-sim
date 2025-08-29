@@ -69,13 +69,24 @@ class SimulationCoordinator {
    */
   async init(msg: any) {
     const init = msg.payload;
-    console.log('[Coordinator] Received init config:', {
+    console.log('[Coordinator] ===== RECEIVED CONFIG FROM MAIN THREAD =====');
+    console.log('[Coordinator] Full configuration:', {
+      seed: init.seed,
       cap: init.cap,
-      tribesCount: init.tribes?.length,
-      totalPopulation: init.tribes?.reduce((sum: number, t: any) => sum + t.count, 0),
-      tribes: init.tribes?.map((t: any) => ({ name: t.name, count: t.count, spawn: t.spawn })),
-      foodGrid: init.world?.foodGrid
+      energy: init.energy,
+      worldSize: init.world ? `${init.world.width}x${init.world.height}` : 'default',
+      foodGrid: init.world?.foodGrid,
+      hybridization: init.hybridization,
+      tribesCount: init.tribes?.length || 0,
+      totalPopulation: init.tribes?.reduce((sum: number, t: any) => sum + t.count, 0) || 0
     });
+    console.log('[Coordinator] Tribes:', init.tribes?.map((t: any) => ({
+      name: t.name,
+      count: t.count,
+      hasSpawn: !!t.spawn,
+      hasGenes: !!t.genes
+    })));
+    console.log('[Coordinator] ============================================');
     
     // Determine worker count based on available cores
     const coreCount = navigator.hardwareConcurrency || 4;
@@ -132,6 +143,20 @@ class SimulationCoordinator {
       orientations: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * count),
       ages: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * count),
     };
+    
+    // CRITICAL: Initialize buffers to prevent random memory issues
+    const aliveView = new Uint8Array(this.sharedBuffers.alive);
+    aliveView.fill(0);
+    
+    // Initialize positions far outside the world to prevent dead entities from rendering
+    // World is 4000x4000, so put them at -10000,-10000
+    const posView = new Float32Array(this.sharedBuffers.positions);
+    for (let i = 0; i < count; i++) {
+      posView[i * 2] = -10000;     // x
+      posView[i * 2 + 1] = -10000;  // y  
+    }
+    
+    console.log(`[Coordinator] Initialized buffers (alive=0, pos=-10000,-10000) for ${count} slots`);
     
     console.log('[Coordinator] Allocated shared memory for', count, 'entities');
     
@@ -273,6 +298,22 @@ class SimulationCoordinator {
         
         if (this.workersReady >= this.state.workerCount && this.allWorkersReadyCallback) {
           console.log(`[Coordinator] All workers ready, calling callback`);
+          
+          // Add debugging to verify the final spawning results
+          setTimeout(() => {
+            console.log(`[Coordinator] ===== SPAWNING VERIFICATION =====`);
+            console.log(`[Coordinator] Expected population: ${this.state.actualPopulation}`);
+            console.log(`[Coordinator] Buffer capacity: ${this.state.entityCount}`);
+            console.log(`[Coordinator] Workers: ${this.state.workerCount}`);
+            
+            // Request immediate stats from all workers to verify spawning
+            this.state.workers.forEach(w => {
+              w.worker.postMessage({ type: 'stats' });
+            });
+            console.log(`[Coordinator] Stats requested from all workers for verification`);
+            console.log(`[Coordinator] =========================================`);
+          }, 500); // Wait 500ms for workers to finish spawning
+          
           this.allWorkersReadyCallback();
           this.allWorkersReadyCallback = null;
         }
@@ -379,6 +420,8 @@ class SimulationCoordinator {
    * Aggregate statistics from all workers
    */
   private aggregateStats(workerId: number, stats: SimStats) {
+    // Removed debug spam - stats logged in aggregate only
+    
     // Store stats from this worker
     this.workerStats.set(workerId, stats);
     
@@ -476,6 +519,15 @@ class SimulationCoordinator {
           }
         });
         
+        // Log stats summary occasionally instead of every frame
+        this.statsLogCounter = (this.statsLogCounter || 0) + 1;
+        if (this.statsLogCounter % 20 === 0) { // Every ~5 seconds
+          const summary = Object.entries(aggregated.byTribe)
+            .map(([name, data]) => `${name}:${data.population}`)
+            .join(', ');
+          console.log(`[Coordinator] Population: ${aggregated.population} (${summary})`);
+        }
+        
         // Send aggregated stats
         self.postMessage({ type: 'stats', payload: aggregated } as MainMsg);
         
@@ -568,7 +620,7 @@ class SimulationCoordinator {
   /**
    * Send ready message to main thread
    */
-  private sendReadyMessage() {
+  sendReadyMessage() {
     if (!this.sharedBuffers) return;
     
     const payload: MainMsg = {
@@ -580,7 +632,7 @@ class SimulationCoordinator {
           alive: this.sharedBuffers.alive,
           food: this.foodBuffer || new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * 256 * 256),
         },
-        meta: { count: this.state.entityCount },  // Use full buffer size for rendering
+        meta: { count: this.state.entityCount },  // Full buffer size for sparse entity storage
         foodMeta: { cols: this.foodCols || 256, rows: this.foodRows || 256 },
       },
     };
@@ -592,12 +644,15 @@ class SimulationCoordinator {
    * Start sending stats to main thread
    */
   private startStatsReporting() {
-    // Send stats every 500ms
+    // Send stats every 500ms - but only when simulation is running
     (this as any).statsTimer = setInterval(() => {
-      // Request stats from all workers
-      this.state.workers.forEach(w => {
-        w.worker.postMessage({ type: 'stats' });
-      });
+      // Only request stats if simulation is not paused and has workers
+      if (this.state.workers.length > 0 && !this.state.paused) {
+        // Request stats from all workers
+        this.state.workers.forEach(w => {
+          w.worker.postMessage({ type: 'stats' });
+        });
+      }
     }, 500);
   }
   
@@ -616,17 +671,14 @@ class SimulationCoordinator {
     switch (msg.type) {
       case 'setSpeed':
         this.state.speedMul = msg.payload.speedMul;
-        console.log(`[Coordinator] Setting speed to ${msg.payload.speedMul}`);
         // Broadcast to all workers
         this.state.workers.forEach(w => w.worker.postMessage(msg));
         break;
         
       case 'pause':
-        console.log(`[Coordinator] Received pause=${msg.payload.paused}, broadcasting to ${this.state.workers.length} workers`);
         this.state.paused = msg.payload.paused;
         // Broadcast to all workers  
-        this.state.workers.forEach((w, i) => {
-          console.log(`[Coordinator] Sending pause=${msg.payload.paused} to worker ${i}`);
+        this.state.workers.forEach((w) => {
           w.worker.postMessage(msg);
         });
         break;
@@ -649,19 +701,30 @@ self.onmessage = async (e: MessageEvent<WorkerMsg>) => {
   const msg = e.data;
   
   if (msg.type === 'init') {
-    // Prevent multiple initializations
+    // Prevent multiple initializations more aggressively
     if (initializationInProgress || (coordinator && coordinator.isInitialized())) {
       console.warn('[Coordinator] Already initialized or initializing, ignoring duplicate init');
+      // Send ready message if already initialized
+      if (coordinator && coordinator.isInitialized()) {
+        coordinator.sendReadyMessage();
+      }
       return;
     }
     
     initializationInProgress = true;
     
-    if (!coordinator) {
-      coordinator = new SimulationCoordinator();
+    try {
+      if (!coordinator) {
+        coordinator = new SimulationCoordinator();
+      }
+      
+      await coordinator.init(msg);
+    } catch (error) {
+      console.error('[Coordinator] Initialization failed:', error);
+      initializationInProgress = false;
+      throw error;
     }
     
-    await coordinator.init(msg);
     initializationInProgress = false;
   } else if (coordinator) {
     coordinator.handleControlMessage(msg);

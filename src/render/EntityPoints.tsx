@@ -89,7 +89,58 @@ export function EntityPoints({
 
   // Create buffer attributes from SharedArrayBuffer views
   useEffect(() => {
-    if (!pos || !color || !alive) return;
+    if (!pos || !color || !alive) {
+      console.log('[EntityPoints] Missing buffers:', { hasPos: !!pos, hasColor: !!color, hasAlive: !!alive });
+      return;
+    }
+    
+    const aliveSum = alive.reduce((sum, val) => sum + val, 0);
+    
+    // Only log on significant changes or initial setup
+    const shouldLog = !geom.attributes.aPos || Math.abs(aliveSum - (geom.userData?.lastAliveSum || 0)) > count * 0.1;
+    if (shouldLog) {
+      console.log('[EntityPoints] Updating buffers:', { 
+        count, 
+        posLength: pos.length, 
+        colorLength: color.length,
+        aliveLength: alive.length,
+        aliveSum
+      });
+      geom.userData = { lastAliveSum: aliveSum };
+      
+      // Debug: Check where alive entities actually are
+      let visibleCount = 0;
+      for (let i = 0; i < Math.min(count, 120000); i++) {
+        if (alive[i]) {
+          const x = pos[i * 2];
+          const y = pos[i * 2 + 1];
+          if (x > -1000 && x < 5000 && y > -1000 && y < 5000) {
+            visibleCount++;
+            if (visibleCount <= 3) {
+              console.log(`[EntityPoints] Alive entity at index ${i}: (${x.toFixed(1)}, ${y.toFixed(1)})`);
+            }
+          }
+        }
+      }
+      console.log(`[EntityPoints] ${visibleCount} entities in visible range out of ${aliveSum} alive`);
+    }
+    
+    // Debug: Check if entities are outside expected bounds - very infrequent
+    if (shouldLog) {
+      const positionsOutOfBounds = [];
+      for (let i = 0; i < Math.min(count, 20); i++) { // Check only first 20 for performance
+        if (alive[i]) {
+          const x = pos[i * 2];
+          const y = pos[i * 2 + 1];
+          if (x < -100 || x > 4100 || y < -100 || y > 4100) { // World is 4000x4000, so slight margin
+            positionsOutOfBounds.push({ i, x: x.toFixed(1), y: y.toFixed(1) });
+          }
+        }
+      }
+      if (positionsOutOfBounds.length > 0) {
+        console.warn('[EntityPoints] Entities outside bounds:', positionsOutOfBounds);
+      }
+    }
     
     // Always recreate attributes when buffers change to ensure updates
     const posAttr = new THREE.BufferAttribute(pos, 2);

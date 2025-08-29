@@ -99,8 +99,6 @@ export default function App() {
   const [currentSeed, setCurrentSeed] = useState<number>(Date.now());
   const [gameOver, setGameOver] = useState<{ finalTime: number; finalStats: SimStats } | null>(null);
 
-  // Track if we need to reinitialize
-  const [needsReinit, setNeedsReinit] = useState(false);
   const lastConfigRef = useRef<any>(null);
   
   useEffect(() => {
@@ -124,10 +122,104 @@ export default function App() {
         return;
       }
       
-      // Only reinitialize if config actually changed and we're not running
+      // Reinit on any config changes when not running
       if (configChanged && client.isReady() && !isRunning) {
-        console.log('[App] Config changed, marking for reinit');
-        setNeedsReinit(true);
+        const oldConfig = lastConfigRef.current;
+        const newConfig = simConfig;
+        
+        // Check for significant changes
+        const tribeCountChanged = (oldConfig?.tribes?.length || 0) !== (newConfig?.tribes?.length || 0);
+        const worldSizeChanged = oldConfig?.world?.width !== newConfig?.world?.width || 
+                                oldConfig?.world?.height !== newConfig?.world?.height;
+        const foodSettingsChanged = oldConfig?.world?.foodGrid?.regen !== newConfig?.world?.foodGrid?.regen ||
+                                   oldConfig?.world?.foodGrid?.capacity !== newConfig?.world?.foodGrid?.capacity ||
+                                   oldConfig?.world?.foodGrid?.cols !== newConfig?.world?.foodGrid?.cols ||
+                                   oldConfig?.world?.foodGrid?.rows !== newConfig?.world?.foodGrid?.rows ||
+                                   JSON.stringify(oldConfig?.world?.foodGrid?.distribution) !== JSON.stringify(newConfig?.world?.foodGrid?.distribution);
+        
+        // Check for energy changes
+        const energyChanged = oldConfig?.energy?.start !== newConfig?.energy?.start ||
+                             oldConfig?.energy?.max !== newConfig?.energy?.max ||
+                             oldConfig?.energy?.repro !== newConfig?.energy?.repro;
+        
+        // Check for population changes (individual tribe counts or total population)
+        const oldTotalPop = oldConfig?.tribes?.reduce((sum: number, tribe: any) => sum + (tribe.count || 0), 0) || 0;
+        const newTotalPop = newConfig?.tribes?.reduce((sum: number, tribe: any) => sum + (tribe.count || 0), 0) || 0;
+        const populationChanged = oldTotalPop !== newTotalPop;
+        
+        // Check if individual tribe population targets changed
+        const tribePopulationChanged = oldConfig?.tribes?.some((oldTribe: any, index: number) => 
+          oldTribe.count !== newConfig?.tribes?.[index]?.count) || false;
+        
+        // Check for tribe-level changes (spawn patterns, gene changes, names, etc.)
+        const tribePropertiesChanged = oldConfig?.tribes?.some((oldTribe: any, index: number) => {
+          const newTribe = newConfig?.tribes?.[index];
+          if (!newTribe) return true; // Tribe removed
+          
+          // Check tribe name changes
+          if (oldTribe.name !== newTribe.name) return true;
+          
+          // Check spawn pattern changes
+          if (oldTribe.spawn?.pattern !== newTribe.spawn?.pattern) return true;
+          if (oldTribe.spawn?.x !== newTribe.spawn?.x || oldTribe.spawn?.y !== newTribe.spawn?.y) return true;
+          if (oldTribe.spawn?.radius !== newTribe.spawn?.radius) return true;
+          
+          // Check major gene changes (metabolism, aggression, diet - things that affect behavior significantly)
+          const oldGenes = oldTribe.genes || {};
+          const newGenes = newTribe.genes || {};
+          const significantGenes = ['metabolism', 'aggression', 'diet', 'speed', 'vision', 'reproChance'];
+          if (significantGenes.some(gene => Math.abs((oldGenes[gene] || 0) - (newGenes[gene] || 0)) > 0.01)) {
+            return true;
+          }
+          
+          return false;
+        }) || false;
+        
+        // Debug: Log what we're comparing
+        if (configChanged) {
+          console.log('[App] Config comparison details:', {
+            tribeCountChanged,
+            worldSizeChanged,
+            foodSettingsChanged,
+            energyChanged,
+            populationChanged,
+            tribePopulationChanged,
+            tribePropertiesChanged,
+            oldTotalPop,
+            newTotalPop,
+            energy: {
+              old: oldConfig?.energy,
+              new: newConfig?.energy
+            },
+            tribesCount: {
+              old: oldConfig?.tribes?.length || 0,
+              new: newConfig?.tribes?.length || 0
+            }
+          });
+        }
+        
+        const significantChange = tribeCountChanged || worldSizeChanged || foodSettingsChanged || 
+                                 populationChanged || tribePopulationChanged || tribePropertiesChanged ||
+                                 energyChanged;
+        
+        if (significantChange) {
+          console.log('[App] Significant config change detected - reinitializing...', {
+            tribeCountChanged,
+            worldSizeChanged, 
+            foodSettingsChanged,
+            energyChanged,
+            populationChanged,
+            tribePopulationChanged,
+            tribePropertiesChanged
+          });
+          client.reinit(simConfig).then(() => {
+            setClientReady(true);
+            console.log('[App] Reinit complete');
+            // Trigger config update for renderer
+            window.dispatchEvent(new CustomEvent('simConfigUpdate'));
+          });
+        }
+        
         lastConfigRef.current = simConfig;
       }
     };
@@ -136,31 +228,24 @@ export default function App() {
       initClient();
     }
   }, [simConfig, isRunning, client]);
-  
-  // Handle reinit separately to avoid constant recreation
-  useEffect(() => {
-    if (needsReinit && !isRunning && lastConfigRef.current) {
-      console.log('[App] Reinitializing with new config');
-      setNeedsReinit(false);
-      
-      // Send a reinit message to the worker instead of recreating
-      client.terminate();
-      clientRef.current = createSimClient({ mode: simMode });
-      initialized.current = false;
-      setClientReady(false);
-      
-      clientRef.current.init(lastConfigRef.current).then(() => {
-        initialized.current = true;
-        setClientReady(true);
-      });
-    }
-  }, [needsReinit, isRunning, simMode]);
 
   const handleStart = () => {
+    console.log('[App] ===== STARTING SIMULATION =====');
+    console.log('[App] Current tribes in config:', simConfig?.tribes?.map((t: any) => ({
+      name: t.name,
+      count: t.count,
+      spawn: { x: t.spawn?.x, y: t.spawn?.y, radius: t.spawn?.radius }
+    })));
+    console.log('[App] Client ready:', clientReady, 'Initialized:', initialized.current);
+    console.log('[App] ================================');
+    
     setIsRunning(true);
     setShowSetup(false);
     setGameOver(null);
+    
+    console.log('[App] About to unpause simulation...');
     client.pause(false); // Unpause the simulation
+    console.log('[App] Simulation unpaused');
   };
   
   const handleRestart = () => {
@@ -185,30 +270,30 @@ export default function App() {
     
     console.log('[App] Changing mode from', simMode, 'to', newMode);
     
-    // Stop current simulation
-    setIsRunning(false);
-    client.setPaused(true);
-    client.terminate();
+    // Stop current simulation if running
+    if (isRunning) {
+      setIsRunning(false);
+      client.setPaused(true);
+    }
     
-    // Create new client with new mode
+    // Terminate old client and create new client with new mode
+    client.terminate();
     console.log('[App] Creating new client with mode:', newMode);
     clientRef.current = createSimClient({ mode: newMode });
     setSimMode(newMode);
     
-    // Reset initialization flag and re-initialize
+    // Reset initialization flag and re-initialize if we have config
     initialized.current = false;
     setClientReady(false);
-    setShowSetup(true);
+    setShowSetup(true); // Show setup again to allow configuration
     
-    // If we have a config, initialize with it
     if (simConfig) {
       console.log('[App] Re-initializing with existing config');
-      clientRef.current.init(simConfig).then(() => {
+      clientRef.current.init(simConfig, true).then(() => { // force=true
         setClientReady(true);
         initialized.current = true;
       });
     }
-    // Otherwise wait for config from SimulationSetup
   };
 
   // Track pause state

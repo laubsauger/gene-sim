@@ -57,7 +57,8 @@ export function efficientMovementOptimized(
   fullAlive?: Uint8Array,
   fullTribeId?: Uint16Array,
   fullGenes?: Float32Array,
-  fullEnergy?: Float32Array
+  fullEnergy?: Float32Array,
+  fullVel?: Float32Array
 ): void {
   const G = 9;
   const base = i * G;
@@ -69,6 +70,7 @@ export function efficientMovementOptimized(
   const queryTribeId = fullTribeId || tribeId;
   const queryGenes = fullGenes || genes;
   const queryEnergy = fullEnergy || energy;
+  const queryVel = fullVel || vel;
   
   // Pre-fetch all genes for better cache locality
   const rawSpeed = genes[base];
@@ -183,20 +185,20 @@ export function efficientMovementOptimized(
       
       // Alignment (only if not overcrowded)
       if (neighborCount < 10) {
-        alignX += vel[j * 2];
-        alignY += vel[j * 2 + 1];
+        alignX += queryVel[j * 2];
+        alignY += queryVel[j * 2 + 1];
       }
       
       // Cohesion
       if (neighborCount < 15) {
-        cohesionX += pos[j * 2];
-        cohesionY += pos[j * 2 + 1];
+        cohesionX += queryPos[j * 2];
+        cohesionY += queryPos[j * 2 + 1];
       }
       
       // Check if ally is hunting (for pack bonus)
       if (isHunter && cohesion > 0.4) {
         const allyBase = j * G;
-        const allyDiet = genes[allyBase + 7] || -0.5;
+        const allyDiet = queryGenes[allyBase + 7] || -0.5;
         const allyCarnivore = Math.max(0, allyDiet);
         if (allyCarnivore > 0.2 && otherEnergy < 70) {
           huntingAllies++;
@@ -484,6 +486,17 @@ export function efficientMovementOptimized(
   // Add random wander
   vx += (rand() - 0.5) * speed * 0.1;
   vy += (rand() - 0.5) * speed * 0.1;
+  
+  // Light velocity damping only if speed is excessive
+  const velocityMag = Math.sqrt(vx * vx + vy * vy);
+  const maxVelocity = speed * 3; // Allow more burst speed
+  
+  if (velocityMag > maxVelocity) {
+    // Scale down excessive velocities
+    const scale = maxVelocity / velocityMag;
+    vx *= scale;
+    vy *= scale;
+  }
   
   // Update velocity
   vel[i * 2] = vx;

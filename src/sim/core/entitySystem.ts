@@ -129,7 +129,9 @@ export class EntitySystem {
     parentIdx: number,
     childIdx: number,
     rand: Rng,
-    tribeColors: number[]
+    tribeColors: number[],
+    worldWidth?: number,
+    worldHeight?: number
   ): boolean {
     if (childIdx >= this.cap || this.alive[childIdx]) {
       return false;
@@ -156,8 +158,14 @@ export class EntitySystem {
     const py = this.pos[parentIdx * 2 + 1];
     const spawnOffset = 10 + rand() * 15;
     const spawnAngle = rand() * Math.PI * 2;
-    const childX = px + Math.cos(spawnAngle) * spawnOffset;
-    const childY = py + Math.sin(spawnAngle) * spawnOffset;
+    let childX = px + Math.cos(spawnAngle) * spawnOffset;
+    let childY = py + Math.sin(spawnAngle) * spawnOffset;
+    
+    // Wrap coordinates to stay within world bounds
+    if (worldWidth && worldHeight) {
+      childX = ((childX % worldWidth) + worldWidth) % worldWidth;
+      childY = ((childY % worldHeight) + worldHeight) % worldHeight;
+    }
     
     this.spawn(
       childIdx,

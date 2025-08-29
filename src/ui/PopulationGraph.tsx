@@ -25,21 +25,41 @@ export function PopulationGraph({ client, maxHistory = 100 }: PopulationGraphPro
         if (now - lastUpdateRef.current < 1000) return;
         lastUpdateRef.current = now;
         
+        // Defensive checks to prevent crashes
+        if (!m.payload || typeof m.payload.time !== 'number' || !m.payload.byTribe || typeof m.payload.population !== 'number') {
+          console.warn('[PopulationGraph] Invalid stats payload:', m.payload);
+          return;
+        }
+        
         setHistory(prev => {
-          const point: HistoryPoint = {
-            time: m.payload.t,
-            tribes: Object.entries(m.payload.byTribe).reduce((acc, [name, data]) => {
-              acc[name] = { count: data.count, color: data.color };
-              return acc;
-            }, {} as Record<string, { count: number; color: string }>),
-            total: m.payload.population,
-          };
-          
-          const newHistory = [...prev, point];
-          if (newHistory.length > maxHistory) {
-            newHistory.shift();
+          try {
+            const tribes: Record<string, { count: number; color: string }> = {};
+            
+            // Safely process tribes data
+            Object.entries(m.payload.byTribe).forEach(([name, data]) => {
+              if (name && data && typeof data.count === 'number' && data.color) {
+                tribes[name] = { 
+                  count: Math.max(0, data.count || 0), 
+                  color: data.color 
+                };
+              }
+            });
+            
+            const point: HistoryPoint = {
+              time: m.payload.time,
+              tribes,
+              total: Math.max(0, m.payload.population || 0),
+            };
+            
+            const newHistory = [...prev, point];
+            if (newHistory.length > maxHistory) {
+              newHistory.shift();
+            }
+            return newHistory;
+          } catch (error) {
+            console.error('[PopulationGraph] Error processing stats:', error, m.payload);
+            return prev; // Keep previous history on error
           }
-          return newHistory;
         });
       }
     });
@@ -62,11 +82,12 @@ export function PopulationGraph({ client, maxHistory = 100 }: PopulationGraphPro
     ctx.fillStyle = '#0a0a0a';
     ctx.fillRect(0, 0, width, height);
 
-    // Find max population for scaling
-    const maxPop = Math.max(...history.map(h => h.total));
-    const minTime = history[0].time;
-    const maxTime = history[history.length - 1].time;
-    const timeRange = maxTime - minTime || 1;
+    // Find max population for scaling - with defensive checks
+    const validTotals = history.map(h => h.total || 0).filter(t => typeof t === 'number' && !isNaN(t));
+    const maxPop = Math.max(1, ...validTotals); // Ensure minimum of 1 to avoid division by 0
+    const minTime = history[0]?.time || 0;
+    const maxTime = history[history.length - 1]?.time || 0;
+    const timeRange = Math.max(1, maxTime - minTime); // Ensure minimum range of 1
 
     // Draw grid
     ctx.strokeStyle = '#222';
@@ -88,10 +109,10 @@ export function PopulationGraph({ client, maxHistory = 100 }: PopulationGraphPro
       ctx.fillText(value.toString(), padding.left - 5, y + 3);
     }
 
-    // Get all tribe names and sort for consistent stacking
+    // Get all tribe names and sort for consistent stacking - with defensive checks
     const tribeNames = Array.from(new Set(
-      history.flatMap(h => Object.keys(h.tribes))
-    )).sort();
+      history.filter(h => h && h.tribes).flatMap(h => Object.keys(h.tribes || {}))
+    )).filter(name => typeof name === 'string' && name.length > 0).sort();
 
     // Draw individual line charts instead of stacked areas for clarity
     tribeNames.forEach((tribeName) => {

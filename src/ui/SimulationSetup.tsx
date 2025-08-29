@@ -252,7 +252,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   const [foodRegen, setFoodRegen] = useState(0.08);
   const [foodCapacity, setFoodCapacity] = useState(3);
   const [foodDistScale, setFoodDistScale] = useState(35);
-  const [foodDistThreshold, setFoodDistThreshold] = useState(0.35);
+  const [foodDistThreshold, setFoodDistThreshold] = useState(0.65);
   const [foodDistFrequency, setFoodDistFrequency] = useState(3);
   const [maxEntities, setMaxEntities] = useState(120000);
   const [startEnergy, setStartEnergy] = useState(50);
@@ -290,12 +290,34 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
       hybridization: allowHybrids
     };
     
-    console.log('[SimulationSetup] Sending config:', {
+    const totalPopulation = config.tribes.reduce((sum, t) => sum + t.count, 0);
+    console.log('[SimulationSetup] ===== FULL CONFIG UPDATE =====');
+    console.log('[SimulationSetup] Configuration being sent:', {
+      seed: config.seed,
       cap: config.cap,
+      worldSize: `${config.world.width}x${config.world.height}`,
+      energy: config.energy,
+      foodGrid: {
+        cols: config.world.foodGrid.cols,
+        rows: config.world.foodGrid.rows,
+        regen: config.world.foodGrid.regen,
+        capacity: config.world.foodGrid.capacity,
+        distribution: config.world.foodGrid.distribution
+      },
+      hybridization: config.hybridization,
       tribesCount: config.tribes.length,
-      totalPopulation: config.tribes.reduce((sum, t) => sum + t.count, 0),
-      tribes: config.tribes.map(t => ({ name: t.name, count: t.count, spawn: t.spawn }))
+      totalPopulation
     });
+
+    console.log('[SimulationSetup] Tribe details:');
+    config.tribes.forEach((tribe, idx) => {
+      console.log(`[SimulationSetup] Tribe ${idx}: "${tribe.name}"`, {
+        count: tribe.count,
+        spawn: tribe.spawn,
+        genes: tribe.genes
+      });
+    });
+    console.log('[SimulationSetup] =====================================');
     
     // Pass config to App component
     if (onConfigChange) {
@@ -315,6 +337,11 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   // Auto-update config when any setting changes
   useEffect(() => {
     if (initialized && !isRunning) {
+      console.log('[SimulationSetup] Settings changed, triggering config update', {
+        foodDistThreshold,
+        foodCapacity,
+        startEnergy
+      });
       updateConfig();
     }
   }, [initialized, isRunning, updateConfig, seed, maxEntities, worldWidth, worldHeight,
@@ -965,11 +992,11 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                     </div>
                     <div style={{ marginTop: '8px' }}>
                       <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                        Scarcity ({foodDistThreshold.toFixed(2)} - {foodDistThreshold === 0 ? 'everywhere' : foodDistThreshold < 0.3 ? 'abundant' : foodDistThreshold < 0.5 ? 'islands' : 'rare peaks'})
+                        Scarcity ({foodDistThreshold.toFixed(2)} - {foodDistThreshold < 0.4 ? 'very abundant' : foodDistThreshold < 0.4 ? 'abundant' : foodDistThreshold < 0.7 ? 'moderate' : foodDistThreshold <= 1 ? 'scarce' : 'very scarce'})
                       </label>
                       <StyledSlider
-                        min={0}
-                        max={0.8}
+                        min={0.25}
+                        max={1}
                         step={0.05}
                         value={foodDistThreshold}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFoodDistThreshold(Number(e.target.value))}
