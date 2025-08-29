@@ -200,15 +200,24 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
   const usedHues = new Set<number>();
   
   for (const archetype of selectedArchetypes) {
-    // Add random offset to angle so tribes don't always spawn in same pattern
-    const angleOffset = rng() * Math.PI * 0.5; // Random offset up to 90 degrees
-    const angle = (tribeIndex / tribesCount) * Math.PI * 2 + angleOffset;
-    const distance = 1200 + rng() * 800;
-    
     // Hunters get smaller initial population
     const isHunter = archetype.name === 'Hunters';
     const baseCount = isHunter ? 400 : 800;
     const varCount = isHunter ? 200 : 400;
+    const tribeCount = baseCount + Math.floor(rng() * varCount);
+    
+    // Scale spawn radius with population to avoid overcrowding (moved up to use in distance calc)
+    // Balanced spacing - minimum 200, scales moderately with population
+    const minRadius = 200;
+    const radiusScale = Math.sqrt(tribeCount / 400); // Scale factor based on population density
+    const spawnRadius = Math.max(minRadius, minRadius * radiusScale + rng() * 50);
+    
+    // Add random offset to angle so tribes don't always spawn in same pattern
+    const angleOffset = rng() * Math.PI * 0.3; // Random offset up to 54 degrees
+    const angle = (tribeIndex / tribesCount) * Math.PI * 2 + angleOffset;
+    // Keep spawns well within world bounds but closer to center
+    const maxDistance = Math.min(1200, 2000 - spawnRadius); // Don't spawn too close to edges
+    const distance = 600 + rng() * Math.min(500, maxDistance - 600);
     
     // Make sure colors are distinct - if too similar to existing, shift hue
     let finalGenes = { ...archetype.genes };
@@ -227,11 +236,11 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
 
     tribes.push({
       name: archetype.name,
-      count: baseCount + Math.floor(rng() * varCount), // Hunters: 400-600, Others: 800-1200
+      count: tribeCount,
       spawn: {
         x: 2000 + Math.cos(angle) * distance,
         y: 2000 + Math.sin(angle) * distance,
-        radius: 150 + rng() * 100,
+        radius: spawnRadius,
         pattern: archetype.spawnPattern
       },
       genes: finalGenes
@@ -328,9 +337,9 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
     window.dispatchEvent(new CustomEvent('simConfigUpdate'));
   }, [client, seed, maxEntities, worldWidth, worldHeight, foodCols, foodRows, foodRegen, foodCapacity, foodDistScale, foodDistThreshold, foodDistFrequency, tribes, startEnergy, maxEnergy, reproEnergy, allowHybrids]);
 
-  // Create throttled version for live updates
+  // Create throttled version for live updates - increased to 1 second to avoid rapid reinits
   const updateConfig = useMemo(
-    () => throttle(updateConfigImmediate, 300),
+    () => throttle(updateConfigImmediate, 1000),
     [updateConfigImmediate]
   );
 

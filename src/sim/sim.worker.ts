@@ -85,7 +85,9 @@ function initializeAsMainWorker(msg: any) {
   const tribeCount = init.tribes?.length || 3;
   
   sim = new SimulationCore(worldWidth, worldHeight, cap, seed, tribeCount);
-  sim.allowHybrids = init.allowHybrids !== false;
+  // Fix: Use hybridization from config (UI sends hybridization, not allowHybrids)
+  sim.allowHybrids = init.hybridization === true;  // Default to false if not specified
+  console.log(`[SingleWorker] Hybrid evolution: ${sim.allowHybrids} (from config.hybridization: ${init.hybridization})`);
   
   // Store tribe metadata
   sim.tribeNames = init.tribes?.map((t: any) => t.name) || [];
@@ -235,13 +237,24 @@ function initializeAsSubWorker(msg: any) {
   // Pass totalCap for spatial hash sizing to handle neighbor queries across all workers
   const totalCap = buffers.positions.byteLength / 8; // Float32Array with x,y = 8 bytes per entity
   sim = new SimulationCore(worldWidth, worldHeight, cap, seed + workerId, config.tribes?.length || 3, totalCap);
-  sim.allowHybrids = config.allowHybrids !== false;
+  // Fix: Use hybridization from config (UI sends hybridization, not allowHybrids)
+  sim.allowHybrids = config.hybridization === true;  // Default to false if not specified
   sim.updateFood = workerId === 0;  // Only worker 0 handles food regrowth (but syncs from shared buffer first)
   sim.tribeNames = config.tribes?.map((t: any) => t.name) || [];
   sim.tribeColors = config.tribes?.map((t: any) => t.genes?.colorHue || 0) || [];
   sim.workerRegion = workerRegion;
   sim.isMultiWorker = true;
   
+  if (workerId === 0) {
+    console.log(`[Worker 0] Settings received:`, {
+      hybridization: config.hybridization,
+      allowHybrids: sim.allowHybrids,
+      energy: config.energy,
+      foodRegen: config.world?.foodGrid?.regen,
+      foodCapacity: config.world?.foodGrid?.capacity
+    });
+  }
+
   // Create FULL views for spatial queries (so we can see all entities)
   const fullPos = new Float32Array(buffers.positions);
   const fullAlive = new Uint8Array(buffers.alive);
@@ -311,16 +324,88 @@ function initializeAsSubWorker(msg: any) {
         x: worldWidth * (0.2 + 0.6 * (tribeIdx * 0.333 % 1)), 
         y: worldHeight * (0.2 + 0.6 * ((tribeIdx * 0.577) % 1))
       };
-      const radius = tribe.spawn?.radius || 200;
+      // Scale radius with population - balanced spacing
+      const baseRadius = tribe.spawn?.radius || 200;
+      const populationScale = Math.sqrt(count / 400); // Scale with population density
+      const radius = Math.max(baseRadius, baseRadius * populationScale * 0.8); // Reduced scaling
+      const pattern = tribe.spawn?.pattern || 'blob';
       const geneSpec = { ...defaultGenes, ...tribe.genes };
       
+      // Log spawn details for first tribe to debug
+      if (tribeIdx === 0) {
+        console.log(`[Worker 0] Spawning ${tribe.name}: pattern="${pattern}", radius=${radius}, count=${count}, diet=${geneSpec.diet}`);
+      }
+
+      // Helper for different spawn patterns with more randomness
+      const getSpawnPosition = (index: number) => {
+        // Add deterministic variation based on tribe index and entity index
+        const variation = rand() * 0.2 + 0.9; // 0.9-1.1 variation (reduced)
+
+        switch (pattern) {
+          case 'scattered':
+            // Random distribution within radius with jitter
+            const angle = rand() * Math.PI * 2;
+            const r = rand() * radius * variation;
+            const jitterX = (rand() - 0.5) * 5;
+            const jitterY = (rand() - 0.5) * 5;
+            return {
+              x: spawn.x + Math.cos(angle) * r + jitterX,
+              y: spawn.y + Math.sin(angle) * r + jitterY
+            };
+
+          case 'herd':
+            // Multiple small clusters with variation
+            const clusterCount = 3 + Math.floor(rand() * 3);
+            const clusterIndex = Math.floor(rand() * clusterCount); // Random cluster assignment
+            const clusterAngle = (clusterIndex / clusterCount) * Math.PI * 2 + rand() * 0.5;
+            const clusterRadius = radius * (0.2 + rand() * 0.1); // Smaller, tighter clusters
+            const clusterDist = radius * (0.5 + rand() * 0.2); // Closer together
+            const clusterX = spawn.x + Math.cos(clusterAngle) * clusterDist;
+            const clusterY = spawn.y + Math.sin(clusterAngle) * clusterDist;
+            const localAngle = rand() * Math.PI * 2;
+            const localR = Math.sqrt(rand()) * clusterRadius * variation;
+            return {
+              x: clusterX + Math.cos(localAngle) * localR,
+              y: clusterY + Math.sin(localAngle) * localR
+            };
+
+          case 'adaptive':
+            // Based on diet - herbivores cluster, carnivores spread
+            const diet = geneSpec.diet || 0;
+            const clustering = diet < 0 ? 0.3 : 0.7; // Herbivores cluster more
+            const adaptiveAngle = rand() * Math.PI * 2;
+            const adaptiveR = Math.pow(rand(), clustering) * radius * variation;
+            // Add spiral pattern for visual interest
+            const spiralOffset = (index * 0.1) % (Math.PI * 2);
+            return {
+              x: spawn.x + Math.cos(adaptiveAngle + spiralOffset) * adaptiveR,
+              y: spawn.y + Math.sin(adaptiveAngle + spiralOffset) * adaptiveR
+            };
+
+          case 'blob':
+          default:
+            // Tight circular cluster with minimum spacing
+            const minSpacing = 30; // Reduced minimum distance between entities
+            const rings = Math.ceil(Math.sqrt(count / Math.PI)); // Concentric rings
+            const ring = Math.floor(index / rings);
+            const angleInRing = (index % rings) / rings * Math.PI * 2;
+            const ringRadius = (ring / rings) * radius * variation;
+            const blobAngle = angleInRing + rand() * 0.2; // Small random offset
+            const blobR = Math.max(minSpacing * ring, ringRadius);
+            return {
+              x: spawn.x + Math.cos(blobAngle) * blobR,
+              y: spawn.y + Math.sin(blobAngle) * blobR
+            };
+        }
+      };
+
       for (let i = 0; i < count && totalIdx < totalCap; i++) {
-        const angle = rand() * Math.PI * 2;
-        const r = Math.sqrt(rand()) * radius;
-        const x = spawn.x + Math.cos(angle) * r;
-        const y = spawn.y + Math.sin(angle) * r;
+        const pos = getSpawnPosition(i);
+        // Apply world wrapping to ensure entities spawn within bounds
+        const x = ((pos.x % worldWidth) + worldWidth) % worldWidth;
+        const y = ((pos.y % worldHeight) + worldHeight) % worldHeight;
         
-        // Spawn directly to full buffers
+        // Spawn directly to full buffers with wrapped coordinates
         fullPos[totalIdx * 2] = x;
         fullPos[totalIdx * 2 + 1] = y;
         fullAlive[totalIdx] = 1;

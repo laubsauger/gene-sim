@@ -169,12 +169,16 @@ export function efficientMovementOptimized(
       neighborCount++;
     }
     
-    // Process separation (universal crowding) - only for very close entities
-    if (distSq < 400) { // Reduced from 900 to 400 (20² instead of 30²)
-      const dist = Math.sqrt(distSq);
-      const crowdForce = (20 - dist) / 20;
+    // Process separation (universal crowding) - entities need physical space
+    // Each entity needs about 25 units of personal space (similar to their size)
+    const personalSpaceSq = 625; // 25² units - reasonable for entity size
+    if (distSq < personalSpaceSq) {
+      const dist = Math.sqrt(distSq) + 0.1; // Avoid division by zero
+      const personalSpace = 25;
+      const crowdForce = (personalSpace - dist) / personalSpace;
       if (crowdForce > 0) {
-        const factor = crowdForce * 3 / dist; // Stronger force to compensate
+        // Exponential repulsion for very close entities
+        const factor = Math.pow(crowdForce, 1.5) * 4 / dist;
         separateX -= dx * factor;
         separateY -= dy * factor;
       }
@@ -253,8 +257,9 @@ export function efficientMovementOptimized(
   
   // Calculate derived values
   const totalNearby = neighborCount;
-  const crowdStress = Math.min(1, totalNearby / 15);
-  const reproductiveCrowdLimit = 0.7;
+  // Crowd stress increases more gradually - 20 neighbors is very crowded
+  const crowdStress = Math.min(1, totalNearby / 20);
+  const reproductiveCrowdLimit = 0.6; // Lower threshold for reproduction
   const packHuntBonus = nearbyAllies > 0 && isHunter && cohesion > 0.4 
     ? Math.min(1, huntingAllies * 0.2) * cohesion 
     : 0;
@@ -496,6 +501,21 @@ export function efficientMovementOptimized(
     const scale = maxVelocity / velocityMag;
     vx *= scale;
     vy *= scale;
+  }
+  
+  // Apply crowd dispersal forces when stressed
+  if (crowdStress > 0.3) {
+    // Strong separation forces to prevent clumping
+    const dispersalStrength = Math.pow(crowdStress, 2) * speed * 0.5;
+    vx += separateX * dispersalStrength;
+    vy += separateY * dispersalStrength;
+    
+    // Add some random movement to break up patterns
+    if (crowdStress > 0.5) {
+      const jitter = crowdStress * speed * 0.2;
+      vx += (rand() - 0.5) * jitter;
+      vy += (rand() - 0.5) * jitter;
+    }
   }
   
   // Update velocity
