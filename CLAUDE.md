@@ -132,3 +132,52 @@ type MainMsg =
 - **Worker not responding**: Check message protocol, avoid blocking operations
 - **Non-deterministic behavior**: Ensure all randomness uses seeded RNG
 - server is running
+
+## WebAssembly Integration
+
+### CRITICAL: JS/WASM Synchronization
+
+**⚠️ IMPORTANT**: The JavaScript and Rust/WASM code must stay synchronized for:
+- **Gene count** (currently 9 genes per entity)
+- **Gene indices** (speed=0, vision=1, metabolism=2, etc.)
+- **Entity data layout** (positions, velocities, etc.)
+- **World parameters** (width, height, cell size)
+
+When modifying ANY of these, update BOTH:
+- JavaScript: `src/sim/types.ts`, `src/sim/genes.ts`, `src/sim/sim.worker.ts`
+- Rust: `wasm/src/lib.rs`, `wasm/src/movement.rs`, `wasm/src/types.rs`
+
+### WASM Build Process
+
+```bash
+# Build WASM module
+yarn build:wasm
+
+# Build everything (WASM + TypeScript)
+yarn build:all
+```
+
+### Gene System Constants
+
+**Must be identical in JS and Rust:**
+```
+Index 0: speed (10-40 units/s)
+Index 1: vision (20-100 units radius)
+Index 2: metabolism (0.05-0.3)
+Index 3: reproChance (0.01-0.1)
+Index 4: aggression (0-1)
+Index 5: cohesion (0-1)
+Index 6: foodStandards (0-1)
+Index 7: diet (-1 to 1, herbivore to carnivore)
+Index 8: viewAngle (60-180 degrees)
+```
+
+### Data Layout (Structure of Arrays)
+
+**Must match between JS TypedArrays and Rust Vec:**
+- pos_x, pos_y: Float32Array / Vec<f32>
+- vel_x, vel_y: Float32Array / Vec<f32>
+- energy: Float32Array / Vec<f32>
+- alive: Uint8Array / Vec<u8>
+- tribe_id: Uint16Array / Vec<u16>
+- genes: Float32Array / Vec<f32> (9 * entity_count)

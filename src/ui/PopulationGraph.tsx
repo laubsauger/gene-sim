@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { SimClient } from '../client/setupSimClient';
+import type { SimClient } from '../client/setupSimClientHybrid';
 
 interface PopulationGraphProps {
   client: SimClient;

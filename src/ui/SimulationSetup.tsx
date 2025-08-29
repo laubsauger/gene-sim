@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { SimClient } from '../client/setupSimClient';
+import type { SimClient } from '../client/setupSimClientHybrid';
 import type { SimInit, TribeInit, SpawnPattern } from '../sim/types';
 import { throttle } from '../utils/throttle';
 
@@ -8,6 +8,7 @@ interface SimulationSetupProps {
   onStart: () => void;
   isRunning: boolean;
   onSeedChange?: (seed: number) => void;
+  onConfigChange?: (config: SimInit) => void;
 }
 
 
@@ -241,7 +242,7 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
   return tribes;
 }
 
-export function SimulationSetup({ client, onStart, isRunning, onSeedChange }: SimulationSetupProps) {
+export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onConfigChange }: SimulationSetupProps) {
   const [seed, setSeed] = useState(Date.now());
   const [tribes, setTribes] = useState(() => generateTribesFromSeed(Date.now()));
   const [worldWidth, setWorldWidth] = useState(4000);
@@ -288,7 +289,19 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange }: Si
       },
       hybridization: allowHybrids
     };
-    client.init(config);
+    
+    console.log('[SimulationSetup] Sending config:', {
+      cap: config.cap,
+      tribesCount: config.tribes.length,
+      totalPopulation: config.tribes.reduce((sum, t) => sum + t.count, 0),
+      tribes: config.tribes.map(t => ({ name: t.name, count: t.count, spawn: t.spawn }))
+    });
+    
+    // Pass config to App component
+    if (onConfigChange) {
+      onConfigChange(config);
+    }
+    
     setInitialized(true);
     window.dispatchEvent(new CustomEvent('simConfigUpdate'));
   }, [client, seed, maxEntities, worldWidth, worldHeight, foodCols, foodRows, foodRegen, foodCapacity, foodDistScale, foodDistThreshold, foodDistFrequency, tribes, startEnergy, maxEnergy, reproEnergy, allowHybrids]);

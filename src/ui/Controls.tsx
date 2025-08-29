@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { SimClient } from '../client/setupSimClient';
+import type { SimClient } from '../client/setupSimClientHybrid';
 
 export interface ControlsProps {
   client: SimClient;
@@ -82,7 +82,7 @@ export function Controls({ client, isRunning, onStart }: ControlsProps) {
       </button>
       
       <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-        {[0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128].map(s => (
+        {[0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64].map(s => (
           <button
             key={s}
             onClick={() => handleSpeed(s)}

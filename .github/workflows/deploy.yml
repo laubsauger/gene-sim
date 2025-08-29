@@ -30,9 +30,43 @@ jobs:
         run: |
           corepack enable
           corepack prepare yarn@stable --activate
+          
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      
+      - name: Install wasm-pack
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            wasm/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Install dependencies
         run: yarn install --immutable
+      
+      - name: Build WASM module
+        run: |
+          cd wasm
+          wasm-pack build --target web --out-dir pkg --release
+          cd ..
+          # Copy WASM files to src directory for bundling
+          mkdir -p src/wasm
+          cp wasm/pkg/gene_sim_core_bg.wasm src/wasm/ || true
+          cp wasm/pkg/gene_sim_core.js src/wasm/ || true
+          cp wasm/pkg/gene_sim_core.d.ts src/wasm/ || true
 
       - name: Build
         run: yarn build

@@ -54,6 +54,9 @@ export type SimInit = {
     repro: number;    // Energy required for reproduction
   };
   hybridization?: boolean; // Allow inter-tribe mating
+  // WASM and multi-worker options
+  useWasm?: boolean;
+  workerCount?: number;
 };
 
 export type TribeStats = {

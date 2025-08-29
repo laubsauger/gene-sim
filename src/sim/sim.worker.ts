@@ -952,7 +952,7 @@ self.onmessage = (e: MessageEvent<WorkerMsg>) => {
         }
       }
       
-      requestAnimationFrame(tick);
+      setTimeout(tick, 0);
     };
     tick();
   } else if (msg.type === 'setSpeed') {

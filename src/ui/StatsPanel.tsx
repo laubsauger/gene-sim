@@ -1,5 +1,5 @@
 import { useEffect, useState, memo, useRef } from 'react';
-import type { SimClient } from '../client/setupSimClient';
+import type { SimClient } from '../client/setupSimClientHybrid';
 import type { SimStats, TribeStats } from '../sim/types';
 import { PopulationGraph } from './PopulationGraph';
 import { RadarChart } from './RadarChart';
@@ -92,10 +92,10 @@ export const StatsPanel = memo(function StatsPanel({ client, currentSeed }: Stat
           borderBottom: '1px solid rgba(255,255,255,0.1)'
         }}>
           <div>
-            <span style={{ color: '#888' }}>Pop:</span> <b>{stats.population.toLocaleString()}</b>
+            <span style={{ color: '#888' }}>Pop:</span> <b>{stats?.population?.toLocaleString() || '0'}</b>
           </div>
           <div>
-            <span style={{ color: '#888' }}>Time:</span> <b>{stats.t.toFixed(1)}s</b>
+            <span style={{ color: '#888' }}>Time:</span> <b>{stats?.t?.toFixed(1) || '0.0'}s</b>
           </div>
         </div>
         

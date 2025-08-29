@@ -4,8 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/check-wasm.js",
     "dev": "vite",
+    "prebuild": "node scripts/check-wasm.js",
     "build": "tsc -b && vite build",
+    "build:wasm": "cd wasm && chmod +x build.sh 2>/dev/null; ./build.sh",
+    "clean": "rm -rf dist wasm/target wasm/pkg src/wasm",
+    "clean:all": "yarn clean && rm -rf node_modules",
     "lint": "eslint .",
     "preview": "vite preview"
   },

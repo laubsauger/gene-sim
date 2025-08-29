@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CollapsibleSection } from './CollapsibleSection';
-import type { SimClient } from '../client/setupSimClient';
+import type { SimClient } from '../client/setupSimClientHybrid';
 
 interface PerfBreakdown {
   spatialHash: string;

@@ -3,7 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrthographicCamera, OrbitControls, Stats } from '@react-three/drei';
 import { EntityPoints } from './EntityPoints';
 import { FoodTexture } from './FoodTexture';
-import type { SimClient } from '../client/setupSimClient';
+import type { SimClient } from '../client/setupSimClientHybrid';
 
 // FPS tracking component
 function FPSTracker({ client }: { client: SimClient }) {
@@ -18,12 +18,7 @@ function FPSTracker({ client }: { client: SimClient }) {
     if (delta >= 250) { // Update 4 times per second
       const fps = Math.round((frameCount.current * 1000) / delta);
       // Send render FPS to worker
-      if (client.worker) {
-        client.worker.postMessage({
-          type: 'renderFps',
-          payload: { fps }
-        });
-      }
+      client.sendRenderFps(fps);
       frameCount.current = 0;
       lastTime.current = now;
     }

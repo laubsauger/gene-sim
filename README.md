@@ -14,18 +14,61 @@ A real-time genetic evolution simulator supporting 100,000+ entities with comple
 ## Quick Start
 
 ```bash
-# Install dependencies
-yarn
+# Run the setup script (installs dependencies and optionally builds WASM)
+./setup.sh
 
 # Start development server
 yarn dev
 
-# Build for production
-yarn build
-
-# Preview production build
-yarn preview
+# Or with WASM acceleration (if available)
+yarn dev:wasm
 ```
+
+## Installation
+
+### Basic Setup (JavaScript only)
+```bash
+# Install dependencies
+yarn install
+
+# Start development server
+yarn dev
+```
+
+### Advanced Setup (with WASM acceleration)
+```bash
+# Prerequisites: Install Rust and wasm-pack
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+# Build WASM module
+yarn build:wasm
+
+# Start with WASM acceleration
+yarn dev:wasm
+```
+
+## Available Scripts
+
+```bash
+yarn dev         # Start dev server (JS mode)
+yarn dev:wasm    # Start dev server with WASM (builds WASM first)
+yarn build       # Build for production
+yarn build:full  # Build with WASM for production
+yarn build:wasm  # Build only the WASM module
+yarn clean       # Clean build artifacts
+yarn preview     # Preview production build
+```
+
+## Performance Modes
+
+The simulator supports three performance modes:
+
+1. **JavaScript**: Standard implementation, works everywhere
+2. **WebAssembly**: 2-3x faster movement and physics calculations
+3. **Multi-Worker**: Distributes simulation across CPU cores (4-8x faster)
+
+The mode is automatically selected based on your browser capabilities, or you can manually select it in the UI.
 
 ## Documentation
 

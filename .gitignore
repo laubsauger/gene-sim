@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 
 .lh/
+
+# Rust/WASM build artifacts
+wasm/target
+wasm/pkg
