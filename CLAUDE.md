@@ -181,3 +181,4 @@ Index 8: viewAngle (60-180 degrees)
 - alive: Uint8Array / Vec<u8>
 - tribe_id: Uint16Array / Vec<u16>
 - genes: Float32Array / Vec<f32> (9 * entity_count)
+- do not commit to github and do not set yourself as author in any commit messages

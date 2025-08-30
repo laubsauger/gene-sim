@@ -5,6 +5,7 @@ import { Controls } from './ui/Controls';
 import { StatsPanel } from './ui/StatsPanel';
 import { SimulationSetup } from './ui/SimulationSetup';
 import { GameOver } from './ui/GameOver';
+import { COIStatus } from './ui/COIStatus';
 import type { SimStats } from './sim/types';
 import './App.css';
 
@@ -270,6 +271,7 @@ export default function App() {
       overflow: 'hidden',
       // background: '#0a0a0a',
     }}>
+      <COIStatus />
       <div style={{ position: 'relative' }}>
         <Scene2D 
           client={client} 
