@@ -42,7 +42,8 @@ void main(){
   float NdotL = dot(N, L);
   float wrap = clamp((NdotL + uLightWrap)/(1.0+uLightWrap), 0.0, 1.0);
   float day = smoothstep(0.0, uTerminator, wrap);
-  vec3 p = N*6.0 + vec3(0.15*uTime, 0.0, -0.1*uTime);
+  // Use world position for stable cloud sampling (not normal which changes with view)
+  vec3 p = normalize(vPosW) * 6.0 + vec3(0.15*uTime, 0.0, -0.1*uTime);
   float k=1.5; 
   float base=fbm(p*k); 
   float detail=fbm(p*k*2.3); 

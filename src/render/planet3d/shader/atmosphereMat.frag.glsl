@@ -33,28 +33,56 @@ void main() {
   vec3 N = normalize(vNormal);
   vec3 V = normalize(cameraPosition - vWorldPos);
   vec3 L = normalize(uLightDir);
-
-  // Rim effect - atmosphere glows at edges
-  float NdotV = clamp(dot(N, V), 0.0, 1.0);
-  float rim = pow(1.0 - NdotV, uRimPower);
-
-  // Day/night transition with soft terminator
-  float NdotL = dot(N, L);
-  float dayBias = smoothstep(-0.35, 0.35, NdotL);
-
-  // Scattering calculations
+  vec3 sphereNormal = normalize(vWorldPos); // Use world position as sphere normal
+  
+  // Sun angle determines day/night based on sphere position
+  float sunDot = dot(sphereNormal, L);
+  
+  // Atmosphere thickness based on edge proximity
+  float viewDot = dot(V, N);
+  float limb = 1.0 - abs(viewDot);
+  float atmosphereThickness = pow(limb, 0.8) + 0.1; // Add base to reach surface
+  
+  // Smooth day/night/sunset transitions
+  float dayFactor = smoothstep(-0.3, 0.3, sunDot);
+  float sunsetFactor = exp(-10.0 * abs(sunDot)) * 2.0; // Peak at terminator
+  float nightFactor = smoothstep(0.3, -0.3, sunDot);
+  
+  // Define atmosphere colors
+  vec3 dayColor = vec3(0.35, 0.6, 1.0);        // Nice blue
+  vec3 sunsetColor = vec3(1.0, 0.5, 0.15);     // Orange glow
+  vec3 twilightColor = vec3(0.3, 0.2, 0.4);    // Purple twilight
+  vec3 nightColor = vec3(0.05, 0.08, 0.15);    // Dark blue night
+  
+  // Blend colors smoothly
+  vec3 color = dayColor * dayFactor;
+  color += sunsetColor * sunsetFactor * (1.0 - dayFactor * 0.5);
+  color += twilightColor * nightFactor * (1.0 - sunsetFactor);
+  color = mix(color, nightColor, nightFactor * 0.7);
+  
+  // Add scattering for physical accuracy
   float cosTheta = dot(L, V);
   float mie = henyeyGreenstein(cosTheta, clamp(uAnisotropy, 0.0, 0.9));
   float rayleigh = 0.75 * (1.0 + cosTheta * cosTheta);
+  
+  // Enhance sunset glow with Mie scattering
+  color += uColorMie * mie * sunsetFactor * 0.3;
+  
+  // Smooth intensity
+  float intensity = 0.2 + dayFactor * 0.5 + sunsetFactor * 0.2;
+  intensity = max(intensity, 0.15); // Ensure night side has minimum visibility
+  
+  // Apply atmosphere thickness and intensity
+  float alpha = atmosphereThickness * intensity;
 
-  // Combine scattering with rim and day/night
-  vec3 scatterColor = uColorRayleigh * rayleigh + uColorMie * mie * 0.5;
-  vec3 finalColor = scatterColor * rim * dayBias * uDensity * 0.25;
+  // Overall atmosphere opacity
+  alpha *= uDensity * 0.4;
   
   // Apply exposure
-  finalColor *= uExposure;
+  color *= uExposure;
   
-  // Output with sRGB conversion and alpha based on intensity
-  float alpha = clamp(rim * dayBias * uDensity * 0.6, 0.0, 1.0);
-  gl_FragColor = vec4(toSRGB(finalColor), alpha);
+  // Very minimal cutoff to avoid artifacts
+  if (alpha < 0.008) discard;
+  
+  gl_FragColor = vec4(toSRGB(color), alpha);
 }

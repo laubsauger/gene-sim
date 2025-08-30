@@ -39,9 +39,9 @@ export const INITIAL_CAMERA_POSITION: [number, number, number] = [
 export const CAMERA_CONFIG = {
   fov: 60,
   near: 0.01,
-  far: 1000,
+  far: 10000,
   minDistance: PLANET_RADIUS * 1.2,
-  maxDistance: PLANET_RADIUS * 5,
+  maxDistance: PLANET_RADIUS * 20,
 };
 
 // Helper to calculate sun direction for a planet
@@ -56,15 +56,6 @@ export function setSunDirForPlanet(
   sunObject3D.getWorldPosition(sunWorld);
   // Direction from planet to sun for correct terminator
   destUniform.value.copy(sunWorld.sub(planetWorld).normalize());
-}
-
-// This function is deprecated - materials are configured where they're created
-// Keeping for backwards compatibility but it does nothing
-export function enforcePlanetLocalOrder(earth: any, cloudMesh: THREE.Mesh | null) {
-  // Materials are already configured in their respective creation functions:
-  // - Planet surface in PlanetWithAtmosphere.ts
-  // - Clouds in ProceduralCloudShell.ts  
-  // - Atmosphere in PlanetWithAtmosphere.ts
 }
 
 export function updateCloudUniforms(
