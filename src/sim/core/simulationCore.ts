@@ -3,7 +3,7 @@ import { FoodSystem } from './foodSystem';
 import { SpatialHash } from '../spatialHash';
 import { efficientMovementOptimized } from '../spatialBehaviorsOptimized';
 import { createRng, type Rng } from '../random';
-import { energyConfig, GENE_COUNT, FIXED_TIMESTEP } from './constants';
+import { energyConfig, GENE_COUNT, FIXED_TIMESTEP as _FIXED_TIMESTEP } from './constants';
 import type { SimStats } from '../types';
 
 export class SimulationCore {
@@ -17,6 +17,7 @@ export class SimulationCore {
   paused: boolean = true;  // Start paused until user clicks start
   speedMul: number = 1;
   count: number = 0;
+  totalStepCount: number = 0;
   
   // Random
   rand: Rng;
@@ -117,9 +118,9 @@ export class SimulationCore {
         else outRegion++;
       }
       // Log occasionally to avoid spam
-      if (this.totalStepCount % 100 === 0) {
-        console.log(`[Worker Region ${this.workerRegion!.x},${this.workerRegion!.y}] Processing ${inRegion} entities (${outRegion} outside)`);
-      }
+      // if (this.totalStepCount % 100 === 0) {
+      //   console.log(`[Worker Region ${this.workerRegion!.x},${this.workerRegion!.y}] Processing ${inRegion} entities (${outRegion} outside)`);
+      // }
     }
 
     for (let i = 0; i < entitiesToCheck; i++) {
@@ -624,7 +625,7 @@ export class SimulationCore {
     }
     
     // Get food statistics if food system exists
-    const foodStats = this.foodSystem ? this.foodSystem.getFoodStats() : undefined;
+    const foodStats = this.food ? this.food.getFoodStats() : undefined;
     
     // Clean up distribution for return (remove values array)
     const cleanDistribution: Record<string, {min: number, max: number, std: number}> = {};

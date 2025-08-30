@@ -33,10 +33,6 @@ export function GameOver({ finalTime, finalStats, onRestart, onNewSimulation, se
   // Find the tribe with most kills
   const mostAggressive = tribes.sort((a, b) => (b[1].kills || 0) - (a[1].kills || 0))[0];
   
-  // Find the tribe that survived longest (last to have population > 0)
-  const survivorsByTime = tribes
-    .filter(([_, stats]) => (stats.deaths || 0) > 0 || (stats.births || 0) > 0)
-    .sort((a, b) => (b[1].births || 0) + (b[1].deaths || 0) - (a[1].births || 0) - (a[1].deaths || 0));
 
   return (
     <div style={{

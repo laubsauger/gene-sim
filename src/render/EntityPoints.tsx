@@ -169,7 +169,7 @@ export function EntityPoints({
       
       // Debug: Check where alive entities actually are
       let visibleCount = 0;
-      for (let i = 0; i < Math.min(count, 120000); i++) {
+      for (let i = 0; i < Math.min(count, 196000); i++) {
         if (alive[i]) {
           const x = pos[i * 2];
           const y = pos[i * 2 + 1];

@@ -16,8 +16,12 @@ export function setupSimClient(worker: Worker) {
     const msg = e.data;
     if (msg.type === 'ready') {
       const { sab, meta, foodMeta } = msg.payload;
-      pos = new Float32Array(sab.pos);
-      color = new Uint8Array(sab.color);
+      if (sab.pos) {
+        pos = new Float32Array(sab.pos);
+      }
+      if (sab.color) {
+        color = new Uint8Array(sab.color);
+      }
       alive = new Uint8Array(sab.alive);
       if (sab.food) {
         food = new Uint8Array(sab.food);

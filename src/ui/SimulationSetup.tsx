@@ -10,6 +10,8 @@ interface SimulationSetupProps {
   isRunning: boolean;
   onSeedChange?: (seed: number) => void;
   onConfigChange?: (config: SimInit) => void;
+  simMode?: SimMode;
+  onModeChange?: (newMode: SimMode) => void;
 }
 
 
@@ -306,12 +308,12 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   const [worldHeight, setWorldHeight] = useState(8000);
   const [foodCols, setFoodCols] = useState(512);
   const [foodRows, setFoodRows] = useState(512);
-  const [foodRegen, setFoodRegen] = useState(0.35); // ~7 seconds to fully regrow
+  const [foodRegen, setFoodRegen] = useState(0.25); // ~7 seconds to fully regrow
   const [foodCapacity, setFoodCapacity] = useState(7);
   const [foodDistScale, setFoodDistScale] = useState(initialFoodParams.scale);  // Island size (default ~110)
   const [foodDistThreshold, setFoodDistThreshold] = useState(initialFoodParams.threshold);  // Scarcity (default ~0.55, higher = more scarce)
   const [foodDistFrequency, setFoodDistFrequency] = useState(initialFoodParams.frequency);  // Complexity (default ~0.75, lower = smoother)
-  const [maxEntities, setMaxEntities] = useState(120000);
+  const [maxEntities, setMaxEntities] = useState(196000);
   const [startEnergy, setStartEnergy] = useState(50);
   const [maxEnergy, setMaxEnergy] = useState(100);
   const [reproEnergy, setReproEnergy] = useState(60);

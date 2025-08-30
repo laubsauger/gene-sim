@@ -1,5 +1,5 @@
 import { createFractalNoise2D } from '../noise';
-import type { Rng } from '../random';
+import type { Rng as _Rng } from '../random';
 
 export class FoodSystem {
   private foodGrid: Float32Array;
@@ -307,5 +307,9 @@ export class FoodSystem {
     this.capacityParameter = capacity;
     // Immediately sync to update the visual representation
     this.syncToUint8();
+  }
+  
+  setRegen(regen: number) {
+    this.regen = regen;
   }
 }

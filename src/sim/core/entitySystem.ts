@@ -83,9 +83,9 @@ export class EntitySystem {
     this.genes[base + 3] = geneSpec.reproChance;
     this.genes[base + 4] = geneSpec.aggression;
     this.genes[base + 5] = geneSpec.cohesion;
-    this.genes[base + 6] = geneSpec.foodStandards;
-    this.genes[base + 7] = geneSpec.diet;
-    this.genes[base + 8] = geneSpec.viewAngle;
+    this.genes[base + 6] = geneSpec.foodStandards || 0.3;
+    this.genes[base + 7] = geneSpec.diet || -0.5;
+    this.genes[base + 8] = geneSpec.viewAngle || 120;
     
     // Set initial color
     this.updateColor(idx, geneSpec.colorHue || 0);

@@ -41,7 +41,6 @@ class SimulationCoordinator {
   private foodBuffer: SharedArrayBuffer | null = null;
   private foodCols = 0;
   private foodRows = 0;
-  private statsTimer: ReturnType<typeof setInterval> | null = null;
   private initialized = false;
   private workersReady = 0;
   private allWorkersReadyCallback: (() => void) | null = null;
@@ -216,24 +215,6 @@ class SimulationCoordinator {
       const actualStart = Math.min(i * actualEntitiesPerWorker, actualPopulation);
       const actualEnd = Math.min((i + 1) * actualEntitiesPerWorker, actualPopulation);
       
-      const workerInit = {
-        ...init,
-        workerId: i,
-        entityStart: workerInfo.entityStart, // Buffer allocation range
-        entityEnd: workerInfo.entityEnd,     // Buffer allocation range
-        actualEntityStart: actualStart,      // Actual entities to initialize
-        actualEntityEnd: actualEnd,          // Actual entities to initialize
-        regionBounds: {
-          x: workerInfo.regionX,
-          y: workerInfo.regionY,
-          width: workerInfo.regionWidth,
-          height: workerInfo.regionHeight,
-        },
-        sharedBuffers: this.sharedBuffers,
-        foodBuffer: this.foodBuffer,
-        foodMeta: { cols: this.foodCols, rows: this.foodRows },
-        totalWorkers: workerCount,
-      };
       
       // Set up message handler
       workerInfo.worker.onmessage = (e) => this.handleWorkerMessage(i, e.data);
@@ -572,13 +553,13 @@ class SimulationCoordinator {
         }
         
         // Log stats summary occasionally instead of every frame
-        this.statsLogCounter = (this.statsLogCounter || 0) + 1;
-        if (this.statsLogCounter % 50 === 0) { // Every ~12 seconds
-          const summary = Object.entries(aggregated.byTribe)
-            .map(([name, data]) => `${name}:${data.population}`)
-            .join(', ');
-          console.log(`[Coordinator] Population: ${aggregated.population} (${summary})`);
-        }
+        // this.statsLogCounter = (this.statsLogCounter || 0) + 1;
+        // if (this.statsLogCounter % 50 === 0) { // Every ~12 seconds
+        //   const summary = Object.entries(aggregated.byTribe)
+        //     .map(([name, data]) => `${name}:${data.population}`)
+        //     .join(', ');
+        //   console.log(`[Coordinator] Population: ${aggregated.population} (${summary})`);
+        // }
         
         // Send aggregated stats
         self.postMessage({ type: 'stats', payload: aggregated } as MainMsg);

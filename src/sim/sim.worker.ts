@@ -38,8 +38,6 @@ let isSubWorker = false;
 let workerId = -1;
 let bufferEntityStart = 0;
 let bufferEntityEnd = 0;
-let actualEntityStart = 0;
-let actualEntityEnd = 0;
 
 // Core simulation instance
 let sim: SimulationCore | null = null;
@@ -214,8 +212,6 @@ function initializeAsSubWorker(msg: any) {
   workerId = id;
   bufferEntityStart = entityRange.start;
   bufferEntityEnd = entityRange.end;
-  actualEntityStart = entityRange.actualStart;
-  actualEntityEnd = entityRange.actualEnd;
   
   const worldWidth = config.world?.width || WORLD_WIDTH;
   const worldHeight = config.world?.height || WORLD_HEIGHT;
@@ -230,7 +226,7 @@ function initializeAsSubWorker(msg: any) {
     height: region.height,
     x2: region.x + region.width,
     y2: region.y + region.height
-  } : null;
+  } : undefined;
   
   console.log(`[Worker ${id}] Region: (${region?.x},${region?.y}) to (${region?.x + region?.width},${region?.y + region?.height})`);
   
@@ -243,8 +239,10 @@ function initializeAsSubWorker(msg: any) {
   sim.updateFood = workerId === 0;  // Only worker 0 handles food regrowth (but syncs from shared buffer first)
   sim.tribeNames = config.tribes?.map((t: any) => t.name) || [];
   sim.tribeColors = config.tribes?.map((t: any) => t.genes?.colorHue || 0) || [];
-  sim.workerRegion = workerRegion;
+  sim.workerRegion = workerRegion || undefined;
   sim.isMultiWorker = true;
+  sim.startIdx = bufferEntityStart;  // Set worker's entity range for reproduction
+  sim.endIdx = bufferEntityEnd;      // This was missing, causing the 30k ceiling!
   
   if (workerId === 0) {
     console.log(`[Worker 0] Settings received:`, {
@@ -343,8 +341,6 @@ function initializeAsSubWorker(msg: any) {
         // Step 1: Create natural initial distribution (even spread within radius)
         const baseAngle = rand() * Math.PI * 2;
         const baseR = Math.sqrt(rand()) * radius; // Even distribution
-        const baseX = spawn.x + Math.cos(baseAngle) * baseR;
-        const baseY = spawn.y + Math.sin(baseAngle) * baseR;
         
         // Step 2: Apply trait-based adjustments
         const diet = geneSpec.diet || 0;
@@ -509,9 +505,9 @@ function startMainLoop() {
       mainLoop(performance.now());
       // Schedule next tick immediately
       setTimeout(tick, 0);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`[Worker ${workerId}] Main loop crashed:`, error);
-      console.error(`[Worker ${workerId}] Stack:`, error.stack);
+      console.error(`[Worker ${workerId}] Stack:`, (error as { stack: string }).stack);
       // Try to recover
       setTimeout(tick, 16);
     }
@@ -583,7 +579,8 @@ function mainLoop(now: number) {
         entityCount: sim.count,
         avgStepTime,
         maxStepTime,
-        workerCount: 1
+        workerCount: 1,
+        speedMul: sim.speedMul
       };
       
       self.postMessage({
@@ -599,7 +596,7 @@ function mainLoop(now: number) {
   }
   } catch (error) {
     console.error(`[Worker ${workerId}] MainLoop crashed:`, error);
-    console.error(`[Worker ${workerId}] Stack:`, error.stack);
+    console.error(`[Worker ${workerId}] Stack:`, (error as Error).stack);
     // Don't crash the worker, just log and continue
   }
 }
@@ -655,7 +652,7 @@ self.addEventListener('message', (e: MessageEvent<WorkerMsg>) => {
         }
         if (regen !== undefined) {
           // Update the regen rate
-          sim.food.regen = regen;
+          sim.food.setRegen(regen);
         }
       }
       break;

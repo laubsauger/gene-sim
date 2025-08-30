@@ -144,6 +144,7 @@ export type PerfStats = {
   avgStepTime: number;
   maxStepTime: number;
   workerCount: number;
+  speedMul: number;
 };
 
 export interface PerfBreakdown {

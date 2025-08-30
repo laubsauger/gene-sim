@@ -65,7 +65,7 @@ export function FoodTexture({ foodData, cols, rows, world }: FoodTextureProps) {
   
   // Update texture only when food data changes significantly
   // Use frame skipping for performance
-  useFrame((state) => {
+  useFrame((_state) => {
     if (!textureRef.current || !foodData) return;
     
     frameCount.current++;

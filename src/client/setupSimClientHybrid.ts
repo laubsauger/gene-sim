@@ -30,7 +30,7 @@ export class HybridSimClient {
     console.log(`[SimClient] Initializing in ${this.mode} mode`);
   }
   
-  async init(params: SimInit, force: boolean = false) {
+  async init(params: SimInit, _force: boolean = false) {
     // Prevent concurrent initialization, but allow forced reinit
     if (this.initializing) {
       console.warn('[SimClient] Initialization already in progress, skipping concurrent init');
@@ -85,8 +85,12 @@ export class HybridSimClient {
           meta,
           foodMeta
         });
-        this.pos = new Float32Array(sab.pos);
-        this.color = new Uint8Array(sab.color);
+        if (sab.pos) {
+          this.pos = new Float32Array(sab.pos);
+        }
+        if (sab.color) {
+          this.color = new Uint8Array(sab.color);
+        }
         this.alive = new Uint8Array(sab.alive);
         this.age = sab.ages ? new Float32Array(sab.ages) : null;
         if (sab.food) {
