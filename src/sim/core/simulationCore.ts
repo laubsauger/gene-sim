@@ -464,6 +464,7 @@ export class SimulationCore {
           averageAge: 0,
           averageEnergy: 0,
           color: `hsl(${this.tribeColors[tribeId]}, 80%, 50%)`,
+          colorHue: this.tribeColors[tribeId],  // Already in degrees 0-360
           mean: {
             speed: 0,
             vision: 0,

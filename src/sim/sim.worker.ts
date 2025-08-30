@@ -70,6 +70,7 @@ let lastPerfUpdate = 0;
 let frameCount = 0;
 let stepTimeAccum = 0;
 let maxStepTime = 0;
+let stepsSincePerf = 0; // Count actual simulation steps for perf metrics
 
 function initializeAsMainWorker(msg: any) {
   const init = msg.payload;
@@ -561,6 +562,7 @@ function mainLoop(now: number) {
     const stepTime = performance.now() - stepStart;
     stepTimeAccum += stepTime;
     maxStepTime = Math.max(maxStepTime, stepTime);
+    stepsSincePerf++; // Count this simulation step
     
     accumulator -= FIXED_TIMESTEP;
     steps++;
@@ -575,7 +577,7 @@ function mainLoop(now: number) {
     
     // Send performance stats
     if (!isSubWorker) {
-      const avgStepTime = frameCount > 0 ? stepTimeAccum / frameCount : 0;
+      const avgStepTime = stepsSincePerf > 0 ? stepTimeAccum / stepsSincePerf : 0;
       const perfStats: PerfStats = {
         simHz,
         renderFps,
@@ -596,6 +598,7 @@ function mainLoop(now: number) {
     frameCount = 0;
     stepTimeAccum = 0;
     maxStepTime = 0;
+    stepsSincePerf = 0;
   }
   } catch (error) {
     console.error(`[Worker ${workerId}] MainLoop crashed:`, error);
@@ -663,7 +666,7 @@ self.addEventListener('message', (e: MessageEvent<WorkerMsg>) => {
     case 'perf':
       if (sim && isSubWorker) {
         // Sub-workers send perf stats to coordinator
-        const avgStepTime = frameCount > 0 ? stepTimeAccum / frameCount : 0;
+        const avgStepTime = stepsSincePerf > 0 ? stepTimeAccum / stepsSincePerf : 0;
         self.postMessage({
           type: 'worker-perf',
           payload: {

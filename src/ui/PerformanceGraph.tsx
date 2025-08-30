@@ -37,12 +37,12 @@ export function PerformanceGraph({ client, maxHistory = 100 }: PerformanceGraphP
           const point: PerfPoint = {
             time: timeRef.current,
             total: m.payload.avgStepTime || 0,
-            movement: (m.payload.avgStepTime || 0) * 0.4, // Approximate breakdown
-            entityUpdate: (m.payload.avgStepTime || 0) * 0.3,
-            spatialHash: (m.payload.avgStepTime || 0) * 0.15,
-            foodRegrow: (m.payload.avgStepTime || 0) * 0.08,
-            foodConsume: (m.payload.avgStepTime || 0) * 0.05,
-            physics: (m.payload.avgStepTime || 0) * 0.02,
+            movement: 0, // Not available in current perf data
+            entityUpdate: m.payload.avgStepTime || 0, // Using total time for now
+            spatialHash: 0,
+            foodRegrow: 0,
+            foodConsume: 0,
+            physics: 0,
             entities: m.payload.entityCount || 0
           };
           
@@ -100,13 +100,9 @@ export function PerformanceGraph({ client, maxHistory = 100 }: PerformanceGraphP
       ctx.fillText(`${value}ms`, padding.left - 5, y + 3);
     }
 
-    // Performance metrics to plot - ordered for stacking (bottom to top)
+    // Performance metrics to plot - only show what we have data for
     const metrics = [
-      { key: 'spatialHash', color: '#ffe66d', label: 'Spatial Hash' },
-      { key: 'foodRegrow', color: '#c4c4c4', label: 'Food Regrow' },
-      { key: 'foodConsume', color: '#ff8b94', label: 'Food Consume' },
-      { key: 'physics', color: '#a8e6cf', label: 'Physics' },
-      { key: 'movement', color: '#4ecdc4', label: 'Movement' },
+      { key: 'entityUpdate', color: '#4ecdc4', label: 'Entity Updates' },
     ];
 
     // Draw stacked area chart
@@ -257,14 +253,6 @@ export function PerformanceGraph({ client, maxHistory = 100 }: PerformanceGraphP
 
   return (
     <div style={{ marginTop: '16px' }}>
-      <h4 style={{ 
-        margin: '0 0 8px 0', 
-        fontSize: '14px', 
-        fontWeight: 'bold',
-        color: '#888',
-      }}>
-        Performance Metrics
-      </h4>
       <canvas 
         ref={canvasRef}
         width={380}

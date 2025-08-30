@@ -95,6 +95,12 @@ jobs:
         env:
           NODE_ENV: production
 
+      - name: Copy COI Service Worker files
+        run: |
+          echo "Copying COI service worker files to dist..."
+          cp public/coi-*.js dist/ || echo "Warning: COI files not found"
+          ls -la dist/coi-*.js || echo "No COI files in dist"
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
