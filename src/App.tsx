@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Scene2D } from './render/Scene2D';
+import { Scene3D } from './render/Scene3D';
 import { createSimClient, detectBestMode, type SimMode, type SimClient } from './client/setupSimClientHybrid';
 import { Controls } from './ui/Controls';
 import { StatsPanel } from './ui/StatsPanel';
@@ -34,6 +35,7 @@ export default function App() {
   const [currentSeed, setCurrentSeed] = useState<number>(Date.now());
   const [gameOver, setGameOver] = useState<{ finalTime: number; finalStats: SimStats } | null>(null);
   const [entitySize, setEntitySize] = useState(7.0); // Default entity size
+  const [renderMode, setRenderMode] = useState<'2D' | '3D'>('2D'); // Toggle between 2D and 3D
 
   const lastConfigRef = useRef<any>(null);
   
@@ -273,11 +275,19 @@ export default function App() {
     }}>
       <COIStatus />
       <div style={{ position: 'relative' }}>
-        <Scene2D 
-          client={client} 
-          world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
-          entitySize={entitySize}
-        />
+        {renderMode === '2D' ? (
+          <Scene2D 
+            client={client} 
+            world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
+            entitySize={entitySize}
+          />
+        ) : (
+          <Scene3D
+            client={client} 
+            world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
+            entitySize={entitySize}
+          />
+        )}
         <div style={{
           position: 'absolute',
           top: '16px',
@@ -290,6 +300,8 @@ export default function App() {
             onStart={handleStart}
             entitySize={entitySize}
             onEntitySizeChange={setEntitySize}
+            renderMode={renderMode}
+            onRenderModeChange={setRenderMode}
           />
         </div>
       </div>

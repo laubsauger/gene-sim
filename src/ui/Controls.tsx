@@ -71,9 +71,11 @@ export interface ControlsProps {
   onStart: () => void;
   entitySize: number;
   onEntitySizeChange: (size: number) => void;
+  renderMode?: '2D' | '3D';
+  onRenderModeChange?: (mode: '2D' | '3D') => void;
 }
 
-export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeChange }: ControlsProps) {
+export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeChange, renderMode = '2D', onRenderModeChange }: ControlsProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [speed, setSpeed] = useState(1);
   const speedValues = [0.1, 0.25, 0.5, 1, 2, 4, 8, 12, 16];
@@ -266,6 +268,50 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
           </span>
         </div>
       </div>
+      
+      {/* Render Mode Toggle */}
+      {onRenderModeChange && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '60px',
+          background: 'rgba(255, 255, 255, 0.05)',
+          padding: '8px 12px',
+          borderRadius: '6px',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+        }}>
+          <button
+            onClick={() => onRenderModeChange(renderMode === '2D' ? '3D' : '2D')}
+            style={{
+              padding: '8px 16px',
+              fontSize: '14px',
+              lineHeight: '14px',
+              height: '40px',
+              background: renderMode === '3D' ? '#3b82f6' : '#6b7280',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              minWidth: '80px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              boxSizing: 'border-box',
+              transition: 'background 0.2s',
+            }}
+            title={`Switch to ${renderMode === '2D' ? '3D Planet' : '2D Flat'} view`}
+          >
+            <span style={{ fontSize: '16px' }}>
+              {renderMode === '2D' ? '🌍' : '🗺️'}
+            </span>
+            <span style={{ fontWeight: '500' }}>
+              {renderMode === '2D' ? '3D' : '2D'}
+            </span>
+          </button>
+        </div>
+      )}
       
     </div>
   );
