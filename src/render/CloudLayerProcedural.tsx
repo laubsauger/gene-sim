@@ -26,16 +26,20 @@ export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, t
       // Global wind circulation - speed varies by altitude and type
       let windSpeed = speed;
       
-      // Different wind patterns at different altitudes
+      // Different wind patterns at different altitudes with smooth variation
       if (type === 'cumulus') {
-        // Low altitude - slower, more variable
-        windSpeed = speed * 2.0 * (1 + Math.sin(state.clock.elapsedTime * 0.1) * 0.3);
+        // Low altitude - slower, more variable with gentle undulation
+        const variation = Math.sin(state.clock.elapsedTime * 0.05) * 0.2 + 
+                         Math.sin(state.clock.elapsedTime * 0.03) * 0.1;
+        windSpeed = speed * 2.0 * (1 + variation);
       } else if (type === 'cirrus') {
-        // High altitude - faster jet stream
-        windSpeed = speed * 3.0;
+        // High altitude - faster jet stream with slight variation
+        const variation = Math.sin(state.clock.elapsedTime * 0.02) * 0.15;
+        windSpeed = speed * 3.0 * (1 + variation);
       } else {
-        // Mid altitude - moderate speed
-        windSpeed = speed * 2.5;
+        // Mid altitude - moderate speed with medium variation
+        const variation = Math.sin(state.clock.elapsedTime * 0.04) * 0.1;
+        windSpeed = speed * 2.5 * (1 + variation);
       }
       
       meshRef.current.rotation.y += windSpeed * delta;
@@ -51,9 +55,11 @@ export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, t
     varying vec2 vUv;
     varying vec3 vWorldPos;
     varying vec3 vNormal;
+    varying vec3 vPosition;
     
     void main() {
       vUv = uv;
+      vPosition = position;  // Local sphere position
       vNormal = normalize(normalMatrix * normal);
       vec4 worldPos = modelMatrix * vec4(position, 1.0);
       vWorldPos = worldPos.xyz;
@@ -65,6 +71,7 @@ export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, t
     varying vec2 vUv;
     varying vec3 vWorldPos;
     varying vec3 vNormal;
+    varying vec3 vPosition;
     uniform float opacity;
     uniform float time;
     uniform float cloudType; // 0=cumulus, 1=cirrus, 2=stratus
@@ -119,36 +126,47 @@ export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, t
       
       if (visibility < -0.05) discard;
       
-      // Use spherical coordinates to avoid banding
-      vec3 sphereNormal = normalize(vWorldPos);
-      float theta = atan(sphereNormal.z, sphereNormal.x); // Longitude
-      float phi = asin(sphereNormal.y); // Latitude
+      // Use local sphere position normalized for consistent sampling
+      vec3 sphereNormal = normalize(vPosition);
       
-      // Create 3D sampling position from spherical coords
-      vec3 pos = vec3(
-        theta * 2.0,  // Scale longitude
-        phi * 3.0,    // Scale latitude 
-        length(vWorldPos) * 0.01  // Use radius for depth
-      );
+      // Create sampling position that wraps properly on sphere
+      // Use UV coordinates combined with sphere normal for better distribution
+      vec3 pos = sphereNormal * 100.0; // Scale to sphere radius
+      pos *= 0.01; // Scale down for cloud features
       
       // Calculate latitude for wind effects
       float latitude = sphereNormal.y;
+      float theta = atan(sphereNormal.z, sphereNormal.x); // Longitude
       
-      // Simulate trade winds and jet streams based on latitude
+      // Simulate trade winds with smooth transitions between zones
       float windOffset = 0.0;
-      if (abs(latitude) < 0.3) {
-        // Equatorial trade winds - easterly (stronger)
-        windOffset = time * 0.15;
-      } else if (abs(latitude) > 0.6) {
-        // Polar easterlies (moderate)
-        windOffset = time * 0.08;
-      } else {
-        // Mid-latitude westerlies (jet stream zone - much stronger)
-        windOffset = -time * 0.2; // Opposite direction
+      float absLat = abs(latitude);
+      
+      if (absLat < 0.4) {
+        // Equatorial to subtropical - smooth transition
+        float tradeStrength = smoothstep(0.4, 0.0, absLat);
+        windOffset = time * 0.08 * tradeStrength;
       }
       
-      // Apply wind offset to longitude (theta) for proper spherical movement
-      pos.x += windOffset;  // Move in longitude direction
+      if (absLat > 0.3 && absLat < 0.7) {
+        // Mid-latitude westerlies with smooth blend
+        float westerliesStrength = smoothstep(0.3, 0.5, absLat) * smoothstep(0.7, 0.5, absLat);
+        windOffset += -time * 0.1 * westerliesStrength;
+      }
+      
+      if (absLat > 0.6) {
+        // Polar easterlies with smooth transition
+        float polarStrength = smoothstep(0.6, 0.8, absLat);
+        windOffset += time * 0.05 * polarStrength;
+      }
+      
+      // Add subtle turbulence
+      float turbulence = noise3D(pos * 0.5 + vec3(time * 0.05)) * 0.2;
+      
+      // Rotate the sampling position around Y axis for wind movement
+      float windAngle = windOffset * (1.0 + turbulence);
+      mat2 windRot = mat2(cos(windAngle), -sin(windAngle), sin(windAngle), cos(windAngle));
+      pos.xz = windRot * pos.xz;
       
       float cloud = 0.0;
       vec3 cloudColor = vec3(1.0);
@@ -156,9 +174,10 @@ export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, t
       if (cloudType < 0.5) {
         // Cumulus - highly varied puffy clouds with dynamic evolution
         
-        // Apply additional wind movement for cumulus in spherical space
-        pos.x += time * 0.12;  // Base movement in longitude
-        pos.y += sin(time * 0.05 + pos.x) * 0.05;  // Slight vertical wobble
+        // Apply additional rotation for cumulus clouds
+        float cumulusWind = time * 0.06;
+        mat2 cumulusRot = mat2(cos(cumulusWind), -sin(cumulusWind), sin(cumulusWind), cos(cumulusWind));
+        pos.xz = cumulusRot * pos.xz;
         
         // Create varied aspect ratios and sizes by stretching position differently
         vec3 stretchedPos = pos;
@@ -346,7 +365,7 @@ export function CloudSystemProcedural({ planetRadius, sunRotation }: { planetRad
         planetRadius={planetRadius}
         altitude={25}
         opacity={0.7}
-        speed={0.025}  // Adjusted for better movement
+        speed={0.015}  // Slower, more realistic
         type="cumulus"
         sunRotation={sunRotation}
       />
@@ -356,7 +375,7 @@ export function CloudSystemProcedural({ planetRadius, sunRotation }: { planetRad
         planetRadius={planetRadius}
         altitude={35}
         opacity={0.5}
-        speed={0.035}  // Increased from 0.012
+        speed={0.022}  // Moderate speed
         type="stratus"
         sunRotation={sunRotation}
       />
@@ -366,7 +385,7 @@ export function CloudSystemProcedural({ planetRadius, sunRotation }: { planetRad
         planetRadius={planetRadius}
         altitude={45}
         opacity={0.4}
-        speed={0.06}  // Increased from 0.025 - jet stream level
+        speed={0.035}  // Jet stream level
         type="cirrus"
         sunRotation={sunRotation}
       />
@@ -376,7 +395,7 @@ export function CloudSystemProcedural({ planetRadius, sunRotation }: { planetRad
         planetRadius={planetRadius}
         altitude={65}
         opacity={0.3}
-        speed={0.045}  // Increased from 0.018
+        speed={0.028}  // Upper atmosphere
         type="stratus"
         sunRotation={sunRotation}
       />

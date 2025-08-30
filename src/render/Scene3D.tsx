@@ -59,75 +59,60 @@ function Atmosphere({ radius, staticSunPosition }: { radius: number; staticSunPo
     uniform vec3 sunPosition;
     
     void main() {
+      // Get view direction for atmosphere thickness
       vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
       vec3 normal = normalize(vNormal);
       
-      // Calculate sun direction from planet center to sun
+      // Calculate sun direction and fragment position (same as entities/clouds)
       vec3 sunDir = normalize(sunPosition);
-      
-      // The fragment's position on the sphere (normalized)
       vec3 sphereNormal = normalize(vWorldPosition);
-
-      // How much this point on the sphere faces the sun
+      
+      // How much this point faces the sun (exactly like entities and clouds)
       float sunDot = dot(sphereNormal, sunDir);
       
-      // View angle for limb effects
+      // Atmosphere thickness based on viewing angle
       float viewDot = dot(viewDirection, normal);
       float limb = 1.0 - abs(viewDot);
-      float atmosphereThickness = pow(limb, 0.8);  // Softer falloff
+      float atmosphereThickness = pow(limb, 1.5);
       
-      // Color palette
-      vec3 dayBlue = vec3(0.3, 0.6, 1.0);
-      vec3 sunsetOrange = vec3(1.0, 0.5, 0.15);
-      vec3 twilightRed = vec3(0.7, 0.25, 0.1);
-      vec3 duskBlue = vec3(0.1, 0.15, 0.3);
-      vec3 nightDark = vec3(0.01, 0.02, 0.05);
+      // Don't render backside of atmosphere
+      if (viewDot > 0.0) discard;
       
-      // Smooth continuous gradient based on sun angle
+      // Color based purely on sun angle
       vec3 color;
       float intensity;
       
-      // Use smoothstep for smoother transitions
-      if (sunDot > 0.3) {
-        // Day side
-        float t = smoothstep(0.3, 0.7, sunDot);
-        color = mix(vec3(0.4, 0.65, 1.0), dayBlue, t);
-        intensity = 0.6 + t * 0.1;
-      } else if (sunDot > -0.1) {
-        // Sunset transition - smooth blend
-        float t = (0.3 - sunDot) / 0.4;  // 0 at 0.3, 1 at -0.1
-        vec3 midColor = mix(dayBlue, sunsetOrange, smoothstep(0.0, 0.5, t));
-        color = mix(midColor, twilightRed, smoothstep(0.5, 1.0, t));
-        intensity = 0.7 - t * 0.2;
-      } else if (sunDot > -0.4) {
-        // Twilight to dusk
-        float t = (-0.1 - sunDot) / 0.3;
-        color = mix(twilightRed, duskBlue, smoothstep(0.0, 1.0, t));
-        intensity = 0.5 - t * 0.25;
+      if (sunDot > 0.2) {
+        // Day side - blue sky
+        color = vec3(0.3, 0.6, 1.0);
+        intensity = 0.7;
+      } else if (sunDot > -0.2) {
+        // Terminator zone - sunset colors
+        float t = (sunDot + 0.2) / 0.4;  // 0 at night, 1 at day
+        vec3 sunsetColor = vec3(1.0, 0.5, 0.15);
+        vec3 twilightColor = vec3(0.7, 0.25, 0.1);
+        color = mix(twilightColor, sunsetColor, t);
+        intensity = 0.5 + t * 0.2;
+        
+        // Add extra glow at terminator
+        float terminatorGlow = exp(-15.0 * abs(sunDot));
+        intensity += terminatorGlow * 0.3;
+        color = mix(color, vec3(1.0, 0.7, 0.3), terminatorGlow * 0.5);
       } else {
-        // Night side
-        float t = smoothstep(-0.4, -0.8, sunDot);
-        color = mix(duskBlue, nightDark, t);
-        intensity = 0.25 - t * 0.2;
+        // Night side - dark
+        float t = smoothstep(-0.2, -0.5, sunDot);
+        color = mix(vec3(0.1, 0.15, 0.3), vec3(0.01, 0.02, 0.05), t);
+        intensity = 0.2 - t * 0.15;
       }
       
-      // Add terminator glow based on sun position
-      float terminator = exp(-8.0 * abs(sunDot));  // Glow strength at terminator
-      terminator *= limb * limb;  // Only at edge of sphere from camera view
-      color = mix(color, sunsetOrange, terminator * 0.3);
+      // Apply atmosphere thickness
+      float alpha = atmosphereThickness * intensity * 0.5;
       
-      float alpha = atmosphereThickness * intensity;
+      // Fade edges to prevent hard cutoff
+      alpha *= smoothstep(0.0, 0.1, limb);
       
-      // Remove the view angle fade that's causing the black band
-      // Just use a softer edge transition
-      alpha *= 1.0 - smoothstep(0.9, 1.0, limb);
+      if (alpha < 0.01) discard;
       
-      // Overall opacity control
-      alpha *= 0.35;
-      
-      // Prevent rendering of nearly transparent pixels
-      if (alpha < 0.005) discard;
-
       gl_FragColor = vec4(color, alpha);
     }
   `;
@@ -368,13 +353,13 @@ export function Scene3D({ client, world, entitySize }: Scene3DProps) {
           planetRadius={PLANET_RADIUS}
           sunRotation={0}  // Static sun
         />
-        
-        {/* Atmosphere - rendered last */}
-        <Atmosphere
-          radius={PLANET_RADIUS}
-          staticSunPosition={staticSunPosition}
-        />
       </PlanetSystem>
+      
+      {/* Atmosphere - outside rotating group, stays aligned with sun */}
+      <Atmosphere
+        radius={PLANET_RADIUS}
+        staticSunPosition={staticSunPosition}
+      />
 
       {/* Static starfield background - doesn't rotate with camera */}
       <group>
