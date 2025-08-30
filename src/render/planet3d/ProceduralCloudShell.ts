@@ -6,8 +6,8 @@ export function makeProceduralCloudShell({ radius }: { radius: number }) {
   const cloudUniforms = {
     uLightDir: { value: new THREE.Vector3(1, 0, 0) },
     uTime: { value: 0 },
-    uCoverage: { value: 0.5 },
-    uDensity: { value: 0.6 },
+    uCoverage: { value: 0.48 },  // Moderate coverage for realistic clouds
+    uDensity: { value: 0.7 },    // Balanced opacity for visible but not overwhelming clouds
     uLightWrap: { value: 0.25 },
     uTerminator: { value: 0.35 },
     uDayTint: { value: new THREE.Color(1, 1, 1) },
@@ -24,7 +24,7 @@ export function makeProceduralCloudShell({ radius }: { radius: number }) {
     fragmentShader: cloudMatFragmentShader,
   });
 
-  const cloudRadius = radius * 1.02;
+  const cloudRadius = radius * 1.015;  // Closer to surface for realistic cloud layer
   const cloudGeo = new THREE.SphereGeometry(cloudRadius, 64, 48);
   const cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
   cloudMesh.userData.isCloud = true;

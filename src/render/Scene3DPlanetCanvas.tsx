@@ -3,6 +3,28 @@ import * as THREE from "three";
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { SimClient } from '../client/setupSimClientHybrid';
 import type { MainMsg } from '../sim/types';
+import { DevControlsPlanet3D } from '../ui/DevControlsPlanet3D';
+
+// FPS tracking component (reused from Scene3D)
+function FPSTracker({ client }: { client: SimClient }) {
+  const frameCount = useRef(0);
+  const lastTime = useRef(performance.now());
+
+  const trackFrame = () => {
+    frameCount.current++;
+    const now = performance.now();
+    const delta = now - lastTime.current;
+
+    if (delta >= 250) { // Update 4 times per second
+      const fps = Math.round((frameCount.current * 1000) / delta);
+      client.sendRenderFps(fps);
+      frameCount.current = 0;
+      lastTime.current = now;
+    }
+  };
+
+  return { trackFrame };
+}
 import { makePlanetWithAtmosphere } from './planet3d/PlanetWithAtmosphere';
 import { makeProceduralCloudShell } from './planet3d/ProceduralCloudShell';
 import { updateEntitiesFromBuffers, makeGroundEntities } from './planet3d/EntityRenderer';
@@ -15,23 +37,10 @@ import {
   EARTH_ROTATION_SPEED,
   MOON_ORBIT_RADIUS,
   MOON_ORBIT_SPEED,
-  MOON_RADIUS,
-  ENTITY_ALTITUDE,
   CLOUD_ROTATION_SPEED,
-  CLOUD_ALTITUDE,
   AXIAL_TILT,
-  SUN_DISTANCE,
-  SUN_HEIGHT,
-  SUN_RADIUS,
-  SUN_COLOR,
-  SUN_INTENSITY,
-  MOON_COLOR,
-  MOON_EMISSIVE,
-  ENTITY_SCALE,
-  MAX_ENTITIES,
   INITIAL_CAMERA_POSITION,
   CAMERA_CONFIG,
-  setSunDirForPlanet,
   updateCloudUniforms
 } from './planet3d/planetUtils';
 
@@ -44,6 +53,7 @@ export interface Scene3DPlanetCanvasProps {
 export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [isPaused, setIsPaused] = useState(true);
+  const fpsTracker = FPSTracker({ client });
 
   // Dev control states (like Scene3D)
   const [showEntities, setShowEntities] = useState(true);
@@ -51,13 +61,16 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
   const [showClouds, setShowClouds] = useState(true);
   const [showMoon, setShowMoon] = useState(true);
   const [showSun, setShowSun] = useState(true);
-  const [showDebug, setShowDebug] = useState(true);
-  const controlsRef = useRef({ showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug });
+  const [showDebug, setShowDebug] = useState(false); // Hide debug elements by default
+  const [orbitalMode, setOrbitalMode] = useState(true); // Enable orbital mode by default
+  const [followEarth, setFollowEarth] = useState(true); // Enable follow Earth by default
+  const [pauseOrbits, setPauseOrbits] = useState(false); // New control to pause all orbital mechanics
+  const controlsRef = useRef({ showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits });
 
   // Update controls ref when state changes
   useEffect(() => {
-    controlsRef.current = { showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug };
-  }, [showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug]);
+    controlsRef.current = { showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits };
+  }, [showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits]);
   const sceneRef = useRef<{
     renderer: THREE.WebGLRenderer;
     scene: THREE.Scene;
@@ -129,9 +142,13 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       CAMERA_CONFIG.near,
       CAMERA_CONFIG.far
     );
-    // Start close to planet like Scene3D
-    camera.position.set(...INITIAL_CAMERA_POSITION);
-    camera.lookAt(0, 0, 0);
+    // Start looking at Earth's initial position
+    camera.position.set(
+      EARTH_ORBIT_RADIUS + INITIAL_CAMERA_POSITION[0],
+      INITIAL_CAMERA_POSITION[1],
+      INITIAL_CAMERA_POSITION[2]
+    );
+    camera.lookAt(EARTH_ORBIT_RADIUS, 0, 0);
 
     // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -139,10 +156,10 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     controls.dampingFactor = 0.05;
     controls.screenSpacePanning = false;
     controls.minDistance = CAMERA_CONFIG.minDistance;
-    controls.maxDistance = CAMERA_CONFIG.maxDistance;
+    controls.maxDistance = CAMERA_CONFIG.maxDistance * 3; // Allow more zoom out for orbital view
     controls.rotateSpeed = 0.5;
     controls.zoomSpeed = 1.0;
-    controls.target.set(0, 0, 0); // Look at origin
+    controls.target.set(EARTH_ORBIT_RADIUS, 0, 0); // Look at Earth's initial position
 
     // Add ambient light for debugging
     const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
@@ -153,57 +170,156 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     axisHelper.visible = controlsRef.current.showDebug;
     scene.add(axisHelper);
 
-    // Add a simple test sphere to verify rendering works
-    const testSphere = new THREE.Mesh(
-      new THREE.SphereGeometry(0.3, 32, 32),
-      new THREE.MeshStandardMaterial({ color: 0xff0000 })
-    );
-    // Position it partially behind the planet
-    testSphere.position.set(0, 0, -0.5);
-    testSphere.visible = controlsRef.current.showDebug;
-    scene.add(testSphere);
-
-    // ---------- SUN (Directional Light) - Fixed position like Scene3D ----------
-    const sun = new THREE.DirectionalLight(0xffffff, 2.0);
-    sun.position.set(SUN_DISTANCE, SUN_HEIGHT, 0);
+    // ---------- SUN (Directional Light) - Position at origin ----------
+    const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+    // Directional light position represents where light comes FROM
+    // We'll update this dynamically to always shine from sun (origin) to Earth
+    sun.position.set(100, 100, 100); // Initial position (will be updated per frame)
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -1500;
-    sun.shadow.camera.right = 1500;
-    sun.shadow.camera.top = 1500;
-    sun.shadow.camera.bottom = -1500;
+    sun.shadow.mapSize.set(4096, 4096); // Higher resolution for better shadows
+    sun.shadow.camera.left = -2000;
+    sun.shadow.camera.right = 2000;
+    sun.shadow.camera.top = 2000;
+    sun.shadow.camera.bottom = -2000;
     sun.shadow.camera.near = 1;
     sun.shadow.camera.far = 10000;
+    sun.shadow.bias = -0.0005; // Reduce shadow acne
+    // Add target for directional light
+    sun.target.position.set(EARTH_ORBIT_RADIUS, 0, 0); // Point at Earth's initial position
     scene.add(sun);
+    scene.add(sun.target); // Important: add target to scene
 
-    // Add Sun visual from CelestialBodies (import it)
+    // Add Sun visual group at origin
     const sunGroup = new THREE.Group();
-    sunGroup.position.copy(sun.position);
+    sunGroup.position.set(0, 0, 0); // Sun at origin
+    sunGroup.name = 'SunGroup';
     scene.add(sunGroup);
 
-    // Simple sun sprite for now
-    const sunSprite = new THREE.Sprite(
+    // Sun texture
+    const sunTexture = new THREE.CanvasTexture((() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d')!;
+      const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+      gradient.addColorStop(0, 'rgba(255, 255, 240, 1)');
+      gradient.addColorStop(0.2, 'rgba(255, 250, 200, 1)');
+      gradient.addColorStop(0.5, 'rgba(255, 220, 100, 1)');
+      gradient.addColorStop(0.8, 'rgba(255, 180, 50, 0.5)');
+      gradient.addColorStop(1, 'rgba(255, 150, 0, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 256, 256);
+      return canvas;
+    })());
+
+    // Flare texture (cross pattern)
+    // const flareTexture = new THREE.CanvasTexture((() => {
+    //   const canvas = document.createElement('canvas');
+    //   canvas.width = 512;
+    //   canvas.height = 512;
+    //   const ctx = canvas.getContext('2d')!;
+
+    //   // Horizontal flare
+    //   const hGrad = ctx.createLinearGradient(0, 256, 512, 256);
+    //   hGrad.addColorStop(0, 'rgba(255, 220, 150, 0)');
+    //   hGrad.addColorStop(0.3, 'rgba(255, 230, 180, 0.3)');
+    //   hGrad.addColorStop(0.5, 'rgba(255, 255, 220, 0.6)');
+    //   hGrad.addColorStop(0.7, 'rgba(255, 230, 180, 0.3)');
+    //   hGrad.addColorStop(1, 'rgba(255, 220, 150, 0)');
+
+    //   ctx.fillStyle = hGrad;
+    //   ctx.fillRect(0, 240, 512, 32);
+
+    //   // Vertical flare
+    //   const vGrad = ctx.createLinearGradient(256, 0, 256, 512);
+    //   vGrad.addColorStop(0, 'rgba(255, 220, 150, 0)');
+    //   vGrad.addColorStop(0.3, 'rgba(255, 230, 180, 0.3)');
+    //   vGrad.addColorStop(0.5, 'rgba(255, 255, 220, 0.6)');
+    //   vGrad.addColorStop(0.7, 'rgba(255, 230, 180, 0.3)');
+    //   vGrad.addColorStop(1, 'rgba(255, 220, 150, 0)');
+
+    //   ctx.fillStyle = vGrad;
+    //   ctx.fillRect(240, 0, 32, 512);
+
+    //   return canvas;
+    // })());
+
+    // Main sun core
+    const sunCore = new THREE.Sprite(
       new THREE.SpriteMaterial({
-        map: new THREE.CanvasTexture((() => {
-          const canvas = document.createElement('canvas');
-          canvas.width = 256;
-          canvas.height = 256;
-          const ctx = canvas.getContext('2d')!;
-          const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-          gradient.addColorStop(0, 'rgba(255, 255, 240, 1)');
-          gradient.addColorStop(0.5, 'rgba(255, 220, 100, 1)');
-          gradient.addColorStop(1, 'rgba(255, 150, 0, 0)');
-          ctx.fillStyle = gradient;
-          ctx.fillRect(0, 0, 256, 256);
-          return canvas;
-        })()),
+        map: sunTexture,
         color: 0xffffff,
+        opacity: 1,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
+        depthTest: true,
       })
     );
-    sunSprite.scale.set(2, 2, 1);
-    sunGroup.add(sunSprite);
+    sunCore.scale.set(1.5, 1.5, 1); // Smaller core
+    sunGroup.add(sunCore);
+
+    // Inner glow
+    const sunGlow = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: sunTexture,
+        color: 0xffcc00,
+        opacity: 0.5,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true,
+      })
+    );
+    sunGlow.scale.set(3, 3, 1); // Smaller glow
+    sunGroup.add(sunGlow);
+
+    // // Lens flare cross
+    // const lensFlare1 = new THREE.Sprite(
+    //   new THREE.SpriteMaterial({
+    //     map: flareTexture,
+    //     color: 0xffffff,
+    //     opacity: 0.4,
+    //     blending: THREE.AdditiveBlending,
+    //     depthWrite: false,
+    //     depthTest: true,
+    //   })
+    // );
+    // lensFlare1.scale.set(15, 15, 1);
+    // lensFlare1.userData.isFlare = true;
+    // sunGroup.add(lensFlare1);
+
+    // // Secondary flare rotated
+    // const lensFlare2 = new THREE.Sprite(
+    //   new THREE.SpriteMaterial({
+    //     map: flareTexture,
+    //     color: 0xffee88,
+    //     opacity: 0.25,
+    //     blending: THREE.AdditiveBlending,
+    //     depthWrite: false,
+    //     depthTest: true,
+    //   })
+    // );
+    // lensFlare2.scale.set(12, 12, 1);
+    // lensFlare2.rotation.z = Math.PI / 4;
+    // lensFlare2.userData.isFlare = true;
+    // sunGroup.add(lensFlare2);
+
+    // Outer halo
+    const sunHalo = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: sunTexture,
+        color: 0xff9900,
+        opacity: 0.2,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true,
+      })
+    );
+    sunHalo.scale.set(4.5, 4.5, 1); // Smaller halo
+    sunGroup.add(sunHalo);
+
+    // Point light for glow and additional illumination
+    const sunPointLight = new THREE.PointLight(0xffcc66, 1.5, EARTH_ORBIT_RADIUS * 3, 1);
+    sunGroup.add(sunPointLight);
 
     // ---------- EARTH STACK (per architecture) ----------
 
@@ -216,9 +332,15 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       mieColor: new THREE.Color(0xfff2d1),
     });
 
-    // Add the earth group (planet is now back in the group since we fixed depth)
+    // Add the earth group - will be positioned at orbit radius
     scene.add(earth.group);
-    // Earth added at origin
+    // Earth starts at orbit position
+    earth.group.position.set(EARTH_ORBIT_RADIUS, 0, 0);
+    // Enable shadow casting and receiving for Earth
+    if (earth.meshes.planetMesh) {
+      earth.meshes.planetMesh.castShadow = true;
+      earth.meshes.planetMesh.receiveShadow = true;
+    }
 
     // Clouds (procedural, transparent) - renderOrder 2
     const cloudResult = makeProceduralCloudShell({
@@ -242,6 +364,9 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     const moonResult = makeMoon(PLANET_RADIUS);
     const moon = moonResult.mesh;
     moon.name = 'Moon';
+    // Enable shadow casting and receiving for Moon
+    moon.castShadow = true;
+    moon.receiveShadow = true;
     // Add moon directly to scene, not to earth group
     scene.add(moon);
 
@@ -264,7 +389,6 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       sun,
       clock,
       axisHelper,
-      testSphere,
       atmoDepth
     };
 
@@ -371,27 +495,82 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         refs.testSphere.visible = controls.showDebug;
       }
 
+      // Control sun visibility
+      const sunGroup = refs.scene.getObjectByName('SunGroup');
+      if (sunGroup) {
+        sunGroup.visible = controls.showSun;
+      }
+
       // Update controls
       refs.controls.update();
 
-      // For now, keep Earth at origin to debug visibility
-      // const ex = Math.cos(t * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
-      // const ez = Math.sin(t * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
-      // refs.earth.group.position.set(ex, 0, ez);
-      refs.earth.group.position.set(0, 0, 0);
-
-      // Spin Earth
-      if (!isPaused) {
-        refs.earth.group.rotation.y += 0.05 * dt;
+      // Earth orbit mechanics (controlled by orbital mode and pause)
+      let earthPos = new THREE.Vector3(0, 0, 0);
+      if (controls.orbitalMode) {
+        if (!controls.pauseOrbits) {
+          const orbitTime = refs.clock.elapsedTime;  // Use elapsed time for continuous motion
+          const ex = Math.cos(orbitTime * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
+          const ez = Math.sin(orbitTime * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
+          earthPos.set(ex, 0, ez);
+          refs.earth.group.position.copy(earthPos);
+        } else {
+          // When paused, maintain current position
+          earthPos.copy(refs.earth.group.position);
+        }
+      } else {
+        // When orbital mode is off, Earth stays at orbit radius on x-axis
+        earthPos.set(EARTH_ORBIT_RADIUS, 0, 0);
+        refs.earth.group.position.copy(earthPos);
       }
 
-      // Moon orbit around Earth (simplified for debugging)
-      const mx = Math.cos(t * MOON_ORBIT_SPEED) * MOON_ORBIT_RADIUS;
-      const mz = Math.sin(t * MOON_ORBIT_SPEED) * MOON_ORBIT_RADIUS;
-      refs.moon.position.set(mx, 0, mz);
+      // Camera tracking for Earth (smooth following)
+      if (controls.followEarth && controls.orbitalMode) {
+        // Maintain current camera offset from target
+        const currentOffset = new THREE.Vector3().subVectors(refs.camera.position, refs.controls.target);
 
-      // Feed sun direction to Earth materials (per frame as per checklist)
-      setSunDirForPlanet(refs.earth.group, refs.sun, refs.earth.uniforms.shared.uLightDir);
+        // Smoothly interpolate target and camera positions
+        const lerpFactor = Math.min(1.0, dt * 2.0); // Smooth following
+        refs.controls.target.lerp(earthPos, lerpFactor);
+
+        const newCameraPos = earthPos.clone().add(currentOffset);
+        refs.camera.position.lerp(newCameraPos, lerpFactor);
+      }
+
+      // Spin Earth with axial tilt
+      // Apply axial tilt to the rotation group
+      if (!refs.earth.group.userData.tiltApplied) {
+        refs.earth.group.rotation.z = AXIAL_TILT;
+        refs.earth.group.userData.tiltApplied = true;
+      }
+      // Rotate Earth on its tilted axis (pause if orbital mechanics are paused)
+      if (!controls.pauseOrbits) {
+        refs.earth.group.rotation.y = refs.clock.elapsedTime * EARTH_ROTATION_SPEED;
+      }
+
+      // Moon orbit around Earth (relative to Earth's position)
+      if (!controls.pauseOrbits) {
+        const moonTime = refs.clock.elapsedTime;  // Use elapsed time for continuous motion
+        const mx = Math.cos(moonTime * MOON_ORBIT_SPEED) * MOON_ORBIT_RADIUS;
+        const mz = Math.sin(moonTime * MOON_ORBIT_SPEED) * MOON_ORBIT_RADIUS;
+        // Position moon relative to Earth's current position
+        refs.moon.position.set(
+          earthPos.x + mx,
+          earthPos.y,
+          earthPos.z + mz
+        );
+      }
+
+      // Update sun's light to shine from origin (sun position) toward Earth
+      // Position the directional light "behind" the sun looking at Earth
+      const sunToEarth = new THREE.Vector3().subVectors(earthPos, new THREE.Vector3(0, 0, 0)).normalize();
+      // Place light source behind sun position pointing toward Earth
+      refs.sun.position.copy(sunToEarth.clone().multiplyScalar(-500)); // Behind sun
+      refs.sun.position.y += 200; // Slight elevation for better angle
+      refs.sun.target.position.copy(earthPos);
+      refs.sun.target.updateMatrixWorld();
+
+      // Feed sun direction to Earth materials (from origin to Earth)
+      refs.earth.uniforms.shared.uLightDir.value.copy(sunToEarth.clone().negate());
 
       // Update shaders (now using cloudRotationSpeed properly)
       refs.earth.update({
@@ -431,6 +610,9 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         }
       }
 
+      // Track FPS
+      fpsTracker.trackFrame();
+
       refs.renderer.render(refs.scene, refs.camera);
     };
 
@@ -443,65 +625,26 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
 
   return (
     <>
-      {/* Dev Controls Panel */}
-      <div style={{
-        position: 'absolute',
-        top: '10px',
-        right: '10px',
-        background: 'rgba(0,0,0,0.7)',
-        padding: '10px',
-        borderRadius: '5px',
-        color: 'white',
-        fontSize: '12px',
-        zIndex: 1000,
-        fontFamily: 'monospace'
-      }}>
-        <div style={{ marginBottom: '5px' }}>
-          <label>
-            <input
-              type="checkbox"
-              checked={showAtmosphere}
-              onChange={(e) => setShowAtmosphere(e.target.checked)}
-            /> Atmosphere
-          </label>
-        </div>
-        <div style={{ marginBottom: '5px' }}>
-          <label>
-            <input
-              type="checkbox"
-              checked={showClouds}
-              onChange={(e) => setShowClouds(e.target.checked)}
-            /> Clouds
-          </label>
-        </div>
-        <div style={{ marginBottom: '5px' }}>
-          <label>
-            <input
-              type="checkbox"
-              checked={showMoon}
-              onChange={(e) => setShowMoon(e.target.checked)}
-            /> Moon
-          </label>
-        </div>
-        <div style={{ marginBottom: '5px' }}>
-          <label>
-            <input
-              type="checkbox"
-              checked={showEntities}
-              onChange={(e) => setShowEntities(e.target.checked)}
-            /> Entities
-          </label>
-        </div>
-        <div style={{ marginBottom: '5px' }}>
-          <label>
-            <input
-              type="checkbox"
-              checked={showDebug}
-              onChange={(e) => setShowDebug(e.target.checked)}
-            /> Debug (Axes + Test Sphere)
-          </label>
-        </div>
-      </div>
+      <DevControlsPlanet3D
+        showEntities={showEntities}
+        setShowEntities={setShowEntities}
+        showAtmosphere={showAtmosphere}
+        setShowAtmosphere={setShowAtmosphere}
+        showClouds={showClouds}
+        setShowClouds={setShowClouds}
+        showMoon={showMoon}
+        setShowMoon={setShowMoon}
+        showSun={showSun}
+        setShowSun={setShowSun}
+        showDebug={showDebug}
+        setShowDebug={setShowDebug}
+        orbitalMode={orbitalMode}
+        setOrbitalMode={setOrbitalMode}
+        followEarth={followEarth}
+        setFollowEarth={setFollowEarth}
+        pauseOrbits={pauseOrbits}
+        setPauseOrbits={setPauseOrbits}
+      />
       <div
         ref={mountRef}
         className="w-full h-full"

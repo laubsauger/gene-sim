@@ -42,8 +42,17 @@ void main(){
   float NdotL = dot(N, L);
   float wrap = clamp((NdotL + uLightWrap)/(1.0+uLightWrap), 0.0, 1.0);
   float day = smoothstep(0.0, uTerminator, wrap);
-  // Use world position for stable cloud sampling (not normal which changes with view)
-  vec3 p = normalize(vPosW) * 6.0 + vec3(0.15*uTime, 0.0, -0.1*uTime);
+  // Use world position for stable cloud sampling
+  // Clouds move east-west (around Y axis) with Earth's rotation, with slight north-south drift
+  vec3 spherePos = normalize(vPosW);
+  // Apply rotation-based movement (longitude) and slight latitude drift
+  float longitude = atan(spherePos.z, spherePos.x);
+  float latitude = asin(spherePos.y);
+  vec3 p = vec3(
+    cos(latitude) * cos(longitude + 0.003*uTime),  // Much slower east-west movement
+    sin(latitude + 0.001*sin(uTime*0.1)),          // Very slight north-south oscillation
+    cos(latitude) * sin(longitude + 0.003*uTime)   // Much slower east-west movement
+  ) * 6.0;
   float k=1.5; 
   float base=fbm(p*k); 
   float detail=fbm(p*k*2.3); 

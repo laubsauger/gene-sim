@@ -10,7 +10,7 @@ export const MOON_ORBIT_RADIUS = 2.2;
 export const MOON_ORBIT_SPEED = 0.4;
 export const MOON_RADIUS = 0.27;
 export const ENTITY_ALTITUDE = 0.0015; // Offset to avoid z-fighting
-export const CLOUD_ROTATION_SPEED = 0.01;
+export const CLOUD_ROTATION_SPEED = 0.005;  // Slower cloud rotation for more realistic movement
 export const CLOUD_ALTITUDE = 0.02; // Cloud layer altitude above surface
 export const AXIAL_TILT = 23.5 * Math.PI / 180; // Earth's axial tilt
 
