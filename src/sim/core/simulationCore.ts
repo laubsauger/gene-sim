@@ -49,6 +49,8 @@ export class SimulationCore {
   updateFood: boolean = true;  // Whether this instance should update food
   workerRegion?: { x: number; y: number; width: number; height: number; x2: number; y2: number };
   isMultiWorker: boolean = false;
+  startIdx: number = 0;  // Start index for this worker's entities
+  endIdx: number = 0;    // End index for this worker's entities
   
   constructor(
     worldWidth: number,
@@ -73,6 +75,9 @@ export class SimulationCore {
     this.deathsByTribe = new Uint32Array(tribeCount);
     this.starvedByTribe = new Uint32Array(tribeCount);
     this.killsByTribe = new Uint32Array(tribeCount);
+    
+    // Initialize entity range (will be overridden in multi-worker mode)
+    this.endIdx = cap;
   }
 
   step(dt: number) {
@@ -162,12 +167,12 @@ export class SimulationCore {
     if (this.fullPos && this.fullVel) {
       efficientMovementOptimized(
         i,
-        this.fullPos,
-        this.fullVel,
-        this.fullAlive,
-        this.fullEnergy,
-        this.fullTribeId,
-        this.fullGenes,
+        this.fullPos!,
+        this.fullVel!,
+        this.fullAlive!,
+        this.fullEnergy!,
+        this.fullTribeId!,
+        this.fullGenes!,
         this.grid,
         this.food.getGrid(),
         this.food.getCols(),
@@ -177,17 +182,17 @@ export class SimulationCore {
         dt,
         this.killsByTribe,
         this.deathsByTribe,
-        this.fullColor,
+        this.fullColor || undefined,
         this.birthsByTribe,
         this.allowHybrids,
-        this.fullOrientation,
-        this.fullAge,
-        this.fullPos,
-        this.fullAlive,
-        this.fullTribeId,
-        this.fullGenes,
-        this.fullEnergy,
-        this.fullVel
+        this.fullOrientation || undefined,
+        this.fullAge || undefined,
+        this.fullPos!,
+        this.fullAlive!,
+        this.fullTribeId!,
+        this.fullGenes!,
+        this.fullEnergy!,
+        this.fullVel!
       );
 
       // Apply velocity
@@ -209,6 +214,109 @@ export class SimulationCore {
       this.fullEnergy![i] += Math.min(30, consumed * 8 * plantFoodEfficiency);
       this.fullEnergy![i] = Math.min(this.fullEnergy![i], energyConfig.max);
     }
+
+    // Reproduction (normal asexual reproduction, not inter-tribe hybrids)
+    const reproChance = this.fullGenes![base + 3];
+    if (this.fullEnergy![i] > energyConfig.repro && this.rand() < reproChance * dt) {
+      // Find free slot within worker's range
+      const workerStart = this.startIdx;
+      const workerEnd = this.endIdx;
+      for (let j = workerStart; j < workerEnd; j++) {
+        if (!this.fullAlive![j]) {
+          // Spawn child near parent
+          const px = this.fullPos![i * 2];
+          const py = this.fullPos![i * 2 + 1];
+          const spawnOffset = 10 + this.rand() * 15;
+          const spawnAngle = this.rand() * Math.PI * 2;
+          let childX = px + Math.cos(spawnAngle) * spawnOffset;
+          let childY = py + Math.sin(spawnAngle) * spawnOffset;
+          
+          // Wrap coordinates
+          childX = ((childX % this.worldWidth) + this.worldWidth) % this.worldWidth;
+          childY = ((childY % this.worldHeight) + this.worldHeight) % this.worldHeight;
+          
+          // Initialize child
+          this.fullPos![j * 2] = childX;
+          this.fullPos![j * 2 + 1] = childY;
+          
+          const ang = this.rand() * Math.PI * 2;
+          const childBase = j * GENE_COUNT;
+          
+          // Copy and mutate genes
+          for (let g = 0; g < GENE_COUNT; g++) {
+            const mutation = 0.95 + this.rand() * 0.1; // ±5% mutation
+            this.fullGenes![childBase + g] = this.fullGenes![base + g] * mutation;
+          }
+          
+          // Calculate child speed based on metabolism
+          const childMetabolism = this.fullGenes![childBase + 2];
+          const childRawSpeed = this.fullGenes![childBase];
+          const childMetabEfficiency = Math.min(1, Math.sqrt(childMetabolism / 0.15));
+          const childSpeed = childRawSpeed * childMetabEfficiency;
+          
+          this.fullVel![j * 2] = Math.cos(ang) * childSpeed * 0.5;
+          this.fullVel![j * 2 + 1] = Math.sin(ang) * childSpeed * 0.5;
+          
+          this.fullAlive![j] = 1;
+          this.fullEnergy![j] = energyConfig.start * 0.7;
+          this.fullTribeId![j] = this.fullTribeId![i];
+          
+          if (this.fullAge) {
+            this.fullAge[j] = 0;
+          }
+          
+          if (this.fullOrientation) {
+            this.fullOrientation[j] = ang;
+          }
+          
+          // Set child color based on tribe (not parent's current color which may be age-dimmed)
+          if (this.fullColor) {
+            const tribeHue = this.tribeColors[this.fullTribeId![i]] || 0;
+            // Convert HSL to RGB for the tribe's base color
+            const h = tribeHue / 360;
+            const s = 0.8;
+            const l = 0.5;
+            
+            const c = (1 - Math.abs(2 * l - 1)) * s;
+            const x = c * (1 - Math.abs(((h * 6) % 2) - 1));
+            const m = l - c / 2;
+            
+            let r = 0, g = 0, b = 0;
+            const hPrime = h * 6;
+            if (hPrime < 1) {
+              r = c; g = x; b = 0;
+            } else if (hPrime < 2) {
+              r = x; g = c; b = 0;
+            } else if (hPrime < 3) {
+              r = 0; g = c; b = x;
+            } else if (hPrime < 4) {
+              r = 0; g = x; b = c;
+            } else if (hPrime < 5) {
+              r = x; g = 0; b = c;
+            } else {
+              r = c; g = 0; b = x;
+            }
+            
+            this.fullColor[j * 3] = Math.floor((r + m) * 255);
+            this.fullColor[j * 3 + 1] = Math.floor((g + m) * 255);
+            this.fullColor[j * 3 + 2] = Math.floor((b + m) * 255);
+          }
+          
+          // Parent pays energy cost
+          this.fullEnergy![i] -= 25;
+          
+          // Track birth
+          this.birthsByTribe[this.fullTribeId![i]]++;
+          
+          // Update entity count if needed
+          if (j >= this.count) {
+            this.count = j + 1;
+          }
+          
+          break;
+        }
+      }
+    }
   }
 
   private updateEntitySingleWorker(i: number, dt: number) {
@@ -228,64 +336,37 @@ export class SimulationCore {
       return;  // Exit early for dead entities
     }
       
-      // Movement and interactions
-      if (this.fullPos && this.fullAlive) {
-        // Multi-worker mode: use full arrays for neighbor queries but local arrays for updates
-        efficientMovementOptimized(
-          i, 
-          this.entities.pos,
-          this.entities.vel,
-          this.entities.alive,
-          this.entities.energy,
-          this.entities.tribeId,
-          this.entities.genes,
-          this.grid,
-          this.food.getGrid(),
-          this.food.getCols(),
-          this.food.getRows(),
-          { width: this.worldWidth, height: this.worldHeight },
-          this.rand,
-          dt,
-          this.killsByTribe,
-          this.deathsByTribe,
-          this.entities.color,
-          this.birthsByTribe,
-          this.allowHybrids,
-          this.entities.orientation,
-          this.entities.age,
-          // Pass full arrays for neighbor queries
-          this.fullPos,
-          this.fullAlive,
-          this.fullTribeId,
-          this.fullGenes,
-          this.fullEnergy
-        );
-      } else {
-        // Single worker mode: use local arrays only
-        efficientMovementOptimized(
-          i, 
-          this.entities.pos,
-          this.entities.vel,
-          this.entities.alive,
-          this.entities.energy,
-          this.entities.tribeId,
-          this.entities.genes,
-          this.grid,
-          this.food.getGrid(),
-          this.food.getCols(),
-          this.food.getRows(),
-          { width: this.worldWidth, height: this.worldHeight },
-          this.rand,
-          dt,
-          this.killsByTribe,
-          this.deathsByTribe,
-          this.entities.color,
-          this.birthsByTribe,
-          this.allowHybrids,
-          this.entities.orientation,
-          this.entities.age
-        );
-      }
+      // Movement and interactions - always run
+      efficientMovementOptimized(
+        i, 
+        this.entities.pos,
+        this.entities.vel,
+        this.entities.alive,
+        this.entities.energy,
+        this.entities.tribeId,
+        this.entities.genes,
+        this.grid,
+        this.food.getGrid(),
+        this.food.getCols(),
+        this.food.getRows(),
+        { width: this.worldWidth, height: this.worldHeight },
+        this.rand,
+        dt,
+        this.killsByTribe,
+        this.deathsByTribe,
+        this.entities.color,
+        this.birthsByTribe,
+        this.allowHybrids,
+        this.entities.orientation,
+        this.entities.age,
+        // Pass full arrays for multi-worker mode, undefined for single-worker
+        this.fullPos || undefined,
+        this.fullAlive || undefined,
+        this.fullTribeId || undefined,
+        this.fullGenes || undefined,
+        this.fullEnergy || undefined,
+        this.fullVel || undefined
+      );
       
       // Apply velocity to position (physics integration)
       const vx = this.entities.vel[i * 2];
@@ -320,7 +401,7 @@ export class SimulationCore {
         // Find free slot
         for (let j = 0; j < this.entities.cap; j++) {
           if (!this.entities.alive[j]) {
-            if (this.entities.reproduce(i, j, this.rand, this.tribeColors)) {
+            if (this.entities.reproduce(i, j, this.rand, this.tribeColors, this.worldWidth, this.worldHeight)) {
               this.birthsByTribe[this.entities.tribeId[i]]++;
               if (j >= this.count) this.count = j + 1;
               break;
@@ -421,7 +502,6 @@ export class SimulationCore {
     return {
       population,
       time: this.time,
-      t: this.time,  // UI expects 't' field
       byTribe,
       global: {
         mean: globalMean,

@@ -1,5 +1,8 @@
+// Type for random number generator function
+export type Rng = () => number;
+
 // SFC32 - Fast, high-quality PRNG with good statistical properties
-export const sfc32 = (a: number, b: number, c: number, d: number) => {
+export const sfc32 = (a: number, b: number, c: number, d: number): Rng => {
   return () => {
     a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
     let t = (a + b) | 0;

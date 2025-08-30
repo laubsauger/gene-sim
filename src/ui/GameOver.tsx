@@ -23,10 +23,20 @@ export function GameOver({ finalTime, finalStats, onRestart, onNewSimulation, se
     }
   };
 
-  // Find the last surviving tribe
-  const lastTribe = Object.entries(finalStats.byTribe)
-    .filter(([_, stats]) => stats.count > 0)
-    .sort((a, b) => b[1].count - a[1].count)[0];
+  // Calculate comprehensive statistics
+  const tribes = Object.entries(finalStats.byTribe);
+  const totalKills = tribes.reduce((sum, [_, stats]) => sum + (stats.kills || 0), 0);
+  const totalBirths = tribes.reduce((sum, [_, stats]) => sum + (stats.births || 0), 0);
+  const totalDeaths = tribes.reduce((sum, [_, stats]) => sum + (stats.deaths || 0), 0);
+  const totalStarved = tribes.reduce((sum, [_, stats]) => sum + (stats.starved || 0), 0);
+  
+  // Find the tribe with most kills
+  const mostAggressive = tribes.sort((a, b) => (b[1].kills || 0) - (a[1].kills || 0))[0];
+  
+  // Find the tribe that survived longest (last to have population > 0)
+  const survivorsByTime = tribes
+    .filter(([_, stats]) => (stats.deaths || 0) > 0 || (stats.births || 0) > 0)
+    .sort((a, b) => (b[1].births || 0) + (b[1].deaths || 0) - (a[1].births || 0) - (a[1].deaths || 0));
 
   return (
     <div style={{
@@ -104,21 +114,71 @@ export function GameOver({ finalTime, finalStats, onRestart, onNewSimulation, se
               <span style={{ float: 'right', color: '#fff', fontFamily: 'monospace' }}>{seed}</span>
             </div>
             
-            {lastTribe && (
-              <>
-                <div>
-                  <span style={{ color: '#718096' }}>Last Survivor:</span>
-                  <span style={{ float: 'right', color: '#fff' }}>{lastTribe[0]}</span>
-                </div>
-                
-                <div>
-                  <span style={{ color: '#718096' }}>Peak Population:</span>
-                  <span style={{ float: 'right', color: '#fff' }}>
-                    {Math.max(...Object.values(finalStats.byTribe).map(t => t.count))}
-                  </span>
-                </div>
-              </>
+            <div>
+              <span style={{ color: '#718096' }}>Total Births:</span>
+              <span style={{ float: 'right', color: '#4ade80' }}>{totalBirths}</span>
+            </div>
+            
+            <div>
+              <span style={{ color: '#718096' }}>Total Deaths:</span>
+              <span style={{ float: 'right', color: '#ef4444' }}>{totalDeaths}</span>
+            </div>
+            
+            <div>
+              <span style={{ color: '#718096' }}>Combat Deaths:</span>
+              <span style={{ float: 'right', color: '#f97316' }}>{totalKills}</span>
+            </div>
+            
+            <div>
+              <span style={{ color: '#718096' }}>Starvation Deaths:</span>
+              <span style={{ float: 'right', color: '#a78bfa' }}>{totalStarved}</span>
+            </div>
+            
+            {mostAggressive && (
+              <div style={{ gridColumn: 'span 2' }}>
+                <span style={{ color: '#718096' }}>Most Aggressive:</span>
+                <span style={{ float: 'right', color: '#ef4444' }}>
+                  {mostAggressive[0]} ({mostAggressive[1].kills} kills)
+                </span>
+              </div>
             )}
+          </div>
+        </div>
+        
+        {/* Tribe breakdown */}
+        <div style={{
+          background: 'rgba(0, 0, 0, 0.3)',
+          borderRadius: '8px',
+          padding: '20px',
+          marginBottom: '30px',
+          maxHeight: '200px',
+          overflowY: 'auto',
+        }}>
+          <h3 style={{
+            fontSize: '16px',
+            fontWeight: 'bold',
+            marginBottom: '15px',
+            color: '#cbd5e0',
+          }}>
+            Tribe Performance
+          </h3>
+          
+          <div style={{ fontSize: '13px' }}>
+            {tribes.map(([name, stats]) => (
+              <div key={name} style={{
+                display: 'grid',
+                gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',
+                gap: '10px',
+                padding: '8px 0',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+              }}>
+                <span style={{ color: stats.color || '#fff' }}>{name}</span>
+                <span style={{ color: '#718096', textAlign: 'right' }}>B: {stats.births || 0}</span>
+                <span style={{ color: '#718096', textAlign: 'right' }}>D: {stats.deaths || 0}</span>
+                <span style={{ color: '#718096', textAlign: 'right' }}>K: {stats.kills || 0}</span>
+                <span style={{ color: '#718096', textAlign: 'right' }}>S: {stats.starved || 0}</span>
+              </div>
+            ))}
           </div>
         </div>
 

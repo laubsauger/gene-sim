@@ -38,7 +38,8 @@ export function efficientMovement(
   
   // Calculate effective speed based on metabolism
   // Low metabolism can't support high speeds effectively
-  const metabolismEfficiency = Math.min(1, metabolism / 0.15); // Normalized to base metabolism
+  // Use square root for gentler scaling: 0.05 -> 58%, 0.1 -> 82%, 0.15+ -> 100%
+  const metabolismEfficiency = Math.min(1, Math.sqrt(metabolism / 0.15));
   const speed = rawSpeed * metabolismEfficiency;
   
   const myTribe = tribeId[i];
@@ -372,7 +373,7 @@ export function efficientMovement(
             const ang = rand() * Math.PI * 2;
             const hybridRawSpeed = (genes[base] + genes[mateBase]) / 2;
             const hybridMetabolism = (genes[base + 2] + genes[mateBase + 2]) / 2;
-            const hybridMetabEfficiency = Math.min(1, hybridMetabolism / 0.15);
+            const hybridMetabEfficiency = Math.min(1, Math.sqrt(hybridMetabolism / 0.15));
             const hybridSpeed = hybridRawSpeed * hybridMetabEfficiency;
             vel[j * 2] = Math.cos(ang) * hybridSpeed * 0.5;
             vel[j * 2 + 1] = Math.sin(ang) * hybridSpeed * 0.5;

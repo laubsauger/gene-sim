@@ -69,9 +69,11 @@ export interface ControlsProps {
   client: SimClient;
   isRunning: boolean;
   onStart: () => void;
+  entitySize: number;
+  onEntitySizeChange: (size: number) => void;
 }
 
-export function Controls({ client, isRunning, onStart }: ControlsProps) {
+export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeChange }: ControlsProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [speed, setSpeed] = useState(1);
   const speedValues = [0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
@@ -161,7 +163,7 @@ export function Controls({ client, isRunning, onStart }: ControlsProps) {
       <div style={{ 
         display: 'flex', 
         flexDirection: 'column',
-        gap: '4px',
+        gap: '8px',
         flex: 1,
         minWidth: '250px',
       }}>
@@ -172,12 +174,11 @@ export function Controls({ client, isRunning, onStart }: ControlsProps) {
         }}>
           <span style={{ 
             color: 'white', 
-            fontSize: '14px',
-            minWidth: '50px',
-            textAlign: 'right',
+            fontSize: '13px',
             fontWeight: '500',
+            minWidth: '45px',
           }}>
-            {speed < 1 ? speed.toFixed(2) : speed}×
+            Speed
           </span>
           <div style={{ flex: 1 }}>
             <StyledSlider
@@ -191,6 +192,58 @@ export function Controls({ client, isRunning, onStart }: ControlsProps) {
               style={{ marginBottom: '8px' }}
             />
           </div>
+          <span style={{ 
+            color: '#60a5fa', 
+            fontSize: '13px',
+            fontWeight: '600',
+            minWidth: '35px',
+            textAlign: 'right',
+          }}>
+            {speed < 1 ? speed.toFixed(2) : speed}×
+          </span>
+        </div>
+        
+        {/* Entity Size Control */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '12px',
+        }}>
+          <span style={{ 
+            color: 'white', 
+            fontSize: '13px',
+            fontWeight: '500',
+            minWidth: '45px',
+          }}>
+            Size
+          </span>
+          <div style={{ flex: 1 }}>
+            <input
+              type="range"
+              min={0.5}
+              max={25}
+              step={0.1}
+              value={entitySize}
+              onChange={(e) => onEntitySizeChange(parseFloat(e.target.value))}
+              style={{
+                width: '100%',
+                height: '12px',
+                background: `linear-gradient(to right, #10b981 0%, #10b981 ${((entitySize - 0.5) / 24.5) * 100}%, #2d3748 ${((entitySize - 0.5) / 24.5) * 100}%, #2d3748 100%)`,
+                borderRadius: '3px',
+                outline: 'none',
+              }}
+              className="custom-slider"
+            />
+          </div>
+          <span style={{ 
+            color: '#60a5fa', 
+            fontSize: '13px',
+            fontWeight: '600',
+            minWidth: '35px',
+            textAlign: 'right',
+          }}>
+            {entitySize.toFixed(1)}
+          </span>
         </div>
       </div>
     </div>

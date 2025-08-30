@@ -35,23 +35,38 @@ export function EntityPoints({
       uniform float uSize;
       
       void main() {
-        // Pass normalized color (aCol is already 0-1 due to normalized=true)
-        vColor = aCol;
         vAlive = aAlive;
         vec4 mvPosition = modelViewMatrix * vec4(aPos, 0.0, 1.0);
 
-        // Scale point size based on age (young small, old larger)
-        float ageInDays = aAge / 10.0; // Convert to days
-        float ageFactor = 1.0;
-        if (ageInDays < 2.0) {
-          ageFactor = 0.9; // Young - slightly smaller
-        } else if (ageInDays < 4.0) {
-          ageFactor = 1.0; // Adult - normal
-        } else if (ageInDays < 6.0) {
-          ageFactor = 1.05; // Old - slightly larger
+        // Age-based scale and brightness
+        // Age transitions: 0-10 = newborn, 10-30 = young, 30-60 = adult, 60+ = old
+        float ageValue = aAge;
+        float scaleFactor = 0.8; // Start at 0.8x size
+        float brightnessFactor = 0.8; // Start at 0.8 brightness
+        
+        if (ageValue < 10.0) {
+          // Newborn to young: rapid growth
+          float t = ageValue / 10.0;
+          scaleFactor = 0.8 + 0.15 * t; // 0.8 to 0.95
+          brightnessFactor = 0.8 + 0.15 * t; // 0.8 to 0.95
+        } else if (ageValue < 30.0) {
+          // Young to adult: slower growth
+          float t = (ageValue - 10.0) / 20.0;
+          scaleFactor = 0.95 + 0.05 * t; // 0.95 to 1.0
+          brightnessFactor = 0.95 + 0.05 * t; // 0.95 to 1.0
+        } else if (ageValue < 60.0) {
+          // Adult: peak size and brightness
+          scaleFactor = 1.0;
+          brightnessFactor = 1.0;
         } else {
-          ageFactor = 1.1; // Very old - bit larger
+          // Old: slight dimming but maintain size
+          float t = min(1.0, (ageValue - 60.0) / 40.0);
+          scaleFactor = 1.0;
+          brightnessFactor = 1.0 - 0.2 * t; // Fade to 0.8 brightness
         }
+        
+        // Apply brightness to color (not opacity)
+        vColor = aCol * brightnessFactor;
 
         // Account for perspective - make points scale with distance
         // For orthographic camera, this will be constant
@@ -60,9 +75,8 @@ export function EntityPoints({
           perspectiveFactor = 300.0 / -mvPosition.z;
         #endif
         
-        // Base size is more important than age variation
-        // Debug: Set a minimum size to ensure visibility
-        gl_PointSize = max(2.0, uSize * perspectiveFactor * ageFactor);
+        // Apply age-based scaling to point size
+        gl_PointSize = max(1.5, uSize * perspectiveFactor * scaleFactor);
         gl_Position = projectionMatrix * mvPosition;
       }
     `,
@@ -74,12 +88,27 @@ export function EntityPoints({
       void main() {
         if (vAlive < 0.5) discard;
         
-        // Create circular point
+        // Create circular point with outline
         vec2 p = gl_PointCoord * 2.0 - 1.0;
-        if (dot(p, p) > 1.0) discard;
+        float dist = dot(p, p);
         
-        // Use color directly (already normalized from attribute)
-        gl_FragColor = vec4(vColor, 1.0);
+        if (dist > 1.0) discard;
+        
+        // Create outline effect
+        float outerRadius = 1.0;
+        float innerRadius = 0.75; // Adjust for outline thickness
+        float outlineStrength = 0.0;
+        
+        if (dist > innerRadius * innerRadius) {
+          // We're in the outline region
+          outlineStrength = 1.0;
+        }
+        
+        // Mix between entity color and darker outline
+        vec3 outlineColor = vColor * 0.3; // Darker version of entity color
+        vec3 finalColor = mix(vColor, outlineColor, outlineStrength);
+        
+        gl_FragColor = vec4(finalColor, 1.0);
       }
     `,
     uniforms: {
@@ -214,8 +243,11 @@ export function EntityPoints({
       const zoom = (camera as THREE.OrthographicCamera).zoom;
       if (Math.abs(zoom - lastZoomRef.current) > 0.001) {
         lastZoomRef.current = zoom;
-        const scaledSize = pointSize * zoom;
-        mat.uniforms.uSize.value = Math.max(4, Math.min(200, scaledSize));
+        // Use square root scaling for more gentle size changes
+        // This prevents entities from becoming too tiny when zoomed in
+        const zoomFactor = Math.sqrt(zoom);
+        const scaledSize = pointSize * zoomFactor * 1.5; // 1.5x multiplier for better visibility
+        mat.uniforms.uSize.value = Math.max(2, Math.min(100, scaledSize));
       }
     }
   });

@@ -1,6 +1,7 @@
 // Optimized spatial behaviors with single-pass neighbor collection
 // Maintains exact same behavior but with better performance
 import { SpatialHash } from './spatialHash';
+import { energyConfig } from './core/constants';
 
 // Pre-allocated neighbor cache to avoid allocations - aggressively reduced for performance
 const MAX_NEIGHBORS = 20;
@@ -84,7 +85,9 @@ export function efficientMovementOptimized(
   const viewAngle = (genes[base + 8] || 120) * Math.PI / 180;
   
   // Pre-calculate frequently used values
-  const metabolismEfficiency = Math.min(1, metabolism / 0.15);
+  // Reduce metabolism coupling - use square root for gentler scaling
+  // This gives: metabolism 0.05 -> 58% speed, 0.1 -> 82% speed, 0.15 -> 100% speed
+  const metabolismEfficiency = Math.min(1, Math.sqrt(metabolism / 0.15));
   const speed = rawSpeed * metabolismEfficiency;
   const myTribe = tribeId[i];
   const myEnergy = energy[i];
@@ -110,7 +113,6 @@ export function efficientMovementOptimized(
   let neighborCount = 0;
   let alignX = 0, alignY = 0;
   let separateX = 0, separateY = 0;
-  let cohesionX = 0, cohesionY = 0;
   let nearbyAllies = 0;
   let nearbyEnemies = 0;
   let huntingAllies = 0;
@@ -170,15 +172,15 @@ export function efficientMovementOptimized(
     }
     
     // Process separation (universal crowding) - entities need physical space
-    // Each entity needs about 25 units of personal space (similar to their size)
-    const personalSpaceSq = 625; // 25² units - reasonable for entity size
+    // Increased personal space to prevent visual overlap
+    const personalSpace = 40; // Increased from 25 to prevent overlap
+    const personalSpaceSq = personalSpace * personalSpace; // 1600 units²
     if (distSq < personalSpaceSq) {
       const dist = Math.sqrt(distSq) + 0.1; // Avoid division by zero
-      const personalSpace = 25;
       const crowdForce = (personalSpace - dist) / personalSpace;
       if (crowdForce > 0) {
-        // Exponential repulsion for very close entities
-        const factor = Math.pow(crowdForce, 1.5) * 4 / dist;
+        // Stronger exponential repulsion for very close entities
+        const factor = Math.pow(crowdForce, 2) * 8 / dist; // Increased power and multiplier
         separateX -= dx * factor;
         separateY -= dy * factor;
       }
@@ -193,11 +195,8 @@ export function efficientMovementOptimized(
         alignY += queryVel[j * 2 + 1];
       }
       
-      // Cohesion
-      if (neighborCount < 15) {
-        cohesionX += queryPos[j * 2];
-        cohesionY += queryPos[j * 2 + 1];
-      }
+      // Cohesion - store relative positions to avoid wrapping bias
+      // (removed - we'll calculate cohesion from cached neighbors instead)
       
       // Check if ally is hunting (for pack bonus)
       if (isHunter && cohesion > 0.4) {
@@ -264,13 +263,87 @@ export function efficientMovementOptimized(
     ? Math.min(1, huntingAllies * 0.2) * cohesion 
     : 0;
   
+  // Threat assessment for cautious behavior
+  const outnumberedRatio = nearbyEnemies > 0 ? nearbyAllies / nearbyEnemies : 1;
+  const isOutnumbered = outnumberedRatio < 0.5; // Less than 1:2 ratio
+  const isAlone = nearbyAllies < 2;
+  const groupSize = nearbyAllies + 1; // Include self
+  
+  // Predator detection for herbivores
+  let nearbyPredators = 0;
+  let nearestPredatorDist = Infinity;
+  for (let n = 0; n < neighborCount; n++) {
+    const neighbor = neighborCache[n];
+    if (!neighbor.isAlly && neighbor.inView) {
+      const nIdx = neighbor.index;
+      const nBase = nIdx * G;
+      const nDiet = queryGenes ? queryGenes[nBase + 7] : genes[nBase + 7];
+      if (nDiet > 0.3) { // Is a carnivore/strong omnivore
+        nearbyPredators++;
+        const dist = Math.sqrt(neighbor.distSq);
+        if (dist < nearestPredatorDist) {
+          nearestPredatorDist = dist;
+        }
+      }
+    }
+  }
+  
   // Conservation check
   const neighborhoodSatiation = nearbyAllies > 0 ? satiatedAllies / nearbyAllies : 0;
   const conservationMode = neighborhoodSatiation > 0.7 && myEnergy > 40;
   
+  // Cautious mode for carnivores/omnivores when outnumbered
+  const cautiousMode = (carnivoreLevel > 0 || (diet > -0.3 && diet < 0.3)) && 
+                       (isOutnumbered || isAlone) && 
+                       aggression < 0.7; // Only if not highly aggressive
+  
+  // Fear mode for herbivores when predators are near
+  const herbivoreLevel = Math.max(0, -diet); // 0 to 1 for herbivore strength
+  const fearMode = herbivoreLevel > 0.3 && // Is significantly herbivorous
+                   nearbyPredators > 0 && 
+                   groupSize < nearbyPredators * 3; // Need 3:1 ratio to feel safe
+  
   // Apply movement forces
   let vx = vel[i * 2];
   let vy = vel[i * 2 + 1];
+  
+  // Avoidance behavior for fearful herbivores
+  if (fearMode) {
+    let avoidX = 0, avoidY = 0;
+    let predatorCount = 0;
+    
+    // Calculate avoidance vector from all nearby predators
+    for (let n = 0; n < neighborCount; n++) {
+      const neighbor = neighborCache[n];
+      if (!neighbor.isAlly && neighbor.inView) {
+        const nIdx = neighbor.index;
+        const nBase = nIdx * G;
+        const nDiet = queryGenes ? queryGenes[nBase + 7] : genes[nBase + 7];
+        if (nDiet > 0.3) { // Is a predator
+          const dist = Math.sqrt(neighbor.distSq) + 0.1;
+          const weight = 1 / (dist * dist); // Stronger avoidance for closer predators
+          avoidX -= (neighbor.dx / dist) * weight;
+          avoidY -= (neighbor.dy / dist) * weight;
+          predatorCount++;
+        }
+      }
+    }
+    
+    if (predatorCount > 0) {
+      // Normalize and apply fear-based avoidance
+      const avoidMag = Math.sqrt(avoidX * avoidX + avoidY * avoidY) + 0.001;
+      avoidX /= avoidMag;
+      avoidY /= avoidMag;
+      
+      // Fear intensity based on group support and predator proximity
+      const fearIntensity = (1 - Math.min(1, groupSize / (nearbyPredators * 3))) * 
+                           (1 - Math.min(1, nearestPredatorDist / vision));
+      
+      // Apply strong avoidance force
+      vx += avoidX * speed * (0.4 + fearIntensity * 0.4);
+      vy += avoidY * speed * (0.4 + fearIntensity * 0.4);
+    }
+  }
   
   // Flocking forces for allies
   if (nearbyAllies > 0) {
@@ -282,79 +355,174 @@ export function efficientMovementOptimized(
       vy += (alignY / nearbyAllies - vy) * cohesionFactor;
     }
     
-    // Cohesion
+    // Cohesion - use weighted center to avoid bias
     if (nearbyAllies > 2) {
-      const centerX = cohesionX / nearbyAllies;
-      const centerY = cohesionY / nearbyAllies;
-      const dx = centerX - px;
-      const dy = centerY - py;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      vx += (dx / dist) * speed * cohesionFactor * 0.5;
-      vy += (dy / dist) * speed * cohesionFactor * 0.5;
+      // Calculate center of mass considering world wrapping
+      let centerX = 0;
+      let centerY = 0;
+      let validCount = 0;
+      
+      // Recalculate center using cached neighbors with proper wrapping
+      for (let n = 0; n < neighborCount; n++) {
+        const neighbor = neighborCache[n];
+        if (neighbor.isAlly && neighbor.distSq < visionSq) {
+          // Use relative positions (dx, dy) to avoid wrapping issues
+          centerX += neighbor.dx;
+          centerY += neighbor.dy;
+          validCount++;
+        }
+      }
+      
+      if (validCount > 0) {
+        centerX /= validCount;
+        centerY /= validCount;
+        const dist = Math.sqrt(centerX * centerX + centerY * centerY) || 1;
+        // Apply cohesion force towards relative center
+        vx += (centerX / dist) * speed * cohesionFactor * 0.5;
+        vy += (centerY / dist) * speed * cohesionFactor * 0.5;
+      }
     }
   }
   
-  // Always apply separation
-  vx += separateX * speed * 0.2;
-  vy += separateY * speed * 0.2;
+  // Always apply separation with stronger force
+  vx += separateX * speed * 0.4; // Increased from 0.2
+  vy += separateY * speed * 0.4; // Increased from 0.2
   
-  // Hunting behavior
-  if (shouldHunt && !conservationMode && bestPrey >= 0) {
+  // Hunting behavior (modified for cautious mode)
+  if (shouldHunt && !conservationMode && bestPrey >= 0 && !cautiousMode) {
     nearestEnemy = bestPrey;
     nearestEnemyDistSq = neighborCache.find(n => n.index === bestPrey)?.distSq || nearestEnemyDistSq;
     
+    // Active hunting when hungry and not cautious
+    const preyX = queryPos ? queryPos[bestPrey * 2] : pos[bestPrey * 2];
+    const preyY = queryPos ? queryPos[bestPrey * 2 + 1] : pos[bestPrey * 2 + 1];
+    const toPrey = Math.atan2(preyY - py, preyX - px);
+    
     // Pack hunting coordination
     if (cohesion > 0.5 && carnivoreLevel > 0.3) {
-      const preyX = pos[bestPrey * 2];
-      const preyY = pos[bestPrey * 2 + 1];
-      const toPrey = Math.atan2(preyY - py, preyX - px);
       const packAngle = toPrey + (rand() - 0.5) * Math.PI * 0.5;
       const packSpeed = speed * (1 + cohesion * 0.3);
       vx += Math.cos(packAngle) * packSpeed * 0.4;
       vy += Math.sin(packAngle) * packSpeed * 0.4;
+    } else {
+      // Direct pursuit when very hungry
+      vx += Math.cos(toPrey) * speed * 0.3;
+      vy += Math.sin(toPrey) * speed * 0.3;
+    }
+  } else if (cautiousMode && shouldHunt && bestPrey >= 0) {
+    // Cautious hunting - maintain distance, wait for opportunity
+    const preyX = queryPos ? queryPos[bestPrey * 2] : pos[bestPrey * 2];
+    const preyY = queryPos ? queryPos[bestPrey * 2 + 1] : pos[bestPrey * 2 + 1];
+    const dx = preyX - px;
+    const dy = preyY - py;
+    const distSq = dx * dx + dy * dy;
+    
+    // Maintain safe stalking distance based on outnumbered ratio
+    const safeDistSq = 10000 * (2 - outnumberedRatio); // Further when more outnumbered
+    
+    if (distSq > safeDistSq * 1.5) {
+      // Carefully approach
+      const dist = Math.sqrt(distSq);
+      vx += (dx / dist) * speed * 0.15; // Slower approach
+      vy += (dy / dist) * speed * 0.15;
+    } else if (distSq < safeDistSq * 0.5) {
+      // Too close for comfort, back off
+      const dist = Math.sqrt(distSq) + 0.1;
+      vx -= (dx / dist) * speed * 0.2;
+      vy -= (dy / dist) * speed * 0.2;
+    }
+    
+    // Only attack if prey is isolated and weak
+    const preyEnergy = energy[bestPrey];
+    if (distSq < 400 && preyEnergy < 30 && outnumberedRatio > 0.3) {
+      // Quick opportunistic strike
+      const dist = Math.sqrt(distSq);
+      vx += (dx / dist) * speed * 0.5;
+      vy += (dy / dist) * speed * 0.5;
+    }
+  } else if (isHunter && myEnergy > 60 && bestPrey >= 0) {
+    // Stalking behavior - well-fed carnivores stay near prey but don't actively hunt
+    const preyX = queryPos ? queryPos[bestPrey * 2] : pos[bestPrey * 2];
+    const preyY = queryPos ? queryPos[bestPrey * 2 + 1] : pos[bestPrey * 2 + 1];
+    const dx = preyX - px;
+    const dy = preyY - py;
+    const distSq = dx * dx + dy * dy;
+    
+    // Try to maintain optimal stalking distance (about 50-70 units)
+    const optimalDistSq = 3600; // 60² units
+    if (distSq > optimalDistSq * 1.5) {
+      // Too far, move closer slowly
+      const dist = Math.sqrt(distSq);
+      vx += (dx / dist) * speed * 0.1;
+      vy += (dy / dist) * speed * 0.1;
+    } else if (distSq < optimalDistSq * 0.7) {
+      // Too close, back off
+      const dist = Math.sqrt(distSq) + 0.1;
+      vx -= (dx / dist) * speed * 0.1;
+      vy -= (dy / dist) * speed * 0.1;
     }
   }
   
   // Combat/mating interactions
   if (nearestEnemy >= 0 && nearestEnemyDistSq < visionSq) {
     const target = nearestEnemy;
-    const stressFactor = (100 - myEnergy) / 100;
-    const groupSupport = nearbyAllies / Math.max(1, nearbyEnemies);
-    const huntingDrive = Math.max(0, diet);
-    const dietFightBonus = huntingDrive * 0.5;
-    const hungerAggressionBoost = isHunter ? hungerDesperation * 0.4 : 0;
-    const packHuntingMultiplier = 1 + packHuntBonus * 0.5;
-    const fightChance = (aggression + dietFightBonus + hungerAggressionBoost) * 
-                       (0.3 + stressFactor * 0.2 + crowdStress * 0.2) * 
-                       Math.min(2, 1 + groupSupport * 0.2) * 
-                       packHuntingMultiplier;
+    const targetEnergy = energy[target];
     
-    if (rand() < fightChance) {
-      // Combat logic (same as original)
-      const targetEnergy = energy[target];
-      const carnivoreBonus = 1 + huntingDrive * 0.5;
-      const packDamageBonus = 1 + packHuntBonus * 0.5;
-      const damage = (8 + nearbyAllies * 1.5) * aggression * carnivoreBonus * packDamageBonus;
-      energy[target] -= damage;
+    // Carnivores should only hunt when hungry, not when well-fed
+    const satiation = myEnergy / energyConfig.max; // 0-1, how full we are
+    const shouldAttack = isHunter ? (satiation < 0.8) : true; // Carnivores stop at 80% full
+    
+    if (shouldAttack) {
+      const stressFactor = (100 - myEnergy) / 100;
+      const groupSupport = nearbyAllies / Math.max(1, nearbyEnemies);
+      const huntingDrive = Math.max(0, diet);
       
-      if (carnivoreLevel > 0) {
-        const absorptionRate = carnivoreLevel;
-        const stolen = Math.min(damage * absorptionRate * 1.5, targetEnergy * 0.7);
-        energy[i] += stolen;
-      }
+      // Reduce base aggression for carnivores when not hungry or when cautious
+      const cautiousPenalty = cautiousMode ? 0.3 : 1.0; // Much less likely to fight when cautious
+      const hungerModifiedAggression = isHunter ? 
+        aggression * (1 - satiation * 0.7) * cautiousPenalty : // Carnivores become less aggressive when full or cautious
+        aggression * (fearMode ? 0.5 : 1.0); // Herbivores less aggressive when afraid
       
-      if (energy[target] <= 0) {
-        alive[target] = 0;
+      const dietFightBonus = huntingDrive * 0.3; // Reduced from 0.5
+      const hungerAggressionBoost = isHunter ? hungerDesperation * 0.3 : 0; // Reduced from 0.4
+      const packHuntingMultiplier = 1 + packHuntBonus * 0.3; // Reduced from 0.5
+      
+      // Lower overall fight chance
+      const fightChance = (hungerModifiedAggression + dietFightBonus + hungerAggressionBoost) * 
+                         (0.2 + stressFactor * 0.15 + crowdStress * 0.1) * // Reduced multipliers
+                         Math.min(1.5, 1 + groupSupport * 0.15) * // Reduced max
+                         packHuntingMultiplier;
+      
+      if (rand() < fightChance) {
+        // Combat logic - more balanced
+        const carnivoreBonus = 1 + huntingDrive * 0.3; // Reduced from 0.5
+        const packDamageBonus = 1 + packHuntBonus * 0.3; // Reduced from 0.5
+        const damage = (5 + nearbyAllies * 1) * hungerModifiedAggression * carnivoreBonus * packDamageBonus; // Reduced base damage
+        energy[target] -= damage;
+        
         if (carnivoreLevel > 0) {
-          const corpseEnergy = Math.max(40, targetEnergy * 0.75);
-          energy[i] += corpseEnergy * carnivoreLevel * 1.5;
+          // Bite-based energy drain during combat
+          const absorptionRate = carnivoreLevel * 0.5; // Reduced efficiency
+          const stolen = Math.min(damage * absorptionRate, targetEnergy * 0.3); // Less energy per bite
+          energy[i] += stolen;
         }
-        if (killsByTribe && deathsByTribe) {
-          killsByTribe[myTribe]++;
-          deathsByTribe[tribeId[target]]++;
+        
+        if (energy[target] <= 0) {
+          alive[target] = 0;
+          if (carnivoreLevel > 0) {
+            // Corpse provides less energy, encouraging sustainable hunting
+            const corpseEnergy = Math.min(30, targetEnergy * 0.5); // Much less than before
+            const digestibleEnergy = corpseEnergy * carnivoreLevel; // No 1.5x multiplier
+            energy[i] += digestibleEnergy;
+          }
+          if (killsByTribe && deathsByTribe) {
+            killsByTribe[myTribe]++;
+            deathsByTribe[tribeId[target]]++;
+          }
         }
       }
-    } else if (allowHybrids && potentialMate >= 0 && energy[i] > 50 && 
+    }
+  } else if (allowHybrids && potentialMate >= 0 && energy[i] > 50 && 
                energy[potentialMate] > 50 && crowdStress < reproductiveCrowdLimit) {
       // Mating logic (same as original but simplified)
       const mateChance = (1 - aggression) * 0.1 * (myEnergy / 100) * (1 - crowdStress);
@@ -375,7 +543,7 @@ export function efficientMovementOptimized(
             const ang = rand() * Math.PI * 2;
             const hybridRawSpeed = (genes[base] + queryGenes[mateBase]) / 2;
             const hybridMetabolism = (genes[base + 2] + queryGenes[mateBase + 2]) / 2;
-            const hybridMetabEfficiency = Math.min(1, hybridMetabolism / 0.15);
+            const hybridMetabEfficiency = Math.min(1, Math.sqrt(hybridMetabolism / 0.15));
             const hybridSpeed = hybridRawSpeed * hybridMetabEfficiency;
             
             vel[j * 2] = Math.cos(ang) * hybridSpeed * 0.5;
@@ -423,7 +591,6 @@ export function efficientMovementOptimized(
         }
       }
     }
-  }
   
   // Food seeking behavior - simplified for performance
   let foodForceX = 0, foodForceY = 0;
@@ -465,11 +632,23 @@ export function efficientMovementOptimized(
         const urgency = 0.3 + hungerUrgency * 0.4;
         foodForceX = (dx / dist) * speed * urgency;
         foodForceY = (dy / dist) * speed * urgency;
+      } else {
+        // No food found in vision - need to leave this barren area!
+        // Pick a random direction and move that way with urgency based on hunger
+        const hungerUrgency = (40 - myEnergy) / 40;
+        const escapeAngle = rand() * Math.PI * 2;
+        const escapeUrgency = 0.4 + hungerUrgency * 0.5; // More desperate when hungrier
+        foodForceX = Math.cos(escapeAngle) * speed * escapeUrgency;
+        foodForceY = Math.sin(escapeAngle) * speed * escapeUrgency;
       }
     } else {
-      // Less hungry - just check current cell
+      // Less hungry - check current cell and immediate neighbors
+      let hasFood = false;
       const idx = fy * foodCols + fx;
+      
+      // Check current cell first
       if (foodGrid[idx] > foodStandards) {
+        hasFood = true;
         const centerX = (fx + 0.5) * cellWidth;
         const centerY = (fy + 0.5) * cellHeight;
         const dx = centerX - px;
@@ -479,6 +658,29 @@ export function efficientMovementOptimized(
           const dist = Math.sqrt(distSq);
           foodForceX = (dx / dist) * speed * 0.2;
           foodForceY = (dy / dist) * speed * 0.2;
+        }
+      } else {
+        // Quick check of immediate neighbors for any food
+        for (let dy = -1; dy <= 1 && !hasFood; dy++) {
+          for (let dx = -1; dx <= 1 && !hasFood; dx++) {
+            const nx = fx + dx;
+            const ny = fy + dy;
+            if (nx >= 0 && nx < foodCols && ny >= 0 && ny < foodRows) {
+              const nidx = ny * foodCols + nx;
+              if (foodGrid[nidx] > foodStandards) {
+                hasFood = true;
+              }
+            }
+          }
+        }
+        
+        // If no food nearby even when moderately hungry, move away
+        if (!hasFood) {
+          const hungerUrgency = (80 - myEnergy) / 80;
+          const escapeAngle = rand() * Math.PI * 2;
+          const escapeUrgency = 0.2 + hungerUrgency * 0.3; // Less urgent than when starving
+          foodForceX = Math.cos(escapeAngle) * speed * escapeUrgency;
+          foodForceY = Math.sin(escapeAngle) * speed * escapeUrgency;
         }
       }
     }

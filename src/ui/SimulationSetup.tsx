@@ -65,12 +65,12 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
     {
       name: 'Grazers',
       genes: {
-        speed: 20 + rng() * 40,
+        speed: 8 + rng() * 6,  // 8-14 units/s
         vision: 40 + rng() * 30,
         metabolism: 0.08 + rng() * 0.12,
         reproChance: 0.012 + rng() * 0.018, // Higher reproduction
         aggression: 0.1 + rng() * 0.2,
-        cohesion: 0.6 + rng() * 0.4,
+        cohesion: 0.5 + rng() * 0.25, // Max 0.75
         diet: -1.0 + rng() * 0.3, // -1.0 to -0.7 (strong herbivore)
         foodStandards: 0.4 + rng() * 0.4,
         viewAngle: 120 + rng() * 60,
@@ -82,12 +82,12 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
     {
       name: 'Browsers',
       genes: {
-        speed: 30 + rng() * 30,
+        speed: 10 + rng() * 5,  // 10-15 units/s
         vision: 50 + rng() * 30,
         metabolism: 0.1 + rng() * 0.1,
         reproChance: 0.01 + rng() * 0.015,
         aggression: 0.05 + rng() * 0.15,
-        cohesion: 0.7 + rng() * 0.3,
+        cohesion: 0.55 + rng() * 0.2, // Max 0.75
         diet: -0.9 + rng() * 0.3, // -0.9 to -0.6 (herbivore)
         foodStandards: 0.5 + rng() * 0.3,
         viewAngle: 140 + rng() * 40,
@@ -99,12 +99,12 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
     {
       name: 'Foragers',
       genes: {
-        speed: 40 + rng() * 30,
+        speed: 12 + rng() * 6,  // 12-18 units/s
         vision: 35 + rng() * 25,
         metabolism: 0.12 + rng() * 0.08,
         reproChance: 0.008 + rng() * 0.012,
         aggression: 0.2 + rng() * 0.3,
-        cohesion: 0.4 + rng() * 0.3,
+        cohesion: 0.4 + rng() * 0.3, // Max 0.7
         diet: -0.6 + rng() * 0.4, // -0.6 to -0.2 (herbivore-leaning omnivore)
         foodStandards: 0.3 + rng() * 0.3,
         viewAngle: 110 + rng() * 40,
@@ -116,12 +116,12 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
     {
       name: 'Adaptors',
       genes: {
-        speed: 45 + rng() * 35,
+        speed: 14 + rng() * 7,  // 14-21 units/s
         vision: 30 + rng() * 40,
         metabolism: 0.12 + rng() * 0.13,
         reproChance: 0.008 + rng() * 0.012,
         aggression: 0.3 + rng() * 0.3,
-        cohesion: 0.3 + rng() * 0.4,
+        cohesion: 0.3 + rng() * 0.4, // Max 0.7
         diet: -0.4 + rng() * 0.5, // -0.4 to 0.1 (mostly herbivore omnivore)
         foodStandards: 0.2 + rng() * 0.4,
         viewAngle: 100 + rng() * 40,
@@ -133,12 +133,12 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
     {
       name: 'Scavengers',
       genes: {
-        speed: 50 + rng() * 30,
+        speed: 15 + rng() * 5,  // 15-20 units/s
         vision: 45 + rng() * 25,
         metabolism: 0.14 + rng() * 0.1,
         reproChance: 0.006 + rng() * 0.008,
         aggression: 0.4 + rng() * 0.3,
-        cohesion: 0.2 + rng() * 0.3,
+        cohesion: 0.2 + rng() * 0.3, // Max 0.5
         diet: -0.2 + rng() * 0.5, // -0.2 to 0.3 (omnivore with slight carnivore potential)
         foodStandards: 0.1 + rng() * 0.3,
         viewAngle: 130 + rng() * 40,
@@ -150,12 +150,12 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
     {
       name: 'Hunters',
       genes: {
-        speed: 60 + rng() * 20, // Reduced speed
+        speed: 18 + rng() * 5,  // 18-23 units/s - fast but not crazy
         vision: 50 + rng() * 30, // Reduced vision
         metabolism: 0.18 + rng() * 0.12, // Higher metabolism cost
         reproChance: 0.004 + rng() * 0.006, // Lower reproduction
         aggression: 0.5 + rng() * 0.3, // Reduced aggression
-        cohesion: 0.4 + rng() * 0.3,
+        cohesion: 0.4 + rng() * 0.3, // Max 0.7
         diet: 0.2 + rng() * 0.4, // 0.2 to 0.6 (mild carnivore, not pure)
         foodStandards: 0.1 + rng() * 0.2,
         viewAngle: 90 + rng() * 40, // Narrower vision
@@ -258,7 +258,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   const [worldHeight, setWorldHeight] = useState(4000);
   const [foodCols, setFoodCols] = useState(256);
   const [foodRows, setFoodRows] = useState(256);
-  const [foodRegen, setFoodRegen] = useState(0.08);
+  const [foodRegen, setFoodRegen] = useState(0.05); // 20 seconds to fully regrow
   const [foodCapacity, setFoodCapacity] = useState(3);
   const [foodDistScale, setFoodDistScale] = useState(35);
   const [foodDistThreshold, setFoodDistThreshold] = useState(0.65);
@@ -268,7 +268,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   const [maxEnergy, setMaxEnergy] = useState(100);
   const [reproEnergy, setReproEnergy] = useState(60);
   const [allowHybrids, setAllowHybrids] = useState(false);
-  const [entityRenderSize, setEntityRenderSize] = useState(48);
+  const [entityRenderSize, setEntityRenderSize] = useState(5);
   const [initialized, setInitialized] = useState(false);
 
   const updateConfigImmediate = useCallback((overrides?: { seed?: number; tribes?: TribeInit[] }) => {
@@ -360,8 +360,10 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   useEffect(() => {
     if (!initialized) {
       updateConfigImmediate();
+      // Also dispatch initial entity render size
+      window.dispatchEvent(new CustomEvent('entityRenderSizeChange', { detail: entityRenderSize }));
     }
-  }, [initialized, updateConfigImmediate]);
+  }, [initialized, updateConfigImmediate, entityRenderSize]);
 
   const randomizeSeed = () => {
     const newSeed = Date.now() + Math.floor(Math.random() * 1000000);
@@ -391,7 +393,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
         radius: 200
       },
       genes: {
-        speed: 50,
+        speed: 15,
         vision: 35,
         metabolism: 0.15,
         reproChance: 0.01,
@@ -433,7 +435,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   const updateTribeGene = (index: number, gene: string, value: number) => {
     const updated = [...tribes];
     const defaultGenes = {
-      speed: 50,
+      speed: 15,
       vision: 35,
       metabolism: 0.15,
       reproChance: 0.01,
@@ -654,7 +656,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                       {(['speed', 'vision', 'metabolism', 'reproChance', 'aggression', 'cohesion', 'foodStandards', 'viewAngle', 'colorHue'] as const).map((gene) => {
                         const value = tribe.genes?.[gene] ?? {
-                          speed: 50,
+                          speed: 15,
                           vision: 35,
                           metabolism: 0.15,
                           reproChance: 0.01,
@@ -946,25 +948,17 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                           />
                         </div>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
-                        <div>
-                          <label style={{ color: '#718096', fontSize: '11px' }}>Regen Rate</label>
-                          <input
-                            type="number"
-                            value={foodRegen}
-                            onChange={(e) => setFoodRegen(Number(e.target.value))}
-                            step="0.01"
-                            style={{
-                              width: '100%',
-                              padding: '6px',
-                              background: 'rgba(255,255,255,0.1)',
-                              border: '1px solid rgba(255,255,255,0.2)',
-                              borderRadius: '3px',
-                              color: '#fff',
-                              fontSize: '12px',
-                            }}
-                          />
-                        </div>
+                      <div style={{ marginTop: '8px' }}>
+                        <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                          Regen Rate ({foodRegen.toFixed(2)} - ~{Math.round(1/foodRegen)}s to regrow)
+                        </label>
+                        <StyledSlider
+                          min={0.01}
+                          max={1.0}
+                          step={0.01}
+                          value={foodRegen}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFoodRegen(Number(e.target.value))}
+                        />
                       </div>
                     </div>
                   </div>
@@ -1085,8 +1079,9 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                         Entity Render Size ({entityRenderSize}px)
                       </label>
                       <StyledSlider
-                        min={5}
-                        max={100}
+                        min={3}
+                        max={20}
+                        step={1}
                         value={entityRenderSize}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                           const newSize = Number(e.target.value);

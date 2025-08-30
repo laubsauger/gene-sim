@@ -6,6 +6,7 @@ export class FoodSystem {
   public foodGridUint8: Uint8Array | null = null;
   private foodMaxCapacity: Float32Array;
   private foodRegrowTimer: Float32Array;
+  private foodAccumulator: Float32Array; // Accumulate small changes
   private cols: number;
   private rows: number;
   private worldWidth: number;
@@ -32,6 +33,7 @@ export class FoodSystem {
     this.foodGrid = new Float32Array(size);
     this.foodMaxCapacity = new Float32Array(size);
     this.foodRegrowTimer = new Float32Array(size);
+    this.foodAccumulator = new Float32Array(size);
     this.foodGridUint8 = sharedBuffer || null;
   }
 
@@ -72,27 +74,47 @@ export class FoodSystem {
     if (this.foodGridUint8 && this.isShared) {
       for (let i = 0; i < this.foodGridUint8.length; i++) {
         const sharedValue = this.foodGridUint8[i] / 255;
-        // Only update local grid if shared buffer shows consumption
-        if (sharedValue < this.foodGrid[i]) {
-          this.foodGrid[i] = sharedValue;
+        // Always sync consumed cells (when shared is less than local)
+        // This ensures consumption by any worker is reflected
+        this.foodGrid[i] = Math.min(this.foodGrid[i], sharedValue);
+      }
+    }
+    
+    // Now regrow based on current state with accumulation for small values
+    for (let i = 0; i < this.foodGrid.length; i++) {
+      if (this.foodGrid[i] < this.foodMaxCapacity[i]) {
+        // Use exponential curve: rate = base^(10*regen - 5)
+        // regen=0.0: no regrowth
+        // regen=0.1: very slow (~100s to reach 0.3)
+        // regen=0.3: slow (~20s to reach 0.3)
+        // regen=0.5: moderate (~5s to reach 0.3)
+        // regen=0.7: fast (~2s to reach 0.3)
+        // regen=0.9: very fast (~0.5s to reach 0.3)
+        // regen=1.0: instant
+        const scaledRegen = this.regen === 0 ? 0 : 
+                           this.regen === 1 ? 10 : // Instant regrowth
+                           Math.pow(2, this.regen * 10 - 5) * 0.01;
+        const regenPerFrame = scaledRegen * dt;
+        
+        // Accumulate small changes to avoid precision loss
+        this.foodAccumulator[i] += regenPerFrame;
+        
+        // Only apply accumulated changes when they're meaningful (>= 0.001)
+        if (this.foodAccumulator[i] >= 0.001) {
+          const newValue = Math.min(
+            this.foodMaxCapacity[i],
+            this.foodGrid[i] + this.foodAccumulator[i]
+          );
+          this.foodGrid[i] = newValue;
+          this.foodAccumulator[i] = 0; // Reset accumulator
         }
       }
     }
     
-    // Now regrow based on current state
-    for (let i = 0; i < this.foodGrid.length; i++) {
-      if (this.foodGrid[i] < this.foodMaxCapacity[i]) {
-        // Regrow food continuously
-        const newValue = Math.min(
-          this.foodMaxCapacity[i],
-          this.foodGrid[i] + this.regen * dt
-        );
-        this.foodGrid[i] = newValue;
-        
-        // Update shared buffer immediately if available
-        if (this.foodGridUint8 && this.isShared) {
-          this.foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, newValue)) * 255);
-        }
+    // Sync all changes to the shared buffer for rendering
+    if (this.foodGridUint8 && this.isShared) {
+      for (let i = 0; i < this.foodGrid.length; i++) {
+        this.foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, this.foodGrid[i])) * 255);
       }
     }
   }
@@ -115,6 +137,7 @@ export class FoodSystem {
         this.foodGridUint8[idx] = 0;
         this.foodGrid[idx] = 0;
         this.foodRegrowTimer[idx] = 0;
+        this.foodAccumulator[idx] = 0; // Reset accumulator
         return 1;
       }
       return 0;
@@ -124,6 +147,7 @@ export class FoodSystem {
     if (this.foodGrid[idx] > 0.3) {
       this.foodGrid[idx] = 0;
       this.foodRegrowTimer[idx] = 0;
+      this.foodAccumulator[idx] = 0; // Reset accumulator
       return 1;
     }
     return 0;

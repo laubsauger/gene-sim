@@ -48,7 +48,7 @@ function getDefaultInitParams(seed: number) {
           vision: 70,
           metabolism: 0.05,
           reproChance: 0.025,
-          cohesion: 0.98,
+          cohesion: 0.7, // Reduced from 0.98 to cap at 0.75 max
           aggression: 0.1,
           diet: -0.9,
           foodStandards: 0.7,
@@ -98,6 +98,7 @@ export default function App() {
   const [showSetup, setShowSetup] = useState(true);
   const [currentSeed, setCurrentSeed] = useState<number>(Date.now());
   const [gameOver, setGameOver] = useState<{ finalTime: number; finalStats: SimStats } | null>(null);
+  const [entitySize, setEntitySize] = useState(2.0); // Default entity size
 
   const lastConfigRef = useRef<any>(null);
   
@@ -248,21 +249,26 @@ export default function App() {
     console.log('[App] Simulation unpaused');
   };
   
-  const handleRestart = () => {
-    // Reset with same seed
+  const handleRestart = async () => {
+    // Reset with same seed and config
     setGameOver(null);
-    setShowSetup(true);
     setIsRunning(false);
-    // Seed is already set, just restart
+    
+    // Re-initialize with the same config (force reinit)
+    if (simConfig && client) {
+      console.log('[App] Restarting with same config and seed');
+      await client.init(simConfig, true); // force=true to reinitialize
+      setIsRunning(true);
+      client.pause(false); // Start immediately
+    }
   };
   
   const handleNewSimulation = () => {
-    // Reset with new seed
-    const newSeed = Date.now();
-    setCurrentSeed(newSeed);
+    // Return to setup screen for new configuration
     setGameOver(null);
     setShowSetup(true);
     setIsRunning(false);
+    client.pause(true); // Pause the simulation
   };
   
   const handleModeChange = (newMode: SimMode) => {
@@ -333,7 +339,8 @@ export default function App() {
       <div style={{ position: 'relative' }}>
         <Scene2D 
           client={client} 
-          world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }} 
+          world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
+          entitySize={entitySize}
         />
         <div style={{
           position: 'absolute',
@@ -345,6 +352,8 @@ export default function App() {
             client={client} 
             isRunning={isRunning}
             onStart={handleStart}
+            entitySize={entitySize}
+            onEntitySizeChange={setEntitySize}
           />
           {showSetup && (
             <ModeSelector

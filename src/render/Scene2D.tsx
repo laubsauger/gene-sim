@@ -86,11 +86,11 @@ function FoodLayer({ client, world }: { client: SimClient; world: { width: numbe
   );
 }
 
-function EntitiesLayer({ client }: { client: SimClient }) {
+function EntitiesLayer({ client, entitySize }: { client: SimClient; entitySize: number }) {
   const { buffers } = client;
   const [ready, setReady] = useState(false);
   const [updateKey, setUpdateKey] = useState(0);
-  const [renderSize, setRenderSize] = useState(48);
+  const [renderSize, setRenderSize] = useState(entitySize);
   const lastValidBuffers = useRef<any>(null);
 
   // Force re-render on config updates
@@ -105,7 +105,12 @@ function EntitiesLayer({ client }: { client: SimClient }) {
     };
   }, []);
 
-  // Listen for render size changes
+  // Update render size when entitySize prop changes
+  useEffect(() => {
+    setRenderSize(entitySize);
+  }, [entitySize]);
+  
+  // Listen for render size changes from setup
   useEffect(() => {
     const handleSizeChange = (e: CustomEvent) => {
       setRenderSize(e.detail);
@@ -180,9 +185,10 @@ function EntitiesLayer({ client }: { client: SimClient }) {
 export interface Scene2DProps {
   client: SimClient;
   world: { width: number; height: number };
+  entitySize: number;
 }
 
-export function Scene2D({ client, world }: Scene2DProps) {
+export function Scene2D({ client, world, entitySize }: Scene2DProps) {
   // Calculate camera settings to show the full world centered
   const viewWidth = world.width;
   const viewHeight = world.height;
@@ -321,7 +327,7 @@ export function Scene2D({ client, world }: Scene2DProps) {
       ), [world.width, world.height])}
       
       <FoodLayer client={client} world={world} />
-      <EntitiesLayer client={client} />
+      <EntitiesLayer client={client} entitySize={entitySize} />
     </Canvas>
   );
 }

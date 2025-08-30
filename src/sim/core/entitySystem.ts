@@ -152,6 +152,8 @@ export class EntitySystem {
     };
     
     const mutatedGenes = mutate(parentGenes, rand);
+    // Preserve tribe color - don't mutate it
+    mutatedGenes.colorHue = tribeColors[this.tribeId[parentIdx]];
     
     // Spawn child near parent
     const px = this.pos[parentIdx * 2];

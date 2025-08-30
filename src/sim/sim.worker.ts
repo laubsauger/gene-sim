@@ -136,12 +136,12 @@ function initializeAsMainWorker(msg: any) {
   
   // Add food grid buffer and replace FoodSystem if needed
   if (init.world?.foodGrid) {
-    const { cols, rows, capacity = 1, distribution } = init.world.foodGrid;
+    const { cols, rows, capacity = 1, distribution, regen = 0.05 } = init.world.foodGrid;
     sharedBuffers.foodGrid = new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * cols * rows);
     
     // Replace the default FoodSystem with one using the shared buffer
     const foodGridUint8 = new Uint8Array(sharedBuffers.foodGrid);
-    sim.food = new FoodSystem(cols, rows, worldWidth, worldHeight, 0.05, foodGridUint8);
+    sim.food = new FoodSystem(cols, rows, worldWidth, worldHeight, regen, foodGridUint8);
     
     // Initialize with distribution config
     sim.food.initialize(seed, capacity, distribution);
@@ -502,6 +502,22 @@ function mainLoop(now: number) {
     if (!sim.paused) {
       sim.step(FIXED_TIMESTEP);
       stepCount++;
+      
+      // Check for extinction (all entities dead)
+      const stats = sim.getStats();
+      if (stats.population === 0 && !isSubWorker) {
+        // Send extinction event to main thread
+        self.postMessage({
+          type: 'extinction',
+          payload: {
+            finalTime: sim.time,
+            finalStats: stats
+          }
+        } as MainMsg);
+        
+        // Pause the simulation
+        sim.paused = true;
+      }
     }
     
     const stepTime = performance.now() - stepStart;
