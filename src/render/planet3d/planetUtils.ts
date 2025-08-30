@@ -58,40 +58,13 @@ export function setSunDirForPlanet(
   destUniform.value.copy(sunWorld.sub(planetWorld).normalize());
 }
 
-// Helper to enforce render order
+// This function is deprecated - materials are configured where they're created
+// Keeping for backwards compatibility but it does nothing
 export function enforcePlanetLocalOrder(earth: any, cloudMesh: THREE.Mesh | null) {
-  const { planetMesh, atmosphereMesh } = earth.meshes;
-  const { planetMat, atmosphereMat } = earth.materials;
-
-  // SURFACE - renderOrder 0
-  planetMesh.renderOrder = 0;
-
-  // Only set material properties if using ShaderMaterial
-  if (planetMat.transparent !== undefined) {
-    planetMat.transparent = false;
-    planetMat.depthTest = true;
-    planetMat.depthWrite = true;
-  }
-
-  // CLOUDS - renderOrder 2 (entities will be 1)
-  if (cloudMesh) {
-    cloudMesh.renderOrder = 2;
-
-    if (cloudMesh.material && 'transparent' in cloudMesh.material) {
-      (cloudMesh.material as THREE.Material).transparent = true;
-      (cloudMesh.material as THREE.Material).depthTest = true;
-      (cloudMesh.material as THREE.Material).depthWrite = false;
-    }
-  }
-
-  // ATMOSPHERE - renderOrder 3
-  if (atmosphereMesh) {
-    atmosphereMesh.renderOrder = 3;
-    atmosphereMat.transparent = true;
-    atmosphereMat.depthTest = true;
-    atmosphereMat.depthWrite = false;
-    atmosphereMat.side = THREE.BackSide;
-  }
+  // Materials are already configured in their respective creation functions:
+  // - Planet surface in PlanetWithAtmosphere.ts
+  // - Clouds in ProceduralCloudShell.ts  
+  // - Atmosphere in PlanetWithAtmosphere.ts
 }
 
 export function updateCloudUniforms(

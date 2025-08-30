@@ -27,7 +27,6 @@ export function makeProceduralCloudShell({ radius }: { radius: number }) {
   const cloudRadius = radius * 1.02;
   const cloudGeo = new THREE.SphereGeometry(cloudRadius, 64, 48);
   const cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
-  cloudMesh.renderOrder = 2;
   cloudMesh.userData.isCloud = true;
 
   return { mesh: cloudMesh, uniforms: cloudUniforms, material: cloudMat };

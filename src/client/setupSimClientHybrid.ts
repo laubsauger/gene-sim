@@ -27,7 +27,7 @@ export class HybridSimClient {
   constructor(config: SimClientConfig = {}) {
     this.mode = config.mode || 'js';
     this.config = config;
-    console.log(`[SimClient] Initializing in ${this.mode} mode`);
+    // console.log(`[SimClient] Initializing in ${this.mode} mode`);
   }
   
   async init(params: SimInit, _force: boolean = false) {
@@ -72,19 +72,19 @@ export class HybridSimClient {
       if (msg.type === 'ready') {
         this.ready = true;
         this.initializing = false;
-        console.log(`[SimClient] Worker ready in ${this.mode} mode`);
+        // console.log(`[SimClient] Worker ready in ${this.mode} mode`);
         
         // Extract shared buffers
         const { sab, meta, foodMeta } = msg.payload;
-        console.log('[SimClient] Received SharedArrayBuffers:', {
-          pos: sab.pos?.byteLength,
-          color: sab.color?.byteLength,
-          alive: sab.alive?.byteLength,
-          age: sab.ages?.byteLength,
-          food: sab.food?.byteLength,
-          meta,
-          foodMeta
-        });
+        // console.log('[SimClient] Received SharedArrayBuffers:', {
+        //   pos: sab.pos?.byteLength,
+        //   color: sab.color?.byteLength,
+        //   alive: sab.alive?.byteLength,
+        //   age: sab.ages?.byteLength,
+        //   food: sab.food?.byteLength,
+        //   meta,
+        //   foodMeta
+        // });
         if (sab.pos) {
           this.pos = new Float32Array(sab.pos);
         }
@@ -101,7 +101,7 @@ export class HybridSimClient {
           this.foodCols = foodMeta.cols;
           this.foodRows = foodMeta.rows;
         }
-        console.log('[SimClient] Buffers initialized, count:', this.count);
+        // console.log('[SimClient] Buffers initialized, count:', this.count);
       }
       
       // Notify all listeners
@@ -179,7 +179,7 @@ export class HybridSimClient {
   }
   
   async reinit(params: SimInit) {
-    console.log('[SimClient] Reinitializing...');
+    // console.log('[SimClient] Reinitializing...');
     this.terminate();
     return this.init(params, true);
   }
@@ -232,11 +232,11 @@ export function detectBestMode(): SimMode {
   // Check core count for multi-worker decision
   const cores = navigator.hardwareConcurrency || 4;
   if (cores >= 4) {
-    console.log(`[SimClient] ${cores} cores detected, using multi-worker mode`);
+    // console.log(`[SimClient] ${cores} cores detected, using multi-worker mode`);
     return 'multi-worker';
   }
   
-  console.log(`[SimClient] ${cores} cores detected, using JS mode`);
+  // console.log(`[SimClient] ${cores} cores detected, using JS mode`);
   return 'js';
 }
 

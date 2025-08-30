@@ -32,7 +32,6 @@ import {
   INITIAL_CAMERA_POSITION,
   CAMERA_CONFIG,
   setSunDirForPlanet,
-  enforcePlanetLocalOrder,
   updateCloudUniforms
 } from './planet3d/planetUtils';
 
@@ -45,6 +44,20 @@ export interface Scene3DPlanetCanvasProps {
 export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [isPaused, setIsPaused] = useState(true);
+
+  // Dev control states (like Scene3D)
+  const [showEntities, setShowEntities] = useState(true);
+  const [showAtmosphere, setShowAtmosphere] = useState(true); // Enable by default
+  const [showClouds, setShowClouds] = useState(true);
+  const [showMoon, setShowMoon] = useState(true);
+  const [showSun, setShowSun] = useState(true);
+  const [showDebug, setShowDebug] = useState(true);
+  const controlsRef = useRef({ showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug });
+
+  // Update controls ref when state changes
+  useEffect(() => {
+    controlsRef.current = { showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug };
+  }, [showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug]);
   const sceneRef = useRef<{
     renderer: THREE.WebGLRenderer;
     scene: THREE.Scene;
@@ -56,6 +69,9 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     moon: THREE.Mesh;
     sun: THREE.DirectionalLight;
     clock: THREE.Clock;
+    axisHelper?: THREE.AxesHelper;
+    testSphere?: THREE.Mesh;
+    atmoDepth?: THREE.Mesh;
   } | null>(null);
 
   // Listen for pause state from simulation
@@ -90,8 +106,16 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
-    renderer.sortObjects = true; // Enable proper transparent sorting
+    renderer.sortObjects = true; // CRITICAL: Keep default sorting so opaque → transparent ordering is respected
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(renderer.domElement);
+
+    // Verify renderer settings
+    console.log('[Renderer Setup] Settings:', {
+      sortObjects: renderer.sortObjects,
+      logarithmicDepthBuffer: renderer.capabilities.logarithmicDepthBuffer,
+    });
 
     // Renderer successfully created
 
@@ -124,9 +148,20 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
     scene.add(ambientLight);
 
-    // Optional: Add axis helper for orientation
-    // const axisHelper = new THREE.AxesHelper(5);
-    // scene.add(axisHelper);
+    // Add axis helper for orientation
+    const axisHelper = new THREE.AxesHelper(5);
+    axisHelper.visible = controlsRef.current.showDebug;
+    scene.add(axisHelper);
+
+    // Add a simple test sphere to verify rendering works
+    const testSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3, 32, 32),
+      new THREE.MeshStandardMaterial({ color: 0xff0000 })
+    );
+    // Position it partially behind the planet
+    testSphere.position.set(0, 0, -0.5);
+    testSphere.visible = controlsRef.current.showDebug;
+    scene.add(testSphere);
 
     // ---------- SUN (Directional Light) - Fixed position like Scene3D ----------
     const sun = new THREE.DirectionalLight(0xffffff, 2.0);
@@ -180,27 +215,38 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       atmosphereColor: new THREE.Color(0x78a6ff),
       mieColor: new THREE.Color(0xfff2d1),
     });
+
+    // Add the earth group (planet is now back in the group since we fixed depth)
     scene.add(earth.group);
     // Earth added at origin
 
     // Clouds (procedural, transparent) - renderOrder 2
-    const clouds = makeProceduralCloudShell({
+    const cloudResult = makeProceduralCloudShell({
       radius: PLANET_RADIUS * 1.01, // Just above surface
     });
-    clouds.renderOrder = 2;
+    const clouds = cloudResult.mesh;
+    // Add clouds to earth group for proper layering
     earth.group.add(clouds);
 
-    // Enforce local render order per checklist
-    enforcePlanetLocalOrder(earth, clouds);
+    // Local render orders are already set in component creation
 
-    // ---------- MOON (opaque, no atmosphere) ----------
-    const moon = new THREE.Mesh(
-      new THREE.SphereGeometry(MOON_RADIUS, 64, 48),
-      new THREE.MeshStandardMaterial({ color: 0xb9bcc0, roughness: 0.9, metalness: 0.0 })
-    );
-    moon.castShadow = false;
-    moon.receiveShadow = false;
+    // Control initial visibility
+    if (earth.meshes.atmosphereMesh) {
+      earth.meshes.atmosphereMesh.visible = controlsRef.current.showAtmosphere;
+    }
+
+    // Skip atmosphere depth prepass for now - focus on getting basic rendering working
+    let atmoDepth: THREE.Mesh | undefined;
+
+    // ---------- MOON (using proper component) ----------
+    const moonResult = makeMoon(PLANET_RADIUS);
+    const moon = moonResult.mesh;
+    moon.name = 'Moon';
+    // Add moon directly to scene, not to earth group
     scene.add(moon);
+
+    // No need for sanity checks - materials are configured correctly in their components
+
 
     // Clock for animation
     const clock = new THREE.Clock();
@@ -216,7 +262,10 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       clouds: clouds,
       moon,
       sun,
-      clock
+      clock,
+      axisHelper,
+      testSphere,
+      atmoDepth
     };
 
     // ---------- RESIZE ----------
@@ -248,16 +297,12 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       if (!client.buffers?.pos || !sceneRef.current) return;
 
       const entityCount = client.buffers.count;
-      const entities = makeGroundEntities({
-        planetRadius: PLANET_RADIUS,
-        count: entityCount,
-        instanceTexSide: Math.ceil(Math.sqrt(entityCount)),
-        worldWidth: world.width,
-        worldHeight: world.height,
-      });
-      entities.renderOrder = 1; // Between surface(0) and clouds(2)
+      const entities = makeGroundEntities(entityCount);
+      // Add entities to earth group for proper layering
       sceneRef.current.earth.group.add(entities);
       sceneRef.current.entities = entities;
+
+      // Entities are already configured in makeGroundEntities
     };
 
     // Check if buffers exist immediately
@@ -289,7 +334,6 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       const refs = sceneRef.current;
       if (!refs) return;
 
-      // Remove debug logging now that we know it works
       frameCount++;
 
       const dt = refs.clock.getDelta();
@@ -297,24 +341,54 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         t += dt;
       }
 
+      // Update visibility based on dev controls
+      const controls = controlsRef.current;
+
+      if (refs.earth?.meshes?.atmosphereMesh) {
+        refs.earth.meshes.atmosphereMesh.visible = controls.showAtmosphere;
+      }
+
+      if (refs.atmoDepth) {
+        refs.atmoDepth.visible = controls.showAtmosphere;
+      }
+
+      if (refs.moon) {
+        refs.moon.visible = controls.showMoon;
+      }
+
+      if (refs.clouds) {
+        refs.clouds.visible = controls.showClouds;
+      }
+
+      if (refs.entities) {
+        refs.entities.visible = controls.showEntities;
+      }
+
+      if (refs.axisHelper) {
+        refs.axisHelper.visible = controls.showDebug;
+      }
+      if (refs.testSphere) {
+        refs.testSphere.visible = controls.showDebug;
+      }
+
       // Update controls
       refs.controls.update();
 
-      // Orbit Earth around Sun (XZ plane)
-      const ex = Math.cos(t * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
-      const ez = Math.sin(t * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
-      refs.earth.group.position.set(ex, 0, ez);
+      // For now, keep Earth at origin to debug visibility
+      // const ex = Math.cos(t * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
+      // const ez = Math.sin(t * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
+      // refs.earth.group.position.set(ex, 0, ez);
+      refs.earth.group.position.set(0, 0, 0);
 
       // Spin Earth
       if (!isPaused) {
         refs.earth.group.rotation.y += 0.05 * dt;
       }
 
-      // Moon orbit around Earth
-      const mx = refs.earth.group.position.x + Math.cos(t * MOON_ORBIT_SPEED) * MOON_ORBIT_RADIUS;
-      const mz = refs.earth.group.position.z + Math.sin(t * MOON_ORBIT_SPEED) * MOON_ORBIT_RADIUS;
-      const my = 0.4 * Math.sin(t * 0.6);
-      refs.moon.position.set(mx, my, mz);
+      // Moon orbit around Earth (simplified for debugging)
+      const mx = Math.cos(t * MOON_ORBIT_SPEED) * MOON_ORBIT_RADIUS;
+      const mz = Math.sin(t * MOON_ORBIT_SPEED) * MOON_ORBIT_RADIUS;
+      refs.moon.position.set(mx, 0, mz);
 
       // Feed sun direction to Earth materials (per frame as per checklist)
       setSunDirForPlanet(refs.earth.group, refs.sun, refs.earth.uniforms.shared.uLightDir);
@@ -337,9 +411,24 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       }
 
       // Update entities if they exist
-      if (refs.entities) {
-        updateEntitiesFromBuffers(refs.entities, client.buffers, world.width, world.height);
-        updateEntitiesLightDir(refs.entities, refs.earth.uniforms.shared.uLightDir.value);
+      if (refs.entities && client.buffers) {
+        const { pos, color, alive, count } = client.buffers;
+        if (pos && color && alive) {
+          updateEntitiesFromBuffers(
+            refs.entities,
+            pos,
+            color,
+            alive,
+            count,
+            world.width,
+            world.height
+          );
+          // Update entity lighting direction
+          const mat = refs.entities.material as THREE.ShaderMaterial;
+          if (mat.uniforms?.uLightDir) {
+            mat.uniforms.uLightDir.value.copy(refs.earth.uniforms.shared.uLightDir.value);
+          }
+        }
       }
 
       refs.renderer.render(refs.scene, refs.camera);
@@ -350,18 +439,79 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [client, world, isPaused]);
+  }, [client, world, isPaused]); // Don't add controls to deps to avoid recreating animation loop
 
   return (
-    <div
-      ref={mountRef}
-      className="w-full h-full"
-      style={{
-        width: '100%',
-        height: '100%',
-        position: 'relative',
-        backgroundColor: '#000'
-      }}
-    />
+    <>
+      {/* Dev Controls Panel */}
+      <div style={{
+        position: 'absolute',
+        top: '10px',
+        right: '10px',
+        background: 'rgba(0,0,0,0.7)',
+        padding: '10px',
+        borderRadius: '5px',
+        color: 'white',
+        fontSize: '12px',
+        zIndex: 1000,
+        fontFamily: 'monospace'
+      }}>
+        <div style={{ marginBottom: '5px' }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={showAtmosphere}
+              onChange={(e) => setShowAtmosphere(e.target.checked)}
+            /> Atmosphere
+          </label>
+        </div>
+        <div style={{ marginBottom: '5px' }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={showClouds}
+              onChange={(e) => setShowClouds(e.target.checked)}
+            /> Clouds
+          </label>
+        </div>
+        <div style={{ marginBottom: '5px' }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={showMoon}
+              onChange={(e) => setShowMoon(e.target.checked)}
+            /> Moon
+          </label>
+        </div>
+        <div style={{ marginBottom: '5px' }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={showEntities}
+              onChange={(e) => setShowEntities(e.target.checked)}
+            /> Entities
+          </label>
+        </div>
+        <div style={{ marginBottom: '5px' }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={showDebug}
+              onChange={(e) => setShowDebug(e.target.checked)}
+            /> Debug (Axes + Test Sphere)
+          </label>
+        </div>
+      </div>
+      <div
+        ref={mountRef}
+        className="w-full h-full"
+        style={{
+          width: '100%',
+          height: '100%',
+          position: 'relative',
+          backgroundColor: '#000'
+        }}
+      />
+    </>
   );
 }

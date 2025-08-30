@@ -28,5 +28,6 @@ void main() {
   float rim = 1.0 - abs(dot(viewDir, normal));
   color += rim * rim * 0.1 * uDayTint;
   
+  // CRITICAL: Ensure we're outputting fully opaque (alpha = 1.0)
   gl_FragColor = vec4(color, 1.0);
 }

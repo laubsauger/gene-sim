@@ -86,7 +86,7 @@ function initializeAsMainWorker(msg: any) {
   sim = new SimulationCore(worldWidth, worldHeight, cap, seed, tribeCount);
   // Fix: Use hybridization from config (UI sends hybridization, not allowHybrids)
   sim.allowHybrids = init.hybridization === true;  // Default to false if not specified
-  console.log(`[SingleWorker] Hybrid evolution: ${sim.allowHybrids} (from config.hybridization: ${init.hybridization})`);
+  // console.log(`[SingleWorker] Hybrid evolution: ${sim.allowHybrids} (from config.hybridization: ${init.hybridization})`);
   
   // Store tribe metadata
   sim.tribeNames = init.tribes?.map((t: any) => t.name) || [];
@@ -209,7 +209,7 @@ function initializeAsMainWorker(msg: any) {
 }
 
 function initializeAsSubWorker(msg: any) {
-  console.log(`[Worker] Starting sub-worker initialization`, msg.payload);
+  // console.log(`[Worker] Starting sub-worker initialization`, msg.payload);
   const { sharedBuffers: buffers, config, workerId: id, entityRange, region } = msg.payload;
   
   isSubWorker = true;
@@ -232,7 +232,7 @@ function initializeAsSubWorker(msg: any) {
     y2: region.y + region.height
   } : undefined;
   
-  console.log(`[Worker ${id}] Region: (${region?.x},${region?.y}) to (${region?.x + region?.width},${region?.y + region?.height})`);
+  // console.log(`[Worker ${id}] Region: (${region?.x},${region?.y}) to (${region?.x + region?.width},${region?.y + region?.height})`);
   
   // Create simulation core
   // Pass totalCap for spatial hash sizing to handle neighbor queries across all workers
@@ -307,8 +307,8 @@ function initializeAsSubWorker(msg: any) {
     // Only worker 0 initializes the food grid with distribution config
     if (workerId === 0) {
       sim.food.initialize(seed, actualCapacity, config.world.foodGrid.distribution);
-      console.log(`[Worker 0] Initialized food with capacity=${actualCapacity}, regen=${actualRegen}, distribution=`, config.world.foodGrid.distribution);
-      console.log(`[Worker 0] Energy config:`, config.energy);
+      // console.log(`[Worker 0] Initialized food with capacity=${actualCapacity}, regen=${actualRegen}, distribution=`, config.world.foodGrid.distribution);
+      // console.log(`[Worker 0] Energy config:`, config.energy);
     } else {
       // Other workers sync from the shared buffer
       sim.food.syncFromUint8();
@@ -337,7 +337,7 @@ function initializeAsSubWorker(msg: any) {
       
       // Log spawn details for first tribe to debug
       if (tribeIdx === 0) {
-        console.log(`[Worker 0] Spawning ${tribe.name}: pattern="${pattern}", radius=${radius}, count=${count}, diet=${geneSpec.diet}`);
+        // console.log(`[Worker 0] Spawning ${tribe.name}: pattern="${pattern}", radius=${radius}, count=${count}, diet=${geneSpec.diet}`);
       }
 
       // Natural spawn distribution: start with even distribution, then adjust for traits
@@ -473,7 +473,7 @@ function initializeAsSubWorker(msg: any) {
       }
     });
     
-    console.log(`[Worker 0] Spawned ${totalIdx} entities total across all tribes`);
+    // console.log(`[Worker 0] Spawned ${totalIdx} entities total across all tribes`);
     sim.count = totalIdx;  // Track total for spatial processing
   } else {
     // Other workers: count entities already spawned by worker 0
@@ -482,11 +482,11 @@ function initializeAsSubWorker(msg: any) {
       if (fullAlive[i]) count++;
     }
     sim.count = count;
-    console.log(`[Worker ${workerId}] Found ${count} entities already spawned`);
+    // console.log(`[Worker ${workerId}] Found ${count} entities already spawned`);
   }
   
   // Send ready signal
-  console.log(`[Worker ${workerId}] Sending ready signal`);
+  // console.log(`[Worker ${workerId}] Sending ready signal`);
   self.postMessage({ type: 'worker-ready', payload: { workerId } });
   
   startMainLoop();

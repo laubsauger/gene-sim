@@ -125,7 +125,7 @@ function EntitiesLayer({ client, entitySize }: { client: SimClient; entitySize: 
   useEffect(() => {
     // Check if buffers exist immediately
     if (buffers?.pos && buffers?.color && buffers?.alive) {
-      console.log('[EntitiesLayer] Buffers already available, count:', buffers.count);
+      // console.log('[EntitiesLayer] Buffers already available, count:', buffers.count);
       lastValidBuffers.current = buffers; // Store valid buffers
       setReady(true);
       return;
@@ -134,16 +134,16 @@ function EntitiesLayer({ client, entitySize }: { client: SimClient; entitySize: 
     // Listen for ready message
     const unsubscribe = client.onMessage((msg) => {
       if (msg.type === 'ready') {
-        console.log('[EntitiesLayer] Got ready message, checking buffers...');
+        // console.log('[EntitiesLayer] Got ready message, checking buffers...');
         const { buffers: currentBuffers } = client;
-        console.log('[EntitiesLayer] Current buffers:', {
-          hasPos: !!currentBuffers?.pos,
-          hasColor: !!currentBuffers?.color,
-          hasAlive: !!currentBuffers?.alive,
-          count: currentBuffers?.count,
-          posLength: currentBuffers?.pos?.length,
-          aliveSum: currentBuffers?.alive?.reduce((sum, val) => sum + val, 0) // Count alive entities
-        });
+        // console.log('[EntitiesLayer] Current buffers:', {
+        //   hasPos: !!currentBuffers?.pos,
+        //   hasColor: !!currentBuffers?.color,
+        //   hasAlive: !!currentBuffers?.alive,
+        //   count: currentBuffers?.count,
+        //   posLength: currentBuffers?.pos?.length,
+        //   aliveSum: currentBuffers?.alive?.reduce((sum, val) => sum + val, 0) // Count alive entities
+        // });
         lastValidBuffers.current = currentBuffers; // Store valid buffers  
         setReady(true);
       }

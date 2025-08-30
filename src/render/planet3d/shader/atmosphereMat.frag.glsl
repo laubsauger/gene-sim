@@ -1,3 +1,8 @@
+precision highp float;
+
+#include <common>
+#include <logdepthbuf_pars_fragment>
+
 uniform vec3 uLightDir;
 uniform vec3 uColorRayleigh;
 uniform vec3 uColorMie;
@@ -5,33 +10,51 @@ uniform float uAnisotropy;
 uniform float uRimPower;
 uniform float uDensity;
 uniform float uPlanetRadius;
+uniform float uExposure;
 
 varying vec3 vNormal;
+varying vec3 vWorldPos;
 varying vec3 vViewPosition;
 
+// Henyey-Greenstein phase function for Mie scattering
+float henyeyGreenstein(float cosTheta, float g) {
+  float g2 = g * g;
+  return (1.0 - g2) / pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5);
+}
+
+// sRGB conversion for proper color output
+vec3 toSRGB(vec3 color) {
+  return pow(max(color, vec3(0.0)), vec3(1.0 / 2.2));
+}
+
 void main() {
-  vec3 normal = normalize(vNormal);
-  vec3 viewDir = normalize(vViewPosition);
-  vec3 lightDir = normalize(uLightDir);
+  #include <logdepthbuf_fragment>
+  
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(cameraPosition - vWorldPos);
+  vec3 L = normalize(uLightDir);
 
-  // Rim lighting effect
-  float rim = 1.0 - abs(dot(viewDir, normal));
-  rim = pow(rim, uRimPower);
+  // Rim effect - atmosphere glows at edges
+  float NdotV = clamp(dot(N, V), 0.0, 1.0);
+  float rim = pow(1.0 - NdotV, uRimPower);
 
-  // Day/night transition
-  float sunDot = dot(normal, lightDir);
-  float dayNight = smoothstep(-0.3, 0.3, sunDot);
+  // Day/night transition with soft terminator
+  float NdotL = dot(N, L);
+  float dayBias = smoothstep(-0.35, 0.35, NdotL);
 
-  // Mie scattering (forward scattering)
-  float miePhase = dot(viewDir, lightDir);
-  miePhase = 1.0 + miePhase * miePhase;
+  // Scattering calculations
+  float cosTheta = dot(L, V);
+  float mie = henyeyGreenstein(cosTheta, clamp(uAnisotropy, 0.0, 0.9));
+  float rayleigh = 0.75 * (1.0 + cosTheta * cosTheta);
 
-  // Combine Rayleigh (blue) and Mie (yellow/white) scattering
-  vec3 rayleigh = uColorRayleigh * rim;
-  vec3 mie = uColorMie * miePhase * 0.1;
-
-  vec3 color = (rayleigh + mie) * uDensity * dayNight;
-  float alpha = rim * uDensity * 0.8;
-
-  gl_FragColor = vec4(color, alpha);
+  // Combine scattering with rim and day/night
+  vec3 scatterColor = uColorRayleigh * rayleigh + uColorMie * mie * 0.5;
+  vec3 finalColor = scatterColor * rim * dayBias * uDensity * 0.25;
+  
+  // Apply exposure
+  finalColor *= uExposure;
+  
+  // Output with sRGB conversion and alpha based on intensity
+  float alpha = clamp(rim * dayBias * uDensity * 0.6, 0.0, 1.0);
+  gl_FragColor = vec4(toSRGB(finalColor), alpha);
 }

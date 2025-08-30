@@ -1,14 +1,13 @@
 import * as THREE from 'three';
 import atmosphereMatVertexShader from './shader/atmosphereMat.vertex.glsl'
 import atmosphereMatFragmentShader from './shader/atmosphereMat.frag.glsl'
-import planetMatVertexShader from './shader/planetMat.vertex.glsl'
-import planetMatFragmentShader from './shader/planetMat.frag.glsl'
+// Planet now uses MeshStandardMaterial instead of custom shaders
 
 export function makePlanetWithAtmosphere({
   radius = 1,
   atmosphereColor = new THREE.Color(0x78a6ff),
   mieColor = new THREE.Color(0xfff2d1),
-  atmosphereThickness = 0.03,
+  atmosphereThickness = 0.05, // Increased from 0.03 for better visibility
   anisotropy = 0.65,
   exposure = 1.2,
 }: {
@@ -26,35 +25,22 @@ export function makePlanetWithAtmosphere({
     uTime: { value: 0 },
   };
 
-  // ----- Surface (opaque) - renderOrder 0 -----
-  const planetUniforms = {
-    ...shared,
-    uAmbientNight: { value: 0.12 },
-    uDayTint: { value: new THREE.Color(0xffffff) },
-    uNightTint: { value: new THREE.Color(0x6aa5ff) },
-    uTerminatorSoftness: { value: 0.28 },
-    uLightWrap: { value: 0.15 },
-    uBaseColor: { value: new THREE.Color(0x3a6f4f) },
-  };
-
-  // Planet surface material with day/night cycle
-  const planetMat = new THREE.ShaderMaterial({
-    uniforms: planetUniforms,
-    vertexShader: planetMatVertexShader,
-    fragmentShader: planetMatFragmentShader,
-    transparent: false,
-    depthTest: true,
-    depthWrite: true,
-    side: THREE.FrontSide,
+  // CRITICAL: Use MeshStandardMaterial for the base surface (opaque, writes depth properly)
+  // The ShaderMaterial approach breaks depth writing in Three.js
+  const planetMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(0x3a6f4f), // Base green color like before
+    roughness: 0.9,
+    metalness: 0.1,
+    emissive: new THREE.Color(0x0a0f1a), // Slight dark blue emissive for night side
+    emissiveIntensity: 0.1,
   });
 
   const planetGeo = new THREE.SphereGeometry(radius, 96, 64);
   const planetMesh = new THREE.Mesh(planetGeo, planetMat);
-  planetMesh.renderOrder = 0;
   planetMesh.frustumCulled = false;
   planetMesh.castShadow = true;
   planetMesh.receiveShadow = true;
-  group.add(planetMesh);
+  group.add(planetMesh); // Add back to group since depth works now
 
   // ----- Atmosphere (additive BackSide) - renderOrder 3 -----
   const atmUniforms = {
@@ -65,22 +51,24 @@ export function makePlanetWithAtmosphere({
     uAnisotropy: { value: anisotropy },
     uRimPower: { value: 3.0 },
     uDensity: { value: 1.0 },
+    uExposure: { value: exposure },
   };
 
   const atmosphereMat = new THREE.ShaderMaterial({
     uniforms: atmUniforms,
     transparent: true,
-    depthWrite: false,
-    depthTest: true,
+    depthWrite: false,  // Don't write depth (transparent layer)
+    depthTest: true,    // CRITICAL: Must test depth to be occluded by moon/entities
     blending: THREE.AdditiveBlending,
-    side: THREE.BackSide,
+    side: THREE.BackSide,  // Render from inside out for rim effect
     vertexShader: atmosphereMatVertexShader,
     fragmentShader: atmosphereMatFragmentShader,
   });
 
-  const atmosphereGeo = new THREE.SphereGeometry(radius * (1.0 + atmosphereThickness), 96, 64);
+  // Make atmosphere larger as requested - expand further out
+  const atmosphereGeo = new THREE.SphereGeometry(radius * (1.0 + atmosphereThickness * 2.0), 96, 64);
   const atmosphereMesh = new THREE.Mesh(atmosphereGeo, atmosphereMat);
-  atmosphereMesh.renderOrder = 3;
+  atmosphereMesh.frustumCulled = false; // Always render atmosphere
   group.add(atmosphereMesh);
 
   function update({
@@ -114,7 +102,7 @@ export function makePlanetWithAtmosphere({
     group,
     meshes: { planetMesh, atmosphereMesh },
     materials: { planetMat, atmosphereMat },
-    uniforms: { shared, planetUniforms, atmUniforms },
+    uniforms: { shared, atmUniforms },
     update,
   };
 }

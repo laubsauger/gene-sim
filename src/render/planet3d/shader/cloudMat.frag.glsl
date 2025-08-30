@@ -1,8 +1,12 @@
-precision highp float; 
-varying vec3 vN; 
+precision highp float;
+
+#include <common>
+#include <logdepthbuf_pars_fragment>
+
+varying vec3 vN;
 varying vec3 vPosW;
-uniform vec3 uLightDir; 
-uniform float uTime, uCoverage, uDensity, uLightWrap, uTerminator; 
+uniform vec3 uLightDir;
+uniform float uTime, uCoverage, uDensity, uLightWrap, uTerminator;
 uniform vec3 uDayTint, uNightTint;
 
 float hash(vec3 p){ 
@@ -30,10 +34,12 @@ float fbm(vec3 p){
 }
 
 void main(){
+  #include <logdepthbuf_fragment>
+  
   vec3 N = normalize(vN); 
-  vec3 L=normalize(uLightDir); 
-  vec3 V=normalize(cameraPosition - vPosW);
-  float NdotL = dot(N,L);
+  vec3 L = normalize(uLightDir); 
+  vec3 V = normalize(cameraPosition - vPosW);
+  float NdotL = dot(N, L);
   float wrap = clamp((NdotL + uLightWrap)/(1.0+uLightWrap), 0.0, 1.0);
   float day = smoothstep(0.0, uTerminator, wrap);
   vec3 p = N*6.0 + vec3(0.15*uTime, 0.0, -0.1*uTime);

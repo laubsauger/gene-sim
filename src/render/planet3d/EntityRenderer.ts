@@ -62,7 +62,6 @@ export function makeGroundEntities(count: number): THREE.InstancedMesh {
   
   const mesh = new THREE.InstancedMesh(geo, mat, count);
   mesh.frustumCulled = false;
-  mesh.renderOrder = 1;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   

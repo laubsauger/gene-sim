@@ -5,12 +5,19 @@ export function makeMoon(planetRadius: number) {
   const group = new THREE.Group();
   const moonRadius = planetRadius * MOON_RADIUS;
   
-  // Moon material
-  const moonMat = new THREE.MeshPhongMaterial({
+  // Moon material - MUST be opaque for proper depth sorting
+  const moonMat = new THREE.MeshStandardMaterial({
     color: MOON_COLOR,
     emissive: MOON_EMISSIVE,
     emissiveIntensity: 0.05,
-    shininess: 10,
+    roughness: 0.9,
+    metalness: 0.0,
+    // CRITICAL: These ensure moon stays in opaque queue
+    transparent: false,
+    opacity: 1.0,
+    depthTest: true,
+    depthWrite: true,
+    blending: THREE.NormalBlending,
   });
 
   // Moon geometry
