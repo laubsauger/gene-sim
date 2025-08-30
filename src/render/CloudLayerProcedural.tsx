@@ -179,69 +179,66 @@ export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, t
       vec3 cloudColor = vec3(1.0);
       
       if (cloudType < 0.5) {
-        // Cumulus - highly varied puffy clouds with dynamic evolution
+        // Cumulus - puffy cotton ball clouds
         
-        // Apply additional movement for cumulus clouds
-        theta += time * 0.06;
+        // Apply movement for cumulus clouds
+        theta += time * 0.02;  // Even slower movement
         pos.x = cos(phi) * cos(theta) * 50.0;
         pos.z = cos(phi) * sin(theta) * 50.0;
         
-        // Create varied aspect ratios and sizes by stretching position differently
+        // Create puffy cumulus shapes
         vec3 stretchedPos = pos;
-        float positionVariation = noise3D(pos * 0.3);
+        float positionVariation = noise3D(pos * 0.2);
         
-        // Vary X and Z stretching based on position for different cloud shapes
-        stretchedPos.x *= 0.8 + positionVariation * 0.8;  // Moderate variation in width
-        stretchedPos.z *= 0.9 + positionVariation * 0.6;  // Moderate variation in depth
-        stretchedPos.y *= 1.0 + sin(pos.x * 0.2) * 0.3;   // Subtle vertical stretching
+        // Make them more spherical/puffy
+        stretchedPos *= 1.2;  // Uniform scaling for rounder clouds
+        stretchedPos.y *= 1.0 + sin(pos.x * 0.1) * 0.2;  // Slight vertical variation
         
-        // Dynamic billowing motion - clouds rise and fall
-        float billowing = sin(time * 0.015 + pos.x * 0.5) * 0.3;
-        float puffing = cos(time * 0.02 + pos.z * 0.3) * 0.2;
+        // Slower, gentler billowing motion
+        float billowing = sin(time * 0.008 + pos.x * 0.3) * 0.2;
+        float puffing = cos(time * 0.01 + pos.z * 0.2) * 0.15;
         
         vec3 timeOffset1 = vec3(
-          time * 0.008 + sin(time * 0.003 + pos.x * 0.1) * 0.5,
-          time * 0.005 + billowing,
-          time * 0.003 + puffing
+          time * 0.004 + sin(time * 0.002 + pos.x * 0.1) * 0.3,
+          time * 0.003 + billowing,
+          time * 0.002 + puffing
         );
         vec3 timeOffset2 = vec3(
-          time * 0.015 + sin(pos.z * 0.2) * 0.3,
-          time * 0.01 + sin(time * 0.007) * 0.4 + billowing * 0.5,
-          time * 0.007
+          time * 0.008 + sin(pos.z * 0.2) * 0.2,
+          time * 0.005 + sin(time * 0.004) * 0.3 + billowing * 0.5,
+          time * 0.004
         );
         vec3 timeOffset3 = vec3(
-          time * 0.02,
-          time * 0.012 + billowing * 0.3,
-          time * 0.009 + cos(time * 0.005) * 0.2
+          time * 0.01,
+          time * 0.006 + billowing * 0.3,
+          time * 0.005 + cos(time * 0.003) * 0.15
         );
         
-        // Use different scales for variety - but keep within reasonable bounds
-        float sizeVariation = 0.7 + positionVariation * 1.2;
+        // Larger cumulus shapes
+        float sizeVariation = 1.0 + positionVariation * 0.2;
         
-        // Large scale structure with varied sizes
-        float largeScale = 1.0 - worleyNoise(stretchedPos * 0.4 * sizeVariation + timeOffset1);
-        // Medium scale with position-based variation
-        float medScale = 1.0 - worleyNoise(stretchedPos * 1.5 * sizeVariation + timeOffset2);
-        // Fine turbulent details
-        float detail = noise3D(stretchedPos * 4.0 * sizeVariation + timeOffset3);
-        float turbulence = noise3D(stretchedPos * 10.0 + vec3(time * 0.03, 0.0, 0.0)) * 0.3;
+        // Use Worley noise for puffy cotton-ball effect - larger scale
+        float puffyBase = 1.0 - worleyNoise(stretchedPos * 0.08 * sizeVariation + timeOffset1);
+        float puffyMed = 1.0 - worleyNoise(stretchedPos * 0.2 * sizeVariation + timeOffset2);
         
-        // Dynamic coverage that varies by position
-        float localCoverage = 0.5 + 0.3 * sin(time * 0.01 + pos.x * 0.15) + 0.2 * cos(time * 0.007 + pos.z * 0.1);
+        // Create distinct cumulus puffs
+        float puffiness = pow(puffyBase, 2.0);  // Sharper peaks for puffs
         
-        // Morphing that creates growing and shrinking clouds
-        float morphFactor = 0.3 + 0.7 * sin(time * 0.004 + positionVariation * 3.14);
+        // Build puffy cumulus
+        cloud = puffiness * 0.7 + puffyMed * 0.3;
         
-        // Build cloud with high variation
-        cloud = largeScale * 0.4 + medScale * 0.3 + detail * 0.2 + turbulence * 0.1;
+        // Strong threshold for distinct cloud shapes
+        cloud = smoothstep(0.35, 0.5, cloud);
         
-        // Variable thresholds for different cloud densities
-        float threshold = 0.25 + positionVariation * 0.2;
-        cloud = smoothstep(threshold - localCoverage * 0.1, 0.65 * morphFactor, cloud);
+        // Add blur by smoothing
+        cloud = smoothstep(0.0, 1.0, cloud * 1.2);
         
-        // Create highly varied gaps - some areas dense, others sparse
-        float gapVariation = 0.3 + sin(pos.x * 0.3 + time * 0.005) * 0.4;
-        cloud *= smoothstep(gapVariation, 0.7, largeScale);
+        // Less aggressive gaps between cumulus clusters
+        float clusterPattern = 0.6 + 0.4 * smoothstep(0.2, 0.8, noise3D(pos * 0.015 + vec3(time * 0.0005)));
+        cloud *= clusterPattern;
+        
+        // Boost opacity for cumulus
+        cloud *= 1.5;
         
         // Add occasional towering cumulus
         if (positionVariation > 0.8) {
@@ -250,60 +247,52 @@ export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, t
         
         cloudColor = vec3(0.95);
       } else if (cloudType < 1.5) {
-        // Cirrus - wispy streaks that flow and evolve
-        vec3 stretchedPos = pos * vec3(6.0, 0.3, 2.0);
+        // Cirrus - simple high altitude wisps
+        vec3 stretchedPos = pos * vec3(6.0, 0.2, 2.0);
         
-        // Complex flow patterns with wave-like motion
+        // Simple flow
         vec3 timeOffset1 = vec3(
-          time * 0.018 + sin(pos.x * 0.1 + time * 0.002) * 2.0,
-          time * 0.006,
-          time * 0.01 + cos(pos.z * 0.1 + time * 0.003) * 1.5
-        );
-        vec3 timeOffset2 = vec3(
-          time * 0.025 + sin(time * 0.004) * 1.0,
-          time * 0.015,
-          time * 0.02
+          time * 0.02,
+          time * 0.005,
+          time * 0.008
         );
         
-        float largeStreak = noise3D(stretchedPos * 0.3 + timeOffset1);
-        float medStreak = noise3D(stretchedPos + timeOffset2);
-        float detail = noise3D(stretchedPos * 2.0 + vec3(time * 0.03, 0.0, 0.0));
+        // Denser cirrus streaks
+        float largeStreak = noise3D(stretchedPos * 0.12 + timeOffset1);
+        float blur = noise3D(stretchedPos * 0.25 + timeOffset1 * 1.2);
         
-        // Animated wisp intensity with multiple waves
-        float wispiness = 0.5 + 0.15 * sin(time * 0.008) + 0.1 * cos(time * 0.012);
+        cloud = largeStreak * 0.7 + blur * 0.3;
         
-        // Streaking effect that moves across the sky
-        float streak = sin(pos.x * 0.5 + time * 0.01) * 0.3;
+        // Soft wispy appearance but more visible
+        cloud = smoothstep(0.25, 0.55, cloud);
+        cloud = smoothstep(0.0, 1.0, cloud * 1.3);  // Add blur
         
-        cloud = largeStreak * 0.4 + medStreak * 0.4 + detail * 0.2 + streak;
-        cloud = smoothstep(0.4 - wispiness * 0.1, 0.6, cloud) * wispiness;
+        // More visible
+        cloud *= 0.9;
         cloudColor = vec3(0.98);
       } else {
-        // Stratus - sheet clouds with complex evolving patterns
+        // Stratus - simple sheet clouds
         vec3 timeOffset1 = vec3(
-          time * 0.004 + sin(time * 0.002) * 0.3,
           time * 0.003,
-          time * 0.002 + cos(time * 0.003) * 0.2
-        );
-        vec3 timeOffset2 = vec3(
-          time * 0.008,
-          time * 0.006 + sin(time * 0.004) * 0.4,
-          time * 0.005
+          time * 0.002,
+          time * 0.002
         );
         
-        float largeSheet = noise3D(pos * 0.5 + timeOffset1);
-        float medSheet = noise3D(pos * 1.5 + timeOffset2);
+        // Very simple sheets
+        float largeSheet = noise3D(pos * 0.25 + timeOffset1);
         
-        // Complex hole animation with multiple frequencies
-        float holeAnimation = sin(time * 0.005) * 0.2 + cos(time * 0.008) * 0.1;
-        float holeEvolution = sin(time * 0.003 + pos.x * 0.1) * 0.15;
-        float holes = worleyNoise(pos * 1.2 + vec3(time * 0.003, holeEvolution, 0.0));
+        // Less aggressive holes for denser coverage
+        float holes = 0.7 + 0.3 * smoothstep(0.1, 0.5, noise3D(pos * 0.04 + vec3(time * 0.0008)));
         
-        // Breathing effect - the whole layer expands and contracts
-        float breathing = 1.0 + sin(time * 0.006) * 0.1;
+        // Simple structure
+        cloud = largeSheet;
+        cloud = smoothstep(0.15, 0.45, cloud);
         
-        cloud = (largeSheet * 0.6 + medSheet * 0.4) * smoothstep(0.15 + holeAnimation, 0.6, holes);
-        cloud = smoothstep(0.2, 0.5 * breathing, cloud) * (0.7 + holeAnimation * 0.5);
+        // Add blur
+        cloud = smoothstep(0.0, 1.0, cloud * 1.2);
+        
+        // Apply holes but keep more coverage
+        cloud *= holes;
         cloudColor = vec3(0.9);
       }
       
@@ -367,12 +356,12 @@ export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, t
 export function CloudSystemProcedural({ planetRadius, sunRotation }: { planetRadius: number; sunRotation?: number }) {
   return (
     <>
-      {/* Low cumulus clouds - slowest, affected by surface friction */}
+      {/* Low cumulus clouds - slowest, puffy clouds */}
       <CloudLayerProcedural
         planetRadius={planetRadius}
         altitude={25}
-        opacity={0.7}
-        speed={0.015}  // Slower, more realistic
+        opacity={0.9}  // More opaque
+        speed={0.005}  // Even slower
         type="cumulus"
         sunRotation={sunRotation}
       />
@@ -381,8 +370,8 @@ export function CloudSystemProcedural({ planetRadius, sunRotation }: { planetRad
       <CloudLayerProcedural
         planetRadius={planetRadius}
         altitude={35}
-        opacity={0.5}
-        speed={0.022}  // Moderate speed
+        opacity={0.75}  // More opaque
+        speed={0.012}  // Slower
         type="stratus"
         sunRotation={sunRotation}
       />
@@ -391,19 +380,9 @@ export function CloudSystemProcedural({ planetRadius, sunRotation }: { planetRad
       <CloudLayerProcedural
         planetRadius={planetRadius}
         altitude={45}
-        opacity={0.4}
-        speed={0.035}  // Jet stream level
+        opacity={0.65}  // More opaque
+        speed={0.02}  // Slower jet stream
         type="cirrus"
-        sunRotation={sunRotation}
-      />
-      
-      {/* Very high altitude large structure clouds - moderate */}
-      <CloudLayerProcedural
-        planetRadius={planetRadius}
-        altitude={65}
-        opacity={0.3}
-        speed={0.028}  // Upper atmosphere
-        type="stratus"
         sunRotation={sunRotation}
       />
     </>

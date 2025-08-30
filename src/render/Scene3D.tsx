@@ -8,6 +8,7 @@ import { Starfield } from './Starfield';
 import { Sun, Moon } from './CelestialBodies';
 import { CloudSystemProcedural } from './CloudLayerProcedural';
 import { DebugArrows } from './DebugArrows';
+import { DevControls3D } from '../ui/DevControls3D';
 import type { SimClient } from '../client/setupSimClientHybrid';
 
 const PLANET_RADIUS = 500;
@@ -36,7 +37,7 @@ function FPSTracker({ client }: { client: SimClient }) {
 
 // Atmosphere effect component  
 function Atmosphere({ radius, staticSunPosition }: { radius: number; staticSunPosition: THREE.Vector3 }) {
-  const atmosphereRadius = radius * 1.15; // Larger for better coverage
+  const atmosphereRadius = radius * 1.12; // Slightly closer to surface to reduce gap
   
   const vertexShader = `
     varying vec3 vNormal;
@@ -68,54 +69,62 @@ function Atmosphere({ radius, staticSunPosition }: { radius: number; staticSunPo
       // Sun angle determines day/night
       float sunDot = dot(sphereNormal, sunDir);
       
-      // Atmosphere thickness - thicker at edges when viewed from outside
+      // Atmosphere thickness based on edge proximity
       float viewDot = dot(viewDirection, normal);
       float limb = 1.0 - abs(viewDot);
-      float atmosphereThickness = pow(limb, 0.8);
+      float atmosphereThickness = pow(limb, 0.8) + 0.1;  // Add base to reach surface
       
-      // Color gradient based on sun position
+      // Proper occlusion - don't render atmosphere on far side of planet
+      vec3 cameraDir = normalize(cameraPosition);
+      float cameraDot = dot(sphereNormal, cameraDir);
+      
+      // If we're looking at a point on far side of planet, discard
+      if (cameraDot < 0.0) {
+        // But only if it's also behind the planet surface
+        float distToCamera = length(cameraPosition - vWorldPosition);
+        float distToPlanetCenter = length(cameraPosition);
+        if (distToCamera > distToPlanetCenter) discard;
+      }
+      
+      // Smooth color gradient based on sun position
       vec3 color;
       float intensity;
       
-      if (sunDot > 0.1) {
-        // Day side
-        float dayStrength = smoothstep(0.1, 0.4, sunDot);
-        color = mix(vec3(0.4, 0.65, 1.0), vec3(0.3, 0.6, 1.0), dayStrength);
-        intensity = 0.6 + dayStrength * 0.1;
-      } else if (sunDot > -0.1) {
-        // Terminator zone - smooth transition
-        float t = (sunDot + 0.1) / 0.2;
-        vec3 sunsetColor = vec3(1.0, 0.5, 0.15);
-        vec3 dayColor = vec3(0.4, 0.65, 1.0);
-        vec3 twilightColor = vec3(0.7, 0.25, 0.1);
-        
-        if (t > 0.5) {
-          color = mix(sunsetColor, dayColor, (t - 0.5) * 2.0);
-        } else {
-          color = mix(twilightColor, sunsetColor, t * 2.0);
-        }
-        
-        intensity = 0.5 + t * 0.2;
-        
-        // Terminator glow
-        float terminatorGlow = exp(-20.0 * abs(sunDot));
-        color = mix(color, vec3(1.0, 0.7, 0.3), terminatorGlow * 0.4);
-        intensity *= (1.0 + terminatorGlow * 0.5);
-      } else {
-        // Night side
-        float nightDepth = smoothstep(-0.1, -0.4, sunDot);
-        color = mix(vec3(0.1, 0.15, 0.3), vec3(0.01, 0.02, 0.05), nightDepth);
-        intensity = 0.25 - nightDepth * 0.2;
-      }
+      // Use a continuous function for smoother transitions
+      float dayFactor = smoothstep(-0.3, 0.3, sunDot);
+      float sunsetFactor = exp(-10.0 * abs(sunDot)) * 2.0;  // Peak at terminator
+      float nightFactor = smoothstep(0.3, -0.3, sunDot);
+      
+      // Define colors
+      vec3 dayColor = vec3(0.35, 0.6, 1.0);
+      vec3 sunsetColor = vec3(1.0, 0.5, 0.15);
+      vec3 twilightColor = vec3(0.3, 0.2, 0.4);
+      vec3 nightColor = vec3(0.05, 0.08, 0.15);
+      
+      // Blend colors smoothly
+      color = dayColor * dayFactor;
+      color += sunsetColor * sunsetFactor * (1.0 - dayFactor * 0.5);
+      color += twilightColor * nightFactor * (1.0 - sunsetFactor);
+      color = mix(color, nightColor, nightFactor * 0.7);
+      
+      // Smooth intensity
+      intensity = 0.2 + dayFactor * 0.5 + sunsetFactor * 0.2;
+      
+      // Ensure night side has minimum visibility
+      intensity = max(intensity, 0.15);
       
       // Apply atmosphere thickness and intensity
       float alpha = atmosphereThickness * intensity;
       
-      // Smooth the edges without creating bands
-      alpha *= 0.35;
+      // Smoother edge transition that reaches the surface
+      float edgeFade = smoothstep(0.0, 0.1, limb) * smoothstep(1.0, 0.8, limb);
+      alpha *= (0.4 + edgeFade * 0.6);  // Higher minimum for surface visibility
+      
+      // Overall atmosphere opacity
+      alpha *= 0.4;
       
       // Very minimal cutoff to avoid artifacts
-      if (alpha < 0.005) discard;
+      if (alpha < 0.008) discard;
       
       gl_FragColor = vec4(color, alpha);
     }
@@ -200,9 +209,11 @@ function EntitiesLayer3D({
 }
 
 // Planet and moon system - rotates together
-function PlanetSystem({ planetRadius, isPaused, children }: { 
+function PlanetSystem({ planetRadius, isPaused, autoRotate, showMoon, children }: { 
   planetRadius: number;
   isPaused: boolean;
+  autoRotate: boolean;
+  showMoon: boolean;
   children: React.ReactNode;
 }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -211,8 +222,8 @@ function PlanetSystem({ planetRadius, isPaused, children }: {
   const moonOrbitRadius = planetRadius * 2;
   
   useFrame((state, delta) => {
-    if (tiltedGroupRef.current) {
-      // Rotate planet around its tilted axis (always rotate, even when paused for now)
+    if (tiltedGroupRef.current && autoRotate) {
+      // Rotate planet around its tilted axis
       rotationRef.current += delta * 0.1; // Day/night cycle speed
       tiltedGroupRef.current.rotation.y = rotationRef.current;
     }
@@ -228,11 +239,13 @@ function PlanetSystem({ planetRadius, isPaused, children }: {
         </group>
         
         {/* Moon orbits around the tilted axis */}
-        <Moon 
-          planetRadius={planetRadius} 
-          orbitRadius={moonOrbitRadius}
-          orbitSpeed={0.2}
-        />
+        {showMoon && (
+          <Moon 
+            planetRadius={planetRadius} 
+            orbitRadius={moonOrbitRadius}
+            orbitSpeed={0.2}
+          />
+        )}
       </group>
     </group>
   );
@@ -247,6 +260,16 @@ export interface Scene3DProps {
 export function Scene3D({ client, world, entitySize }: Scene3DProps) {
   const controlsRef = useRef<any>(null);
   const [isPaused, setIsPaused] = useState(true);
+  
+  // Dev control states
+  const [showEntities, setShowEntities] = useState(true);
+  const [showAtmosphere, setShowAtmosphere] = useState(true);
+  const [showClouds, setShowClouds] = useState(true);
+  const [autoRotate, setAutoRotate] = useState(true);
+  const [showStars, setShowStars] = useState(true);
+  const [showMoon, setShowMoon] = useState(true);
+  const [showSun, setShowSun] = useState(true);
+  const [showDebug, setShowDebug] = useState(false);
   
   // Static sun position
   const staticSunPosition = useMemo(() => {
@@ -272,110 +295,138 @@ export function Scene3D({ client, world, entitySize }: Scene3DProps) {
   ];
   
   return (
-    <Canvas
-      style={{ background: '#000' }}
-      shadows
-      gl={{ 
-        antialias: true,
-        logarithmicDepthBuffer: true, // Helps with z-fighting
-      }}
-    >
-      <PerspectiveCamera
-        makeDefault
-        position={initialCameraPosition}
-        fov={60}
-        near={1}
-        far={10000}
+    <>
+      <DevControls3D
+        showEntities={showEntities}
+        setShowEntities={setShowEntities}
+        showAtmosphere={showAtmosphere}
+        setShowAtmosphere={setShowAtmosphere}
+        showClouds={showClouds}
+        setShowClouds={setShowClouds}
+        autoRotate={autoRotate}
+        setAutoRotate={setAutoRotate}
+        showStars={showStars}
+        setShowStars={setShowStars}
+        showMoon={showMoon}
+        setShowMoon={setShowMoon}
+        showSun={showSun}
+        setShowSun={setShowSun}
+        showDebug={showDebug}
+        setShowDebug={setShowDebug}
       />
-      
-      <OrbitControls
-        ref={controlsRef}
-        enablePan={false}
-        enableDamping
-        dampingFactor={0.05}
-        rotateSpeed={0.5}
-        zoomSpeed={1.0}
-        minDistance={PLANET_RADIUS * 1.2}
-        maxDistance={PLANET_RADIUS * 5}
-        target={[0, 0, 0]}
-      />
-      
-      <Stats showPanel={0} className="stats-panel" />
-      <FPSTracker client={client} />
-      
-      {/* Minimal ambient to prevent pure black shadows */}
-      <ambientLight intensity={0.01} />
-      
-      {/* Very subtle hemisphere light for slight color variation */}
-      <hemisphereLight
-        color="#4a6fa5"
-        groundColor="#0a0502"
-        intensity={0.02}
-      />
-      
-      {/* Static sun at fixed position */}
-      <group position={staticSunPosition.toArray()}>
-        <Sun position={[0, 0, 0]} />
-      </group>
-      
-      {/* Main directional light from static sun */}
-      <directionalLight
-        position={staticSunPosition.toArray()}
-        intensity={2.0}
-        color="#fff5e6"
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-1500}
-        shadow-camera-right={1500}
-        shadow-camera-top={1500}
-        shadow-camera-bottom={-1500}
-        shadow-camera-near={1}
-        shadow-camera-far={10000}
-        target-position={[0, 0, 0]}
-      />
-      
-      {/* Rotating planet system */}
-      <PlanetSystem planetRadius={PLANET_RADIUS} isPaused={isPaused}>
-        {/* Planet base */}
-        <PlanetSphere
-          radius={PLANET_RADIUS}
-          worldWidth={world.width}
-          worldHeight={world.height}
+      <Canvas
+        style={{ background: '#000' }}
+        shadows
+        gl={{ 
+          antialias: true,
+          logarithmicDepthBuffer: true, // Helps with z-fighting
+        }}
+      >
+        <PerspectiveCamera
+          makeDefault
+          position={initialCameraPosition}
+          fov={60}
+          near={1}
+          far={10000}
         />
         
-        {/* Entities on surface */}
-        <EntitiesLayer3D
-          client={client}
-          entitySize={entitySize}
-          worldWidth={world.width}
-          worldHeight={world.height}
-          staticSunPosition={staticSunPosition}
+        <OrbitControls
+          ref={controlsRef}
+          enablePan={false}
+          enableDamping
+          dampingFactor={0.05}
+          rotateSpeed={0.5}
+          zoomSpeed={1.0}
+          minDistance={PLANET_RADIUS * 1.2}
+          maxDistance={PLANET_RADIUS * 5}
+          target={[0, 0, 0]}
         />
         
-        {/* Cloud layers above entities */}
-        <CloudSystemProcedural
-          planetRadius={PLANET_RADIUS}
-          sunRotation={0}  // Static sun
+        <Stats showPanel={0} className="stats-panel" />
+        <FPSTracker client={client} />
+        
+        {/* Minimal ambient to prevent pure black shadows */}
+        <ambientLight intensity={0.01} />
+        
+        {/* Very subtle hemisphere light for slight color variation */}
+        <hemisphereLight
+          color="#4a6fa5"
+          groundColor="#0a0502"
+          intensity={0.02}
         />
-      </PlanetSystem>
-      
-      {/* Atmosphere - outside rotating group, stays aligned with sun */}
-      <Atmosphere
-        radius={PLANET_RADIUS}
-        staticSunPosition={staticSunPosition}
-      />
+        
+        {/* Static sun at fixed position */}
+        {showSun && (
+          <group position={staticSunPosition.toArray()}>
+            <Sun position={[0, 0, 0]} />
+          </group>
+        )}
+        
+        {/* Main directional light from static sun */}
+        <directionalLight
+          position={staticSunPosition.toArray()}
+          intensity={2.0}
+          color="#fff5e6"
+          castShadow
+          shadow-mapSize={[2048, 2048]}
+          shadow-camera-left={-1500}
+          shadow-camera-right={1500}
+          shadow-camera-top={1500}
+          shadow-camera-bottom={-1500}
+          shadow-camera-near={1}
+          shadow-camera-far={10000}
+          target-position={[0, 0, 0]}
+        />
+        
+        {/* Rotating planet system */}
+        <PlanetSystem planetRadius={PLANET_RADIUS} isPaused={isPaused} autoRotate={autoRotate} showMoon={showMoon}>
+          {/* Planet base */}
+          <PlanetSphere
+            radius={PLANET_RADIUS}
+            worldWidth={world.width}
+            worldHeight={world.height}
+          />
+          
+          {/* Entities on surface */}
+          {showEntities && (
+            <EntitiesLayer3D
+              client={client}
+              entitySize={entitySize}
+              worldWidth={world.width}
+              worldHeight={world.height}
+              staticSunPosition={staticSunPosition}
+            />
+          )}
+          
+          {/* Cloud layers above entities */}
+          {showClouds && (
+            <CloudSystemProcedural
+              planetRadius={PLANET_RADIUS}
+              sunRotation={0}  // Static sun
+            />
+          )}
+        </PlanetSystem>
+        
+        {/* Atmosphere - outside rotating group, stays aligned with sun */}
+        {showAtmosphere && (
+          <Atmosphere
+            radius={PLANET_RADIUS}
+            staticSunPosition={staticSunPosition}
+          />
+        )}
 
-      {/* Static starfield background - doesn't rotate with camera */}
-      <group>
-        <Starfield count={12000} radius={15000} />
-      </group>
+        {/* High-resolution starfield */}
+        {showStars && <Starfield count={12000} radius={15000} />}
 
-      {/* Debug visualization - disabled for now */}
-      {/* <DebugArrows
-        planetRadius={PLANET_RADIUS}
-        sunRotation={0}  // Static sun
-        staticSunPosition={staticSunPosition}
-      /> */}
-    </Canvas>
+        {/* Debug visualization */}
+        {showDebug && (
+          <DebugArrows
+            planetRadius={PLANET_RADIUS}
+            sunRotation={0}  // Static sun
+            staticSunPosition={staticSunPosition}
+          />
+        )}
+      </Canvas>
+    </>
   );
 }
