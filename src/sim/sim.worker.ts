@@ -44,16 +44,16 @@ let sim: SimulationCore | null = null;
 
 // Direct buffer references for rendering
 let sharedBuffers: {
-  positions: SharedArrayBuffer;
-  velocities: SharedArrayBuffer;
-  colors: SharedArrayBuffer;
-  alive: SharedArrayBuffer;
-  energy: SharedArrayBuffer;
-  tribeIds: SharedArrayBuffer;
-  genes: SharedArrayBuffer;
-  orientations: SharedArrayBuffer;
-  ages: SharedArrayBuffer;
-  foodGrid?: SharedArrayBuffer;
+  positions: SharedArrayBuffer | ArrayBuffer;
+  velocities: SharedArrayBuffer | ArrayBuffer;
+  colors: SharedArrayBuffer | ArrayBuffer;
+  alive: SharedArrayBuffer | ArrayBuffer;
+  energy: SharedArrayBuffer | ArrayBuffer;
+  tribeIds: SharedArrayBuffer | ArrayBuffer;
+  genes: SharedArrayBuffer | ArrayBuffer;
+  orientations: SharedArrayBuffer | ArrayBuffer;
+  ages: SharedArrayBuffer | ArrayBuffer;
+  foodGrid?: SharedArrayBuffer | ArrayBuffer;
 } | null = null;
 
 // Timing and stats
@@ -119,26 +119,29 @@ function initializeAsMainWorker(msg: any) {
   sim.count = totalSpawned;
   sim.entities.count = totalSpawned;
   
-  // Create SharedArrayBuffers for rendering
+  // Create SharedArrayBuffers for rendering (or regular ArrayBuffers as fallback)
+  const hasSharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined';
+  const BufferClass = hasSharedArrayBuffer ? SharedArrayBuffer : ArrayBuffer;
+  
   sharedBuffers = {
-    positions: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap * 2),
-    velocities: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap * 2),
-    colors: new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * cap * 3),
-    alive: new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * cap),
-    energy: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap),
-    tribeIds: new SharedArrayBuffer(Uint16Array.BYTES_PER_ELEMENT * cap),
-    genes: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap * 9),
-    orientations: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap),
-    ages: new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * cap),
-  };
+    positions: new BufferClass(Float32Array.BYTES_PER_ELEMENT * cap * 2),
+    velocities: new BufferClass(Float32Array.BYTES_PER_ELEMENT * cap * 2),
+    colors: new BufferClass(Uint8Array.BYTES_PER_ELEMENT * cap * 3),
+    alive: new BufferClass(Uint8Array.BYTES_PER_ELEMENT * cap),
+    energy: new BufferClass(Float32Array.BYTES_PER_ELEMENT * cap),
+    tribeIds: new BufferClass(Uint16Array.BYTES_PER_ELEMENT * cap),
+    genes: new BufferClass(Float32Array.BYTES_PER_ELEMENT * cap * 9),
+    orientations: new BufferClass(Float32Array.BYTES_PER_ELEMENT * cap),
+    ages: new BufferClass(Float32Array.BYTES_PER_ELEMENT * cap),
+  } as any; // Cast needed because TypeScript doesn't know BufferClass could be ArrayBuffer
   
   // Add food grid buffer and replace FoodSystem if needed
   if (init.world?.foodGrid) {
     const { cols, rows, capacity = 1, distribution, regen = 0.05 } = init.world.foodGrid;
-    sharedBuffers.foodGrid = new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * cols * rows);
+    sharedBuffers!.foodGrid = new BufferClass(Uint8Array.BYTES_PER_ELEMENT * cols * rows) as any;
     
     // Replace the default FoodSystem with one using the shared buffer
-    const foodGridUint8 = new Uint8Array(sharedBuffers.foodGrid);
+    const foodGridUint8 = new Uint8Array(sharedBuffers!.foodGrid!);
     sim.food = new FoodSystem(cols, rows, worldWidth, worldHeight, regen, foodGridUint8);
     
     // Initialize with distribution config
@@ -146,15 +149,15 @@ function initializeAsMainWorker(msg: any) {
   }
   
   // Create views over shared buffers
-  const pos = new Float32Array(sharedBuffers.positions);
-  const vel = new Float32Array(sharedBuffers.velocities);
-  const color = new Uint8Array(sharedBuffers.colors);
-  const alive = new Uint8Array(sharedBuffers.alive);
-  const energy = new Float32Array(sharedBuffers.energy);
-  const age = new Float32Array(sharedBuffers.ages);
-  const tribeId = new Uint16Array(sharedBuffers.tribeIds);
-  const genes = new Float32Array(sharedBuffers.genes);
-  const orientation = new Float32Array(sharedBuffers.orientations);
+  const pos = new Float32Array(sharedBuffers!.positions);
+  const vel = new Float32Array(sharedBuffers!.velocities);
+  const color = new Uint8Array(sharedBuffers!.colors);
+  const alive = new Uint8Array(sharedBuffers!.alive);
+  const energy = new Float32Array(sharedBuffers!.energy);
+  const age = new Float32Array(sharedBuffers!.ages);
+  const tribeId = new Uint16Array(sharedBuffers!.tribeIds);
+  const genes = new Float32Array(sharedBuffers!.genes);
+  const orientation = new Float32Array(sharedBuffers!.orientations);
   
   // Copy initial entity data to shared buffers BEFORE replacing the entity system
   pos.set(sim.entities.pos);
@@ -174,7 +177,7 @@ function initializeAsMainWorker(msg: any) {
   sim.entities.count = totalSpawned;
   
   // Send ready message with expected buffer names
-  const foodMeta = sharedBuffers.foodGrid && sim.food ? 
+  const foodMeta = sharedBuffers!.foodGrid && sim.food ? 
     { cols: sim.food.getCols(), rows: sim.food.getRows() } : 
     undefined;
     
@@ -182,11 +185,11 @@ function initializeAsMainWorker(msg: any) {
     type: 'ready',
     payload: {
       sab: {
-        pos: sharedBuffers.positions,
-        color: sharedBuffers.colors,
-        alive: sharedBuffers.alive,
-        ages: sharedBuffers.ages,
-        food: sharedBuffers.foodGrid
+        pos: sharedBuffers!.positions,
+        color: sharedBuffers!.colors,
+        alive: sharedBuffers!.alive,
+        ages: sharedBuffers!.ages,
+        food: sharedBuffers!.foodGrid
       },
       meta: { count: cap },
       foodMeta
