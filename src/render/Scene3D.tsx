@@ -59,59 +59,63 @@ function Atmosphere({ radius, staticSunPosition }: { radius: number; staticSunPo
     uniform vec3 sunPosition;
     
     void main() {
-      // Get view direction for atmosphere thickness
+      // Calculate view and sun directions
       vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
       vec3 normal = normalize(vNormal);
-      
-      // Calculate sun direction and fragment position (same as entities/clouds)
       vec3 sunDir = normalize(sunPosition);
       vec3 sphereNormal = normalize(vWorldPosition);
       
-      // How much this point faces the sun (exactly like entities and clouds)
+      // Sun angle determines day/night
       float sunDot = dot(sphereNormal, sunDir);
       
-      // Atmosphere thickness based on viewing angle
+      // Atmosphere thickness - thicker at edges when viewed from outside
       float viewDot = dot(viewDirection, normal);
       float limb = 1.0 - abs(viewDot);
-      float atmosphereThickness = pow(limb, 1.5);
+      float atmosphereThickness = pow(limb, 0.8);
       
-      // Don't render backside of atmosphere
-      if (viewDot > 0.0) discard;
-      
-      // Color based purely on sun angle
+      // Color gradient based on sun position
       vec3 color;
       float intensity;
       
-      if (sunDot > 0.2) {
-        // Day side - blue sky
-        color = vec3(0.3, 0.6, 1.0);
-        intensity = 0.7;
-      } else if (sunDot > -0.2) {
-        // Terminator zone - sunset colors
-        float t = (sunDot + 0.2) / 0.4;  // 0 at night, 1 at day
+      if (sunDot > 0.1) {
+        // Day side
+        float dayStrength = smoothstep(0.1, 0.4, sunDot);
+        color = mix(vec3(0.4, 0.65, 1.0), vec3(0.3, 0.6, 1.0), dayStrength);
+        intensity = 0.6 + dayStrength * 0.1;
+      } else if (sunDot > -0.1) {
+        // Terminator zone - smooth transition
+        float t = (sunDot + 0.1) / 0.2;
         vec3 sunsetColor = vec3(1.0, 0.5, 0.15);
+        vec3 dayColor = vec3(0.4, 0.65, 1.0);
         vec3 twilightColor = vec3(0.7, 0.25, 0.1);
-        color = mix(twilightColor, sunsetColor, t);
+        
+        if (t > 0.5) {
+          color = mix(sunsetColor, dayColor, (t - 0.5) * 2.0);
+        } else {
+          color = mix(twilightColor, sunsetColor, t * 2.0);
+        }
+        
         intensity = 0.5 + t * 0.2;
         
-        // Add extra glow at terminator
-        float terminatorGlow = exp(-15.0 * abs(sunDot));
-        intensity += terminatorGlow * 0.3;
-        color = mix(color, vec3(1.0, 0.7, 0.3), terminatorGlow * 0.5);
+        // Terminator glow
+        float terminatorGlow = exp(-20.0 * abs(sunDot));
+        color = mix(color, vec3(1.0, 0.7, 0.3), terminatorGlow * 0.4);
+        intensity *= (1.0 + terminatorGlow * 0.5);
       } else {
-        // Night side - dark
-        float t = smoothstep(-0.2, -0.5, sunDot);
-        color = mix(vec3(0.1, 0.15, 0.3), vec3(0.01, 0.02, 0.05), t);
-        intensity = 0.2 - t * 0.15;
+        // Night side
+        float nightDepth = smoothstep(-0.1, -0.4, sunDot);
+        color = mix(vec3(0.1, 0.15, 0.3), vec3(0.01, 0.02, 0.05), nightDepth);
+        intensity = 0.25 - nightDepth * 0.2;
       }
       
-      // Apply atmosphere thickness
-      float alpha = atmosphereThickness * intensity * 0.5;
+      // Apply atmosphere thickness and intensity
+      float alpha = atmosphereThickness * intensity;
       
-      // Fade edges to prevent hard cutoff
-      alpha *= smoothstep(0.0, 0.1, limb);
+      // Smooth the edges without creating bands
+      alpha *= 0.35;
       
-      if (alpha < 0.01) discard;
+      // Very minimal cutoff to avoid artifacts
+      if (alpha < 0.005) discard;
       
       gl_FragColor = vec4(color, alpha);
     }
@@ -127,10 +131,10 @@ function Atmosphere({ radius, staticSunPosition }: { radius: number; staticSunPo
           sunPosition: { value: staticSunPosition }
         }}
         transparent
-        side={THREE.BackSide}
+        side={THREE.DoubleSide}  // Render both sides
         depthWrite={false}
         depthTest={false}  // Disable to prevent planet occlusion
-        blending={THREE.NormalBlending}
+        blending={THREE.AdditiveBlending}  // Better for atmosphere glow
       />
     </mesh>
   );
@@ -366,12 +370,12 @@ export function Scene3D({ client, world, entitySize }: Scene3DProps) {
         <Starfield count={12000} radius={15000} />
       </group>
 
-      {/* Debug visualization */}
-      <DebugArrows
+      {/* Debug visualization - disabled for now */}
+      {/* <DebugArrows
         planetRadius={PLANET_RADIUS}
         sunRotation={0}  // Static sun
         staticSunPosition={staticSunPosition}
-      />
+      /> */}
     </Canvas>
   );
 }

@@ -126,17 +126,22 @@ export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, t
       
       if (visibility < -0.05) discard;
       
-      // Use local sphere position normalized for consistent sampling
-      vec3 sphereNormal = normalize(vPosition);
+      // Use UV coordinates for stable cloud positioning
+      // This avoids stretching at poles
+      float theta = vUv.x * 3.14159 * 2.0 - 3.14159; // Longitude: -PI to PI
+      float phi = (vUv.y - 0.5) * 3.14159; // Latitude: -PI/2 to PI/2
       
-      // Create sampling position that wraps properly on sphere
-      // Use UV coordinates combined with sphere normal for better distribution
-      vec3 pos = sphereNormal * 100.0; // Scale to sphere radius
-      pos *= 0.01; // Scale down for cloud features
+      // Convert to 3D position for noise sampling
+      vec3 spherePos;
+      spherePos.x = cos(phi) * cos(theta);
+      spherePos.y = sin(phi);
+      spherePos.z = cos(phi) * sin(theta);
+      
+      // Scale for cloud features
+      vec3 pos = spherePos * 50.0;
       
       // Calculate latitude for wind effects
-      float latitude = sphereNormal.y;
-      float theta = atan(sphereNormal.z, sphereNormal.x); // Longitude
+      float latitude = sin(phi);
       
       // Simulate trade winds with smooth transitions between zones
       float windOffset = 0.0;
@@ -163,10 +168,12 @@ export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, t
       // Add subtle turbulence
       float turbulence = noise3D(pos * 0.5 + vec3(time * 0.05)) * 0.2;
       
-      // Rotate the sampling position around Y axis for wind movement
-      float windAngle = windOffset * (1.0 + turbulence);
-      mat2 windRot = mat2(cos(windAngle), -sin(windAngle), sin(windAngle), cos(windAngle));
-      pos.xz = windRot * pos.xz;
+      // Apply wind by offsetting the longitude
+      theta += windOffset * (1.0 + turbulence);
+      
+      // Recalculate position with wind offset
+      pos.x = cos(phi) * cos(theta) * 50.0;
+      pos.z = cos(phi) * sin(theta) * 50.0;
       
       float cloud = 0.0;
       vec3 cloudColor = vec3(1.0);
@@ -174,10 +181,10 @@ export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, t
       if (cloudType < 0.5) {
         // Cumulus - highly varied puffy clouds with dynamic evolution
         
-        // Apply additional rotation for cumulus clouds
-        float cumulusWind = time * 0.06;
-        mat2 cumulusRot = mat2(cos(cumulusWind), -sin(cumulusWind), sin(cumulusWind), cos(cumulusWind));
-        pos.xz = cumulusRot * pos.xz;
+        // Apply additional movement for cumulus clouds
+        theta += time * 0.06;
+        pos.x = cos(phi) * cos(theta) * 50.0;
+        pos.z = cos(phi) * sin(theta) * 50.0;
         
         // Create varied aspect ratios and sizes by stretching position differently
         vec3 stretchedPos = pos;
