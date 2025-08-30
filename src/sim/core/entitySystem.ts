@@ -136,6 +136,13 @@ export class EntitySystem {
     if (childIdx >= this.cap || this.alive[childIdx]) {
       return false;
     }
+    
+    // Clear any leftover data to prevent ghosts
+    this.color[childIdx * 3] = 0;
+    this.color[childIdx * 3 + 1] = 0;
+    this.color[childIdx * 3 + 2] = 0;
+    this.pos[childIdx * 2] = -10000;
+    this.pos[childIdx * 2 + 1] = -10000;
 
     const base = parentIdx * GENE_COUNT;
     const parentGenes: GeneSpec = {

@@ -237,6 +237,16 @@ export class SimulationCore {
       const workerEnd = this.endIdx;
       for (let j = workerStart; j < workerEnd; j++) {
         if (!this.fullAlive![j]) {
+          // Clear any leftover data immediately to prevent ghosts
+          if (this.fullColor) {
+            this.fullColor[j * 3] = 0;
+            this.fullColor[j * 3 + 1] = 0;
+            this.fullColor[j * 3 + 2] = 0;
+          }
+          // Also reset position to prevent brief wrong location
+          this.fullPos![j * 2] = -10000;
+          this.fullPos![j * 2 + 1] = -10000;
+          
           // Spawn child near parent
           const px = this.fullPos![i * 2];
           const py = this.fullPos![i * 2 + 1];
@@ -271,7 +281,6 @@ export class SimulationCore {
           this.fullVel![j * 2] = Math.cos(ang) * childSpeed * 0.5;
           this.fullVel![j * 2 + 1] = Math.sin(ang) * childSpeed * 0.5;
           
-          this.fullAlive![j] = 1;
           this.fullEnergy![j] = energyConfig.start * 0.7;
           this.fullTribeId![j] = this.fullTribeId![i];
           
@@ -315,6 +324,9 @@ export class SimulationCore {
             this.fullColor[j * 3 + 1] = Math.floor((g + m) * 255);
             this.fullColor[j * 3 + 2] = Math.floor((b + m) * 255);
           }
+          
+          // Set alive flag LAST to ensure all data is ready before entity becomes visible
+          this.fullAlive![j] = 1;
           
           // Parent pays energy cost
           this.fullEnergy![i] -= 25;

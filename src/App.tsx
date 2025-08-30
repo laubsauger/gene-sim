@@ -23,7 +23,7 @@ function getDefaultInitParams(seed: number) {
     tribes: [
       {
         name: 'Warmongers',
-        count: 1000,
+        count: 3000,  // Increased for larger world
         spawn: { x: 1000, y: 1000, radius: 200, pattern: 'scattered' as const },
         genes: {
           speed: 90,
@@ -40,7 +40,7 @@ function getDefaultInitParams(seed: number) {
       },
       {
         name: 'Swarm',
-        count: 1000,
+        count: 4000,  // Larger herbivore population
         spawn: { x: 3000, y: 1000, radius: 200, pattern: 'herd' as const },
         genes: {
           speed: 25,
@@ -57,7 +57,7 @@ function getDefaultInitParams(seed: number) {
       },
       {
         name: 'Survivors',
-        count: 1000,
+        count: 3000,  // Medium population for balanced omnivores
         spawn: { x: 2000, y: 3000, radius: 200, pattern: 'adaptive' as const },
         genes: {
           speed: 65,

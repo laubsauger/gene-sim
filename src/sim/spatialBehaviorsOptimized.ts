@@ -297,11 +297,16 @@ export function efficientMovementOptimized(
                        (isOutnumbered || isAlone) && 
                        aggression < 0.7; // Only if not highly aggressive
   
-  // Fear mode for herbivores when predators are near
+  // Fear mode for herbivores when predators are near - BUT hunger overrides fear
   const herbivoreLevel = Math.max(0, -diet); // 0 to 1 for herbivore strength
+  const desperateForFood = myEnergy < 25; // Below 25 energy = desperate
+  const veryHungry = myEnergy < 40; // Below 40 = very hungry
+  
+  // Fear is suppressed when desperate for food
   const fearMode = herbivoreLevel > 0.3 && // Is significantly herbivorous
                    nearbyPredators > 0 && 
-                   groupSize < nearbyPredators * 3; // Need 3:1 ratio to feel safe
+                   groupSize < nearbyPredators * 3 && // Need 3:1 ratio to feel safe
+                   !desperateForFood; // Desperation overrides fear completely
   
   // Apply movement forces
   let vx = vel[i * 2];
@@ -336,12 +341,17 @@ export function efficientMovementOptimized(
       avoidY /= avoidMag;
       
       // Fear intensity based on group support and predator proximity
-      const fearIntensity = (1 - Math.min(1, groupSize / (nearbyPredators * 3))) * 
-                           (1 - Math.min(1, nearestPredatorDist / vision));
+      // BUT reduced significantly when hungry
+      const baseFearIntensity = (1 - Math.min(1, groupSize / (nearbyPredators * 3))) * 
+                                (1 - Math.min(1, nearestPredatorDist / vision));
       
-      // Apply strong avoidance force
-      vx += avoidX * speed * (0.4 + fearIntensity * 0.4);
-      vy += avoidY * speed * (0.4 + fearIntensity * 0.4);
+      // Hunger reduces fear response - starvation makes entities brave/desperate
+      const hungerBravery = veryHungry ? 0.3 : 1.0; // 70% reduction when very hungry
+      const fearIntensity = baseFearIntensity * hungerBravery;
+      
+      // Apply avoidance force (much weaker when hungry)
+      vx += avoidX * speed * (0.4 + fearIntensity * 0.4) * hungerBravery;
+      vy += avoidY * speed * (0.4 + fearIntensity * 0.4) * hungerBravery;
     }
   }
   
@@ -694,7 +704,8 @@ export function efficientMovementOptimized(
         const distSq = dx * dx + dy * dy;
         const dist = Math.sqrt(distSq);
         const hungerUrgency = (40 - myEnergy) / 40;
-        const urgency = 0.3 + hungerUrgency * 0.4;
+        // DESPERATE mode - maximum urgency when starving
+        const urgency = desperateForFood ? 0.9 : (0.3 + hungerUrgency * 0.4);
         foodForceX = (dx / dist) * speed * urgency;
         foodForceY = (dy / dist) * speed * urgency;
       } else {
@@ -768,11 +779,13 @@ export function efficientMovementOptimized(
   
   // DISPERSAL BEHAVIOR: If crowded area with no food, actively disperse
   // Check if we're in a situation where we should actively disperse
-  if (nearbyAllies > 3 && bestFood === 0 && myEnergy < 70) {
+  // When desperate, disperse even more aggressively
+  if (nearbyAllies > 2 && bestFood === 0 && myEnergy < 70) {
     // High competition, no food, and getting hungry - time to disperse!
     const competitionPressure = Math.min(nearbyAllies / 10, 1.0); // 0-1 based on crowd size
     const hungerPressure = (70 - myEnergy) / 70; // 0-1 based on hunger level
-    const dispersalUrgency = (competitionPressure + hungerPressure) * 0.5;
+    // Desperate entities disperse with maximum urgency
+    const dispersalUrgency = desperateForFood ? 0.9 : (competitionPressure + hungerPressure) * 0.5;
     
     // Calculate dispersal direction away from crowd center
     let dispersalX = 0, dispersalY = 0;
@@ -822,16 +835,20 @@ export function efficientMovementOptimized(
     vy *= scale;
   }
   
-  // Apply crowd dispersal forces when stressed
-  if (crowdStress > 0.3) {
-    // Strong separation forces to prevent clumping
-    const dispersalStrength = Math.pow(crowdStress, 2) * speed * 0.5;
+  // Apply crowd dispersal forces when stressed - BUT NOT when desperate for food
+  // Desperate entities will push through crowds to reach food
+  if (crowdStress > 0.3 && !desperateForFood) {
+    // Hunger reduces crowd aversion - desperate entities don't care about personal space
+    const hungerReduction = veryHungry ? 0.3 : 1.0; // 70% reduction when very hungry
+    
+    // Strong separation forces to prevent clumping (unless desperate)
+    const dispersalStrength = Math.pow(crowdStress, 2) * speed * 0.5 * hungerReduction;
     vx += separateX * dispersalStrength;
     vy += separateY * dispersalStrength;
     
-    // Add some random movement to break up patterns
+    // Add some random movement to break up patterns (unless desperate)
     if (crowdStress > 0.5) {
-      const jitter = crowdStress * speed * 0.2;
+      const jitter = crowdStress * speed * 0.2 * hungerReduction;
       vx += (rand() - 0.5) * jitter;
       vy += (rand() - 0.5) * jitter;
     }

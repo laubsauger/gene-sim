@@ -69,11 +69,11 @@ export const defaultGenes: GeneSpec = {
   speed: 15,  // More reasonable default speed
   vision: 20,
   metabolism: 0.15,
-  reproChance: 0.008,  
+  reproChance: 0.012,  // Slightly higher base reproduction for larger world
   colorHue: 180,
   aggression: 0.3,
   cohesion: 0.5,
   foodStandards: 0.3,
-  diet: -0.5,
+  diet: -0.5,  // Default to herbivore
   viewAngle: 120, // 120 degree field of view by default
 };

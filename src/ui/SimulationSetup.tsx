@@ -69,7 +69,7 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
         speed: 8 + rng() * 6,  // 8-14 units/s
         vision: 40 + rng() * 30,
         metabolism: 0.08 + rng() * 0.12,
-        reproChance: 0.012 + rng() * 0.018, // Higher reproduction
+        reproChance: 0.018 + rng() * 0.022, // Much higher reproduction for herbivores
         aggression: 0.1 + rng() * 0.2,
         cohesion: 0.5 + rng() * 0.25, // Max 0.75
         diet: -1.0 + rng() * 0.3, // -1.0 to -0.7 (strong herbivore)
@@ -77,7 +77,6 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
         viewAngle: 120 + rng() * 60,
         colorHue: 90 + rng() * 60 // Green spectrum
       }
-      // Adaptive spawn will create herds for herbivores automatically
     },
     // Another herbivore variant
     {
@@ -86,7 +85,7 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
         speed: 10 + rng() * 5,  // 10-15 units/s
         vision: 50 + rng() * 30,
         metabolism: 0.1 + rng() * 0.1,
-        reproChance: 0.01 + rng() * 0.015,
+        reproChance: 0.015 + rng() * 0.02,  // High reproduction for herbivores
         aggression: 0.05 + rng() * 0.15,
         cohesion: 0.55 + rng() * 0.2, // Max 0.75
         diet: -0.9 + rng() * 0.3, // -0.9 to -0.6 (herbivore)
@@ -94,7 +93,6 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
         viewAngle: 140 + rng() * 40,
         colorHue: 120 + rng() * 40 // Yellow-green spectrum
       }
-      // Adaptive spawn will create herds for herbivores automatically
     },
     // Mostly herbivore omnivores
     {
@@ -103,7 +101,7 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
         speed: 12 + rng() * 6,  // 12-18 units/s
         vision: 35 + rng() * 25,
         metabolism: 0.12 + rng() * 0.08,
-        reproChance: 0.008 + rng() * 0.012,
+        reproChance: 0.01 + rng() * 0.01,   // Moderate reproduction for omnivores
         aggression: 0.2 + rng() * 0.3,
         cohesion: 0.4 + rng() * 0.3, // Max 0.7
         diet: -0.6 + rng() * 0.4, // -0.6 to -0.2 (herbivore-leaning omnivore)
@@ -111,7 +109,6 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
         viewAngle: 110 + rng() * 40,
         colorHue: 180 + rng() * 60 // Blue spectrum
       }
-      // Already uses adaptive by default
     },
     // Balanced Omnivores
     {
@@ -120,7 +117,7 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
         speed: 14 + rng() * 7,  // 14-21 units/s
         vision: 30 + rng() * 40,
         metabolism: 0.12 + rng() * 0.13,
-        reproChance: 0.008 + rng() * 0.012,
+        reproChance: 0.009 + rng() * 0.009,  // Moderate reproduction for omnivores
         aggression: 0.3 + rng() * 0.3,
         cohesion: 0.3 + rng() * 0.4, // Max 0.7
         diet: -0.4 + rng() * 0.5, // -0.4 to 0.1 (mostly herbivore omnivore)
@@ -128,7 +125,6 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
         viewAngle: 100 + rng() * 40,
         colorHue: 200 + rng() * 40 // Cyan spectrum
       }
-      // Already uses adaptive by default
     },
     // Opportunistic Omnivores (slight carnivore tendency - rare)
     {
@@ -137,7 +133,7 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
         speed: 15 + rng() * 5,  // 15-20 units/s
         vision: 45 + rng() * 25,
         metabolism: 0.14 + rng() * 0.1,
-        reproChance: 0.006 + rng() * 0.008,
+        reproChance: 0.007 + rng() * 0.008,  // Lower reproduction for scavengers
         aggression: 0.4 + rng() * 0.3,
         cohesion: 0.2 + rng() * 0.3, // Max 0.5
         diet: -0.2 + rng() * 0.5, // -0.2 to 0.3 (omnivore with slight carnivore potential)
@@ -145,7 +141,6 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
         viewAngle: 130 + rng() * 40,
         colorHue: 270 + rng() * 60 // Purple spectrum
       }
-      // Adaptive spawn will scatter omnivores/carnivores automatically
     },
     // Rare mild carnivore (only occasionally appears)
     {
@@ -154,15 +149,14 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
         speed: 18 + rng() * 5,  // 18-23 units/s - fast but not crazy
         vision: 50 + rng() * 30, // Reduced vision
         metabolism: 0.18 + rng() * 0.12, // Higher metabolism cost
-        reproChance: 0.004 + rng() * 0.006, // Lower reproduction
-        aggression: 0.5 + rng() * 0.3, // Reduced aggression
+        reproChance: 0.003 + rng() * 0.004,  // Much lower reproduction for carnivores
+        aggression: 0.6 + rng() * 0.3, // Higher aggression for carnivores
         cohesion: 0.4 + rng() * 0.3, // Max 0.7
-        diet: 0.2 + rng() * 0.4, // 0.2 to 0.6 (mild carnivore, not pure)
+        diet: 0.3 + rng() * 0.5, // 0.3 to 0.8 (stronger carnivore tendency)
         foodStandards: 0.1 + rng() * 0.2,
         viewAngle: 90 + rng() * 40, // Narrower vision
         colorHue: 0 + rng() * 30 // Red spectrum
       }
-      // Adaptive spawn will scatter carnivores automatically
     }
   ];
 
@@ -217,10 +211,26 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
   const usedHues = new Set<number>();
   
   for (const archetype of selectedArchetypes) {
-    // Hunters get smaller initial population
-    const isHunter = archetype.name === 'Hunters';
-    const baseCount = isHunter ? 400 : 800;
-    const varCount = isHunter ? 200 : 400;
+    // Adjust population based on diet type for natural ecosystem balance
+    // In larger world (4096x4096), we want much larger populations
+    const diet = archetype.genes.diet || -0.5;
+    const isHerbivore = diet < -0.5;  // Strong herbivores
+    const isCarnivore = diet > 0.2;   // Carnivore tendency
+
+    // Herbivores: largest populations (65% of total ~40k target)
+    // Omnivores: medium populations (25% of total)
+    // Carnivores: smallest populations (10% of total)
+    let baseCount, varCount;
+    if (isHerbivore) {
+      baseCount = 2500;  // Was 800
+      varCount = 1500;   // Was 400
+    } else if (isCarnivore) {
+      baseCount = 800;   // Was 400
+      varCount = 400;    // Was 200
+    } else {
+      baseCount = 1500;  // Was 800
+      varCount = 800;    // Was 400
+    }
     const tribeCount = baseCount + Math.floor(rng() * varCount);
     
     // Scale spawn radius with population to avoid overcrowding
@@ -262,8 +272,8 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
       spawn: {
         x: worldWidth / 2 + Math.cos(angle) * distance,
         y: worldHeight / 2 + Math.sin(angle) * distance,
-        radius: finalSpawnRadius
-        // Pattern defaults to 'adaptive' which adjusts based on diet
+        radius: finalSpawnRadius,
+        pattern: 'adaptive' as const  // Explicitly set adaptive pattern for diet-based clustering
       },
       genes: finalGenes
     });
@@ -275,16 +285,32 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
 
 export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onConfigChange, simMode, onModeChange }: SimulationSetupProps) {
   const [seed, setSeed] = useState(Date.now());
-  const [tribes, setTribes] = useState(() => generateTribesFromSeed(Date.now(), 8000, 8000));
+
+  // Generate food parameters from seed with modest variation
+  const generateFoodParams = (seed: number) => {
+    const rng = seededRandom(seed);
+    // Modest variation around defaults
+    const scale = 110 + (rng() - 0.5) * 44;  // 88-132 (±20%)
+    const threshold = 0.55 + (rng() - 0.5) * 0.2;  // 0.45-0.65 (more scarcity)
+    // Complexity can now be very low (smooth) to moderate (noisy)
+    // Range from 0.25 to 1.25, centered at 0.75
+    const frequency = 0.75 + (rng() - 0.5) * 1.0;  // 0.25-1.25 (allows smooth to complex patterns)
+    return { scale, threshold, frequency };
+  };
+
+  // Initialize food parameters from seed
+  const initialFoodParams = generateFoodParams(seed);
+
+  const [tribes, setTribes] = useState(() => generateTribesFromSeed(seed, 8000, 8000));
   const [worldWidth, setWorldWidth] = useState(8000);
   const [worldHeight, setWorldHeight] = useState(8000);
   const [foodCols, setFoodCols] = useState(512);
   const [foodRows, setFoodRows] = useState(512);
   const [foodRegen, setFoodRegen] = useState(0.35); // ~7 seconds to fully regrow
   const [foodCapacity, setFoodCapacity] = useState(7);
-  const [foodDistScale, setFoodDistScale] = useState(35);
-  const [foodDistThreshold, setFoodDistThreshold] = useState(0.65);
-  const [foodDistFrequency, setFoodDistFrequency] = useState(3);
+  const [foodDistScale, setFoodDistScale] = useState(initialFoodParams.scale);  // Island size (default ~110)
+  const [foodDistThreshold, setFoodDistThreshold] = useState(initialFoodParams.threshold);  // Scarcity (default ~0.55, higher = more scarce)
+  const [foodDistFrequency, setFoodDistFrequency] = useState(initialFoodParams.frequency);  // Complexity (default ~0.75, lower = smoother)
   const [maxEntities, setMaxEntities] = useState(120000);
   const [startEnergy, setStartEnergy] = useState(50);
   const [maxEnergy, setMaxEnergy] = useState(100);
@@ -419,6 +445,13 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
     setSeed(newSeed);
     const newTribes = generateTribesFromSeed(newSeed, worldWidth, worldHeight);
     setTribes(newTribes);
+
+    // Generate and apply food parameters from seed
+    const foodParams = generateFoodParams(newSeed);
+    setFoodDistScale(foodParams.scale);
+    setFoodDistThreshold(foodParams.threshold);
+    setFoodDistFrequency(foodParams.frequency);
+
     if (onSeedChange) onSeedChange(newSeed);
     // Force immediate update
     if (!isRunning) {
@@ -1013,7 +1046,8 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                       </div>
                       <div style={{ marginTop: '8px' }}>
                         <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                          Regen Rate ({foodRegen.toFixed(2)} - ~{Math.round(1/foodRegen)}s to regrow)
+                          Regen Rate
+                          <span style={{ color: '#4a5568', fontSize: '10px', marginLeft: '4px' }}>({foodRegen.toFixed(2)} - ~{Math.round(1 / foodRegen)}s)</span>
                         </label>
                         <StyledSlider
                           min={0.01}
@@ -1034,7 +1068,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                       <div>
                         <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                          Island Size ({foodDistScale})
+                          Island Size ({foodDistScale.toFixed(0)})
                         </label>
                         <StyledSlider
                           min={1}
@@ -1058,7 +1092,8 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                     </div>
                     <div style={{ marginTop: '8px' }}>
                       <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                        Scarcity ({foodDistThreshold.toFixed(2)} - {foodDistThreshold < 0.4 ? 'very abundant' : foodDistThreshold < 0.4 ? 'abundant' : foodDistThreshold < 0.7 ? 'moderate' : foodDistThreshold <= 1 ? 'scarce' : 'very scarce'})
+                        Scarcity
+                        <span style={{ color: '#4a5568', fontSize: '10px', marginLeft: '4px' }}>({foodDistThreshold.toFixed(2)})</span>
                       </label>
                       <StyledSlider
                         min={0.25}

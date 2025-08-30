@@ -360,10 +360,10 @@ function initializeAsSubWorker(msg: any) {
         clusteringStrength += herbivoreLevel * 0.4;
         // High cohesion increases clustering
         clusteringStrength += cohesion * 0.3;
-        // Carnivores spread out more (territorial)
-        clusteringStrength -= carnivoreLevel * 0.5;
+        // Carnivores spread out MUCH more (territorial)
+        clusteringStrength -= carnivoreLevel * 0.7;  // Increased from 0.5
         // High aggression reduces clustering (territorial behavior)
-        clusteringStrength -= aggression * 0.3;
+        clusteringStrength -= aggression * 0.4;  // Increased from 0.3
         
         // Clamp to reasonable range
         clusteringStrength = Math.max(0.1, Math.min(0.9, clusteringStrength));
@@ -386,13 +386,26 @@ function initializeAsSubWorker(msg: any) {
             y: herdCenterY + Math.sin(localAngle) * localR
           };
         } else if (clusteringStrength < 0.3) {
-          // Strong dispersal: territorial spacing
-          const minSpacing = 50 + carnivoreLevel * 100;
-          const dispersalAngle = rand() * Math.PI * 2;
-          const dispersalDist = minSpacing + rand() * radius * 1.5;
+          // Strong dispersal: territorial spacing for carnivores
+          // Create territories but keep them within reproduction range (~100 units vision)
+          // Form loose groups of 2-4 individuals that can still interact
+          const territoryGroups = Math.ceil(count / 3); // Small territorial groups
+          const groupIndex = Math.floor(index / 3);
+          const withinGroupIndex = index % 3;
+          
+          // Spread territory groups across a wider area
+          const territoryAngle = (groupIndex / territoryGroups) * Math.PI * 2 + rand() * 0.5;
+          const territoryDist = radius * (1.5 + rand() * 1.5); // 1.5x to 3x radius
+          const territoryCenterX = spawn.x + Math.cos(territoryAngle) * territoryDist;
+          const territoryCenterY = spawn.y + Math.sin(territoryAngle) * territoryDist;
+          
+          // Within each territory, space individuals but keep them in reproduction range
+          const localAngle = (withinGroupIndex / 3) * Math.PI * 2 + rand() * 0.3;
+          const localDist = 40 + rand() * 40; // 40-80 units apart (within vision range)
+          
           return {
-            x: spawn.x + Math.cos(dispersalAngle) * dispersalDist,
-            y: spawn.y + Math.sin(dispersalAngle) * dispersalDist
+            x: territoryCenterX + Math.cos(localAngle) * localDist,
+            y: territoryCenterY + Math.sin(localAngle) * localDist
           };
         } else {
           // Moderate clustering: natural distribution with slight grouping
