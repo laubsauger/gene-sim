@@ -48,27 +48,26 @@ const fragmentShader = `
   void main() {
     if (vAlive < 0.5) discard;
     
-    // Check if entity is on front side of planet
-    vec3 toCam = normalize(cameraPosition - vWorldPos);
-    vec3 fromCenter = normalize(vWorldPos);  // From planet center to entity
-    float facing = dot(toCam, fromCenter);
+    // Check if entity is on visible side of planet
+    vec3 entityDir = normalize(vWorldPos);  // Direction from origin to entity
+    vec3 cameraDir = normalize(cameraPosition);  // Direction from origin to camera
+    float dotProduct = dot(entityDir, cameraDir);
     
-    // Only show entities on the hemisphere facing the camera
-    if (facing < -0.05) discard;  // Hide entities on back side with small margin
+    // Show entities on hemisphere facing camera (positive dot product)
+    if (dotProduct < -0.1) discard;  // Hide on far side
     
     // Create circular points
     vec2 center = gl_PointCoord - vec2(0.5);
     float dist = length(center);
     if (dist > 0.5) discard;
     
-    // Soft edges with gentler fade based on facing angle
-    float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
-    alpha *= smoothstep(-0.05, 0.3, facing);  // Gentler fade at edges
+    // Simple solid points with slight fade at edges
+    float alpha = 1.0 - smoothstep(0.4, 0.5, dist);
     
-    // Add slight glow effect
-    vec3 finalColor = vColor * (1.0 + (1.0 - dist) * 0.3);
+    // Slight fade at horizon
+    alpha *= smoothstep(-0.1, 0.1, dotProduct) * 0.8 + 0.2;
     
-    gl_FragColor = vec4(finalColor, alpha);
+    gl_FragColor = vec4(vColor, alpha);
   }
 `;
 
@@ -120,7 +119,7 @@ export function EntityPoints3D({
       pos,
       worldWidth,
       worldHeight,
-      planetRadius * 1.001  // Slightly above planet surface to avoid z-fighting with food
+      planetRadius * 1.002  // Slightly above planet surface
     );
     
     // Update position attribute
@@ -164,9 +163,9 @@ export function EntityPoints3D({
           size: { value: pointSize * 1.8 }  // Good visibility
         }}
         transparent
-        depthWrite={false}  // Don't write depth for transparent points
+        depthWrite={false}  // Don't write depth for points
         depthTest={true}    // Test depth for planet occlusion
-        blending={THREE.AdditiveBlending}  // Additive for glow effect
+        blending={THREE.NormalBlending}  // Normal blending for proper visibility
       />
     </points>
   );

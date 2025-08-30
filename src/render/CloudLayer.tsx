@@ -69,19 +69,31 @@ export function CloudLayer({ planetRadius, layerIndex, cloudCount, cloudType }: 
       // Orient cloud to follow sphere curvature
       const normal = position.clone().normalize();
       
-      // Make cloud lay flat on the surface by aligning its local up (Y) with the surface normal
-      // But we want clouds to be flat, so we align Z-axis with normal instead
-      quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+      // Create a tangent plane at this point on the sphere
+      // Choose a random tangent vector perpendicular to the normal
+      const tangent1 = new THREE.Vector3();
+      if (Math.abs(normal.y) < 0.9) {
+        tangent1.crossVectors(normal, new THREE.Vector3(0, 1, 0)).normalize();
+      } else {
+        tangent1.crossVectors(normal, new THREE.Vector3(1, 0, 0)).normalize();
+      }
+      const tangent2 = new THREE.Vector3().crossVectors(normal, tangent1).normalize();
       
-      // Add random rotation around normal for variety
+      // Create rotation matrix from tangent space
+      const rotMatrix = new THREE.Matrix4();
+      rotMatrix.makeBasis(tangent1, tangent2, normal);
+      quaternion.setFromRotationMatrix(rotMatrix);
+      
+      // Add random rotation in the tangent plane for variety
+      const randomAngle = Math.random() * Math.PI * 2;
       const randomRotation = new THREE.Quaternion();
-      randomRotation.setFromAxisAngle(normal, Math.random() * Math.PI * 2);
+      randomRotation.setFromAxisAngle(normal, randomAngle);
       quaternion.multiply(randomRotation);
       
       matrix.compose(
         position,
         quaternion,
-        new THREE.Vector3(scale, scale * cloudConfig.verticalScale, scale)
+        new THREE.Vector3(scale, scale, scale * cloudConfig.verticalScale)
       );
       
       positions.push(matrix);
@@ -202,16 +214,24 @@ export function CloudLayer({ planetRadius, layerIndex, cloudCount, cloudType }: 
       
       cloud *= roundness;
       
-      // Only render clouds on front side of planet
+      // Fade clouds based on facing angle
       vec3 toCam = normalize(cameraPosition - vWorldPos);
       vec3 fromCenter = normalize(vWorldPos);  // From planet center to cloud
       float facing = dot(toCam, fromCenter);
-      if (facing < 0.0) discard;  // Hide clouds on back side
+      
+      // Hide clouds completely on far back side
+      if (facing < -0.1) discard;
+      
+      // Fade clouds near edges and back side
+      float facingFade = smoothstep(-0.1, 0.3, facing);
       
       // Apply opacity and fade edges
-      float alpha = cloud * opacity * vOpacity;
+      float alpha = cloud * opacity * vOpacity * facingFade;
       
-      gl_FragColor = vec4(color, alpha);
+      // Darken clouds on back side
+      vec3 finalColor = color * (0.3 + 0.7 * facingFade);
+      
+      gl_FragColor = vec4(finalColor, alpha);
     }
   `;
   

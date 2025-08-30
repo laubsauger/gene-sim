@@ -20,7 +20,7 @@ export function PlanetSphere({ radius, worldWidth, worldHeight }: PlanetSpherePr
   });
   
   return (
-    <mesh ref={meshRef}>
+    <mesh ref={meshRef} receiveShadow>
       <sphereGeometry args={[radius, 64, 64]} />
       <meshStandardMaterial
         color="#1a4d2e"

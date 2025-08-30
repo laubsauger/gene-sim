@@ -6,7 +6,7 @@ import { EntityPoints3D } from './EntityPoints3D';
 import { PlanetSphere } from './PlanetSphere';
 import { Starfield } from './Starfield';
 import { Sun, Moon, OrbitLine } from './CelestialBodies';
-import { CloudSystem } from './CloudLayer';
+import { CloudSystemShell } from './CloudLayerShell';
 import type { SimClient } from '../client/setupSimClientHybrid';
 
 const PLANET_RADIUS = 500;
@@ -32,10 +32,20 @@ function FPSTracker({ client }: { client: SimClient }) {
   return null;
 }
 
-// Atmosphere effect component that aligns with sun
+// Atmosphere effect component  
 function Atmosphere({ radius, sunRotation }: { radius: number; sunRotation: number }) {
-  const atmosphereRadius = radius * 1.12; // Slightly smaller to avoid dark edges
+  const atmosphereRadius = radius * 1.15; // Larger for better coverage
   const meshRef = useRef<THREE.Mesh>(null);
+  
+  // Calculate sun position in world space matching the actual sun position
+  const sunPosition = useMemo(() => {
+    const sunDistance = radius * 8;
+    return new THREE.Vector3(
+      Math.cos(sunRotation) * sunDistance,
+      radius * 2,
+      Math.sin(sunRotation) * sunDistance * 0.5
+    );
+  }, [sunRotation, radius]);
   
   const vertexShader = `
     varying vec3 vNormal;
@@ -55,85 +65,65 @@ function Atmosphere({ radius, sunRotation }: { radius: number; sunRotation: numb
     varying vec3 vNormal;
     varying vec3 vPosition;
     varying vec3 vWorldPosition;
-    uniform vec3 sunDirection;
-    uniform float sunRotation;
+    uniform vec3 sunPosition;
     
     void main() {
       vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
       vec3 normal = normalize(vNormal);
       
-      // Calculate sun direction based on rotation angle
-      float angle = sunRotation;
-      vec3 dynamicSunDir = vec3(
-        cos(angle),
-        0.3,
-        sin(angle)
-      );
-      dynamicSunDir = normalize(dynamicSunDir);
+      // Calculate sun direction from planet center to sun
+      vec3 sunDir = normalize(sunPosition);
       
-      // Sun angle relative to this point on the atmosphere
-      float sunDot = dot(normal, dynamicSunDir);
+      // How much this point faces the sun
+      float sunDot = dot(normal, sunDir);
       
-      // View angle (for limb darkening/brightening)
+      // View angle for limb effects
       float viewDot = dot(viewDirection, normal);
       float limb = 1.0 - abs(viewDot);
+      float atmosphereThickness = pow(limb, 0.6);
       
-      // Atmosphere thickness based on viewing angle
-      float atmosphereThickness = pow(limb, 0.5);
+      // Color palette
+      vec3 dayBlue = vec3(0.3, 0.6, 1.0);
+      vec3 sunsetOrange = vec3(1.0, 0.5, 0.15);
+      vec3 twilightRed = vec3(0.7, 0.25, 0.1);
+      vec3 duskBlue = vec3(0.1, 0.15, 0.3);
+      vec3 nightDark = vec3(0.01, 0.02, 0.05);
       
-      // Natural gradient progression based on sun angle
-      // sunDot: 1 = direct sun, 0 = terminator, -1 = opposite side
+      // Continuous gradient based on sun angle
+      vec3 color;
+      float intensity;
       
-      // Define color zones with smooth transitions
-      vec3 dayBlue = vec3(0.3, 0.6, 1.0);           // Clear blue sky
-      vec3 sunsetOrange = vec3(1.0, 0.6, 0.2);      // Orange sunset
-      vec3 sunriseRed = vec3(0.8, 0.3, 0.15);       // Deep red sunrise
-      vec3 duskBlue = vec3(0.15, 0.2, 0.4);         // Dusky blue
-      vec3 nightDark = vec3(0.02, 0.03, 0.08);      // Near darkness
-      
-      vec3 atmosphereColor = vec3(0.0);
-      float alpha = atmosphereThickness;
-      
-      if (sunDot > 0.3) {
-        // Full daylight - clear blue
-        atmosphereColor = dayBlue;
-        alpha *= 0.8;
-      }
-      else if (sunDot > 0.0) {
-        // Approaching sunset - blue to orange gradient
-        float t = (0.3 - sunDot) / 0.3;  // 0 at day, 1 at terminator
-        atmosphereColor = mix(dayBlue, sunsetOrange, smoothstep(0.0, 1.0, t));
-        alpha *= 0.7 + 0.3 * t;  // Slightly stronger at terminator
-      }
-      else if (sunDot > -0.1) {
-        // Sunset/sunrise band - orange to red
-        float t = -sunDot / 0.1;  // 0 at terminator, 1 at -0.1
-        atmosphereColor = mix(sunsetOrange, sunriseRed, smoothstep(0.0, 1.0, t));
-        alpha *= 0.8 + 0.2 * limb;  // Enhance at limb for glow effect
-      }
-      else if (sunDot > -0.3) {
-        // Red to dusky blue transition
-        float t = (-0.1 - sunDot) / 0.2;  // 0 at -0.1, 1 at -0.3
-        atmosphereColor = mix(sunriseRed, duskBlue, smoothstep(0.0, 1.0, t));
-        alpha *= 0.5 * (1.0 - t * 0.5);
-      }
-      else if (sunDot > -0.6) {
-        // Dusky blue to night transition
-        float t = (-0.3 - sunDot) / 0.3;  // 0 at -0.3, 1 at -0.6
-        atmosphereColor = mix(duskBlue, nightDark, smoothstep(0.0, 1.0, t));
-        alpha *= 0.25 * (1.0 - t * 0.5);
-      }
-      else {
-        // Full night - almost darkness
-        atmosphereColor = nightDark;
-        alpha *= 0.1;
+      if (sunDot > 0.5) {
+        // Day side
+        color = dayBlue;
+        intensity = 0.7;
+      } else if (sunDot > 0.0) {
+        // Approaching sunset
+        float t = 1.0 - (sunDot * 2.0); // 0 at 0.5, 1 at 0
+        color = mix(dayBlue, sunsetOrange, t);
+        intensity = 0.6 + t * 0.2;
+      } else if (sunDot > -0.2) {
+        // Sunset/twilight band
+        float t = -sunDot * 5.0; // 0 at 0, 1 at -0.2
+        color = mix(sunsetOrange, twilightRed, t);
+        intensity = 0.8 - t * 0.3;
+      } else if (sunDot > -0.5) {
+        // Twilight to dusk
+        float t = (-0.2 - sunDot) / 0.3; // 0 at -0.2, 1 at -0.5
+        color = mix(twilightRed, duskBlue, t);
+        intensity = 0.5 - t * 0.3;
+      } else {
+        // Night side
+        float t = min(1.0, (-0.5 - sunDot) * 2.0);
+        color = mix(duskBlue, nightDark, t);
+        intensity = 0.2 - t * 0.15;
       }
       
-      // Extra glow at the terminator band specifically at the limb
-      float terminatorGlow = 1.0 - smoothstep(-0.1, 0.1, abs(sunDot));
-      terminatorGlow *= limb * limb;  // Only visible at limb
-      atmosphereColor = mix(atmosphereColor, sunsetOrange * 1.5, terminatorGlow * 0.3);
-      alpha += terminatorGlow * 0.2;
+      // Add terminator glow
+      float terminator = exp(-15.0 * abs(sunDot)) * limb * limb;
+      color = mix(color, sunsetOrange, terminator * 0.3);
+      
+      float alpha = atmosphereThickness * intensity;
       
       // Fade at extreme viewing angles
       alpha *= 1.0 - smoothstep(0.85, 1.0, limb);
@@ -141,25 +131,39 @@ function Atmosphere({ radius, sunRotation }: { radius: number; sunRotation: numb
       // Overall opacity control
       alpha *= 0.35;
       
-      gl_FragColor = vec4(atmosphereColor, alpha);
+      gl_FragColor = vec4(color, alpha);
     }
   `;
   
+  // Update sun position uniform every frame
+  useFrame(() => {
+    if (meshRef.current) {
+      const material = meshRef.current.material as THREE.ShaderMaterial;
+      if (material.uniforms.sunPosition) {
+        const sunDistance = radius * 8;
+        material.uniforms.sunPosition.value.set(
+          Math.cos(sunRotation) * sunDistance,
+          radius * 2,
+          Math.sin(sunRotation) * sunDistance * 0.5
+        );
+      }
+    }
+  });
+  
   return (
     <mesh ref={meshRef} scale={[1, 1, 1]}>
-      <sphereGeometry args={[atmosphereRadius, 32, 32]} />
+      <sphereGeometry args={[atmosphereRadius, 64, 64]} />
       <shaderMaterial
         vertexShader={vertexShader}
         fragmentShader={fragmentShader}
         uniforms={{
-          sunDirection: { value: new THREE.Vector3(1, 0.3, 0.5).normalize() },
-          sunRotation: { value: sunRotation }
+          sunPosition: { value: sunPosition }
         }}
         transparent
         side={THREE.BackSide}
         depthWrite={false}
-        depthTest={true}  // Enable depth test for moon occlusion
-        blending={THREE.AdditiveBlending}  // Additive for smooth glow
+        depthTest={true}
+        blending={THREE.AdditiveBlending}
       />
     </mesh>
   );
@@ -295,6 +299,7 @@ export function Scene3D({ client, world, entitySize }: Scene3DProps) {
   return (
     <Canvas
       style={{ background: '#000' }}
+      shadows
       gl={{ 
         antialias: true,
         logarithmicDepthBuffer: true, // Helps with z-fighting
@@ -333,31 +338,39 @@ export function Scene3D({ client, world, entitySize }: Scene3DProps) {
         intensity={0.15}
       />
       
-      {/* Planet base */}
-      <PlanetSphere
-        radius={PLANET_RADIUS}
-        worldWidth={world.width}
-        worldHeight={world.height}
-      />
+      {/* Render order 0: Planet base */}
+      <group renderOrder={0}>
+        <PlanetSphere
+          radius={PLANET_RADIUS}
+          worldWidth={world.width}
+          worldHeight={world.height}
+        />
+      </group>
       
-      {/* Atmosphere (render order 1 - after planet, before moon) */}
-      <Atmosphere 
-        radius={PLANET_RADIUS} 
-        sunRotation={sunRotation}
-      />
+      {/* Render order 1: Entities on planet surface */}
+      <group renderOrder={1}>
+        <EntitiesLayer3D
+          client={client}
+          entitySize={entitySize}
+          worldWidth={world.width}
+          worldHeight={world.height}
+        />
+      </group>
       
-      {/* Entities - render on planet surface */}
-      <EntitiesLayer3D
-        client={client}
-        entitySize={entitySize}
-        worldWidth={world.width}
-        worldHeight={world.height}
-      />
+      {/* Render order 2: Cloud layers */}
+      <group renderOrder={2}>
+        <CloudSystemShell planetRadius={PLANET_RADIUS} />
+      </group>
       
-      {/* Cloud layers - after entities */}
-      <CloudSystem planetRadius={PLANET_RADIUS} />
+      {/* Render order 3: Atmosphere */}
+      <group renderOrder={3}>
+        <Atmosphere 
+          radius={PLANET_RADIUS} 
+          sunRotation={sunRotation}
+        />
+      </group>
       
-      {/* Solar system with sun and moon - render last so moon is in front */}
+      {/* Solar system with sun and moon - no explicit render order, uses per-object settings */}
       <SolarSystem 
         planetRadius={PLANET_RADIUS} 
         onRotationUpdate={setSunRotation}

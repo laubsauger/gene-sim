@@ -77,12 +77,20 @@ export function Sun({ position }: SunProps) {
   
   return (
     <group position={position} ref={groupRef}>
-      {/* Directional light */}
+      {/* Directional light with shadows */}
       <directionalLight
         position={[0, 0, 100]}
         intensity={1.5}
         color="#fff5e6"
         target-position={[0, 0, 0]}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-left={-1500}
+        shadow-camera-right={1500}
+        shadow-camera-top={1500}
+        shadow-camera-bottom={-1500}
+        shadow-camera-near={1}
+        shadow-camera-far={5000}
       />
       
       {/* Point light for glow */}
@@ -200,8 +208,8 @@ export function Moon({ planetRadius, orbitRadius, orbitSpeed }: MoonProps) {
   const moonRadius = planetRadius * 0.22; // Smaller moon
   
   return (
-    <group ref={groupRef}>
-      <mesh ref={meshRef} position={[orbitRadius, 50, 0]} castShadow receiveShadow>
+    <group ref={groupRef} renderOrder={10}>
+      <mesh ref={meshRef} position={[orbitRadius, 50, 0]} castShadow receiveShadow renderOrder={10}>
         <sphereGeometry args={[moonRadius, 32, 32]} />
         <meshStandardMaterial
           ref={moonMaterialRef}
