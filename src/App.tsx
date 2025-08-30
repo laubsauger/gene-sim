@@ -8,8 +8,8 @@ import { GameOver } from './ui/GameOver';
 import type { SimStats } from './sim/types';
 import './App.css';
 
-const WORLD_WIDTH = 4000;
-const WORLD_HEIGHT = 4000;
+const WORLD_WIDTH = 8000;
+const WORLD_HEIGHT = 8000;
 
 function getDefaultInitParams(seed: number) {
   return {

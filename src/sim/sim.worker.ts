@@ -64,7 +64,7 @@ let simHz = 0;
 let renderFps = 0;
 let accumulator = 0;
 const FIXED_TIMESTEP = 1 / 60;
-const MAX_STEPS_PER_FRAME = 4;
+const MAX_STEPS_PER_FRAME = 16; // Allow up to 16x speed (960Hz)
 
 // Performance tracking
 let stepCount = 0;
@@ -423,9 +423,18 @@ function initializeAsSubWorker(msg: any) {
         const energyVariance = baseEnergy * 0.3; // ±30% variance
         fullEnergy[totalIdx] = Math.max(10, baseEnergy + (rand() - 0.5) * 2 * energyVariance);
         
-        // Random initial age (0-20% of typical lifespan to spread out deaths)
-        const typicalLifespan = 80; // seconds at base metabolism
-        fullAge[totalIdx] = rand() * (typicalLifespan * 0.2);
+        // Random initial age (0-60% of typical lifespan to spread out deaths)
+        // Lifespan varies by metabolism - higher metabolism = shorter life
+        const metabolismFactor = 1 + (geneSpec.metabolism - 0.15) * 2; // 0.7x to 1.3x based on metabolism
+        const baseLifespan = 80; // seconds at average metabolism
+        const adjustedLifespan = baseLifespan / metabolismFactor; // 60-115 seconds typically
+        
+        // Start entities at different life stages for natural population dynamics
+        // Using a beta distribution-like approach for more realistic age distribution
+        const ageRoll1 = rand();
+        const ageRoll2 = rand();
+        const ageFactor = (ageRoll1 + ageRoll2) / 2; // Tends toward middle values
+        fullAge[totalIdx] = ageFactor * adjustedLifespan * 0.6; // 0-60% of their expected lifespan
         fullOrientation[totalIdx] = rand() * Math.PI * 2;
         
         // Set color based on tribe
@@ -481,18 +490,21 @@ function initializeAsSubWorker(msg: any) {
 function startMainLoop() {
   lastTime = performance.now();
   
-  // Workers don't support requestAnimationFrame, use setInterval
-  const targetFPS = 60;
-  const interval = 1000 / targetFPS;
-  
-  setInterval(() => {
+  // Use setTimeout(0) for maximum performance
+  const tick = () => {
     try {
       mainLoop(performance.now());
+      // Schedule next tick immediately
+      setTimeout(tick, 0);
     } catch (error) {
-      console.error(`[Worker ${workerId}] SetInterval callback crashed:`, error);
+      console.error(`[Worker ${workerId}] Main loop crashed:`, error);
       console.error(`[Worker ${workerId}] Stack:`, error.stack);
+      // Try to recover
+      setTimeout(tick, 16);
     }
-  }, interval);
+  };
+  
+  tick();
 }
 
 function mainLoop(now: number) {

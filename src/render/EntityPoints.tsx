@@ -65,15 +65,37 @@ export function EntityPoints({
           lightnessFactor = 1.0 - 0.3 * t; // Darken to 0.7 brightness
         }
         
-        // Apply lightness adjustment to color
-        // For lighter colors, we blend with white; for darker, we multiply
-        if (lightnessFactor > 1.0) {
-          // Lighter: blend with white
-          float blendFactor = (lightnessFactor - 1.0);
-          vColor = mix(aCol, vec3(1.0, 1.0, 1.0), blendFactor * 0.3);
+        // Color transitions based on age
+        if (ageValue < 0.2) {
+          // Very brief white birth flare (0.2 seconds)
+          vec3 birthColor = vec3(0.95, 0.95, 1.0); // Slightly blue-tinted white
+          float t = ageValue / 0.2; // Quick transition
+          // Mix from white to lighter tribe color
+          vec3 lightTribeColor = mix(aCol, vec3(1.0, 1.0, 1.0), 0.4); // 40% lighter
+          vColor = mix(birthColor, lightTribeColor, t);
+          scaleFactor = 0.5 + 0.2 * t; // Start very small
+        } else if (ageValue < 10.0) {
+          // Baby to young: lighter version of tribe color
+          float t = (ageValue - 0.2) / 9.8;
+          // Transition from 40% lighter to 15% lighter
+          float lightness = 0.4 - 0.25 * t;
+          vColor = mix(aCol, vec3(1.0, 1.0, 1.0), lightness);
+          scaleFactor = 0.7 + 0.2 * t; // Grow to 0.9
+        } else if (ageValue < 30.0) {
+          // Young to adult: from slightly light to normal
+          float t = (ageValue - 10.0) / 20.0;
+          float lightness = 0.15 - 0.15 * t; // From 15% lighter to normal
+          vColor = mix(aCol, vec3(1.0, 1.0, 1.0), lightness);
+          scaleFactor = 0.9 + 0.1 * t; // Grow to full size
+        } else if (ageValue < 60.0) {
+          // Adult: normal tribe color
+          vColor = aCol;
+          scaleFactor = 1.0;
         } else {
-          // Darker: multiply color
-          vColor = aCol * lightnessFactor;
+          // Elder: darker tribe color
+          float t = min(1.0, (ageValue - 60.0) / 40.0);
+          vColor = aCol * (1.0 - 0.3 * t); // Darken up to 30%
+          scaleFactor = 1.0;
         }
 
         // Account for perspective - make points scale with distance
@@ -169,7 +191,7 @@ export function EntityPoints({
         if (alive[i]) {
           const x = pos[i * 2];
           const y = pos[i * 2 + 1];
-          if (x < -100 || x > 4100 || y < -100 || y > 4100) { // World is 4000x4000, so slight margin
+          if (x < -100 || x > 10000 || y < -100 || y > 10000) { // Check for far out of bounds positions
             positionsOutOfBounds.push({ i, x: x.toFixed(1), y: y.toFixed(1) });
           }
         }
@@ -184,9 +206,15 @@ export function EntityPoints({
     const colAttr = new THREE.BufferAttribute(color, 3, true); // normalized for colors
     const aliveAttr = new THREE.BufferAttribute(alive, 1);
     
-    // Add age attribute if available
+    // Add age attribute if available, otherwise use a default
     if (age) {
       const ageAttr = new THREE.BufferAttribute(age, 1);
+      ageAttr.usage = THREE.DynamicDrawUsage;
+      geom.setAttribute('aAge', ageAttr);
+    } else {
+      // Create a default age buffer filled with zeros for newborns
+      const defaultAge = new Float32Array(count);
+      const ageAttr = new THREE.BufferAttribute(defaultAge, 1);
       ageAttr.usage = THREE.DynamicDrawUsage;
       geom.setAttribute('aAge', ageAttr);
     }

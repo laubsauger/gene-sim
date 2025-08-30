@@ -56,7 +56,7 @@ function seededRandom(seed: number) {
 }
 
 // Generate deterministic tribe configs based on seed
-function generateTribesFromSeed(seed: number): TribeInit[] {
+function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHeight: number = 6000): TribeInit[] {
   const rng = seededRandom(seed);
   const tribesCount = 3 + Math.floor(rng() * 2); // 3-4 tribes
   const tribes: TribeInit[] = [];
@@ -237,8 +237,9 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
     const angleOffset = rng() * Math.PI * 0.3; // Random offset up to 54 degrees
     const angle = (tribeIndex / tribesCount) * Math.PI * 2 + angleOffset;
     // Keep spawns well within world bounds but closer to center
-    const maxDistance = Math.min(1200, 2000 - finalSpawnRadius); // Don't spawn too close to edges
-    const distance = 600 + rng() * Math.min(500, maxDistance - 600);
+    const worldCenter = Math.min(worldWidth, worldHeight) / 2;
+    const maxDistance = Math.min(worldCenter * 0.6, worldCenter - finalSpawnRadius - 200); // Don't spawn too close to edges
+    const distance = worldCenter * 0.3 + rng() * Math.min(worldCenter * 0.25, maxDistance - worldCenter * 0.3);
     
     // Make sure colors are distinct - if too similar to existing, shift hue
     let finalGenes = { ...archetype.genes };
@@ -259,8 +260,8 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
       name: archetype.name,
       count: tribeCount,
       spawn: {
-        x: 2000 + Math.cos(angle) * distance,
-        y: 2000 + Math.sin(angle) * distance,
+        x: worldWidth / 2 + Math.cos(angle) * distance,
+        y: worldHeight / 2 + Math.sin(angle) * distance,
         radius: finalSpawnRadius
         // Pattern defaults to 'adaptive' which adjusts based on diet
       },
@@ -274,11 +275,11 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
 
 export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onConfigChange, simMode, onModeChange }: SimulationSetupProps) {
   const [seed, setSeed] = useState(Date.now());
-  const [tribes, setTribes] = useState(() => generateTribesFromSeed(Date.now()));
-  const [worldWidth, setWorldWidth] = useState(4000);
-  const [worldHeight, setWorldHeight] = useState(4000);
-  const [foodCols, setFoodCols] = useState(256);
-  const [foodRows, setFoodRows] = useState(256);
+  const [tribes, setTribes] = useState(() => generateTribesFromSeed(Date.now(), 8000, 8000));
+  const [worldWidth, setWorldWidth] = useState(8000);
+  const [worldHeight, setWorldHeight] = useState(8000);
+  const [foodCols, setFoodCols] = useState(512);
+  const [foodRows, setFoodRows] = useState(512);
   const [foodRegen, setFoodRegen] = useState(0.35); // ~7 seconds to fully regrow
   const [foodCapacity, setFoodCapacity] = useState(7);
   const [foodDistScale, setFoodDistScale] = useState(35);
@@ -388,6 +389,21 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
     }
   }, [initialized, isRunning, updateConfig, seed, maxEntities, worldWidth, worldHeight,
     foodCols, foodRows, foodRegen, foodCapacity, foodDistScale, foodDistThreshold, foodDistFrequency, tribes, startEnergy, maxEnergy, reproEnergy, allowHybrids]);
+  
+  // Regenerate tribes when world size changes
+  useEffect(() => {
+    if (initialized && !isRunning) {
+      const newTribes = generateTribesFromSeed(seed, worldWidth, worldHeight);
+      setTribes(newTribes);
+    }
+  }, [worldWidth, worldHeight, seed, initialized, isRunning]);
+  
+  // Send live food parameter updates when simulation is running
+  useEffect(() => {
+    if (isRunning && client) {
+      client.updateFoodParams(foodCapacity, foodRegen);
+    }
+  }, [isRunning, client, foodCapacity, foodRegen]);
 
   // Initial config on mount
   useEffect(() => {
@@ -401,7 +417,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   const randomizeSeed = () => {
     const newSeed = Date.now() + Math.floor(Math.random() * 1000000);
     setSeed(newSeed);
-    const newTribes = generateTribesFromSeed(newSeed);
+    const newTribes = generateTribesFromSeed(newSeed, worldWidth, worldHeight);
     setTribes(newTribes);
     if (onSeedChange) onSeedChange(newSeed);
     // Force immediate update
@@ -530,7 +546,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                   onChange={(e) => {
                     const newSeed = Number(e.target.value);
                     setSeed(newSeed);
-                    const newTribes = generateTribesFromSeed(newSeed);
+                    const newTribes = generateTribesFromSeed(newSeed, worldWidth, worldHeight);
                     setTribes(newTribes);
                     if (onSeedChange) onSeedChange(newSeed);
                     // Force immediate update with new values
@@ -609,7 +625,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                       <span style={{ color: '#a0aec0', fontSize: '12px', flexShrink: 0 }}>Pop:</span>
                       <StyledSlider
                         min={100}
-                        max={5000}
+                        max={20000}
                         step={100}
                         value={tribe.count}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateTribe(i, { ...tribe, count: Number(e.target.value) })}

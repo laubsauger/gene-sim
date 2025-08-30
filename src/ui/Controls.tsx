@@ -44,7 +44,7 @@ const StyledSlider = ({ min, max, value, onChange, step = 1, style = {}, steps, 
           pointerEvents: 'none',
         }}>
           {stepLabels.map((label, index) => {
-            const showLabel = steps && (index === 0 || index === 3 || index === 6 || index === 9); // Show key speeds: 0.1×, 1×, 8×, 64×
+            const showLabel = steps && (index === 0 || index === 3 || index === 6 || index === 8); // Show key speeds: 0.1×, 1×, 8×, 16×
             return showLabel ? (
               <span
                 key={index}
@@ -76,7 +76,7 @@ export interface ControlsProps {
 export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeChange }: ControlsProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const speedValues = [0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
+  const speedValues = [0.1, 0.25, 0.5, 1, 2, 4, 8, 12, 16];
   const [sliderValue, setSliderValue] = useState(3); // Start at index 3 (1×)
 
   const handlePause = () => {

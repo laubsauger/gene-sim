@@ -149,7 +149,7 @@ class SimulationCoordinator {
     aliveView.fill(0);
     
     // Initialize positions far outside the world to prevent dead entities from rendering
-    // World is 4000x4000, so put them at -10000,-10000
+    // Put them at -10000,-10000 (well outside any reasonable world bounds)
     const posView = new Float32Array(this.sharedBuffers.positions);
     for (let i = 0; i < count; i++) {
       posView[i * 2] = -10000;     // x

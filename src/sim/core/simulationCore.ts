@@ -155,13 +155,24 @@ export class SimulationCore {
     }
     this.fullEnergy![i] -= energyConfig.metabolismBase * metabolism * dt;
 
-    // Death checks
-    const maxAge = this.fullAge ? this.fullAge[i] > energyConfig.deathAge : false;
+    // Death checks - lifespan varies by metabolism and individual variance
+    // Higher metabolism = shorter life (more wear and tear)
+    const metabolismFactor = 1 + (metabolism - 0.15) * 2; // 0.7x to 1.3x based on metabolism
+    // Add individual variance using entity index as seed for consistency
+    const individualVariance = 0.8 + 0.4 * ((i * 0.618033988749895) % 1); // 0.8x to 1.2x variance
+    const adjustedDeathAge = (energyConfig.deathAge / metabolismFactor) * individualVariance;
+    const maxAge = this.fullAge ? this.fullAge[i] > adjustedDeathAge : false;
     if (this.fullEnergy![i] <= 0 || maxAge) {
       this.fullAlive![i] = 0;
       this.deathsByTribe[this.fullTribeId![i]]++;
       if (this.fullEnergy![i] <= 0) {
         this.starvedByTribe[this.fullTribeId![i]]++;
+      }
+      // Clear color to prevent ghost colors on respawn
+      if (this.fullColor) {
+        this.fullColor[i * 3] = 0;
+        this.fullColor[i * 3 + 1] = 0;
+        this.fullColor[i * 3 + 2] = 0;
       }
       return;
     }
@@ -272,7 +283,7 @@ export class SimulationCore {
             this.fullOrientation[j] = ang;
           }
           
-          // Set child color based on tribe (not parent's current color which may be age-dimmed)
+          // Set child color based on tribe (shader will handle birth flare)
           if (this.fullColor) {
             const tribeHue = this.tribeColors[this.fullTribeId![i]] || 0;
             // Convert HSL to RGB for the tribe's base color
@@ -336,6 +347,10 @@ export class SimulationCore {
       if (this.entities.energy[i] <= 0) {
         this.starvedByTribe[this.entities.tribeId[i]]++;
       }
+      // Clear color to prevent ghost colors on respawn
+      this.entities.color[i * 3] = 0;
+      this.entities.color[i * 3 + 1] = 0;
+      this.entities.color[i * 3 + 2] = 0;
       return;  // Exit early for dead entities
     }
       
@@ -446,6 +461,17 @@ export class SimulationCore {
             foodStandards: 0,
             diet: 0,
             viewAngle: 0
+          },
+          distribution: {
+            speed: { min: Infinity, max: -Infinity, std: 0, values: [] },
+            vision: { min: Infinity, max: -Infinity, std: 0, values: [] },
+            metabolism: { min: Infinity, max: -Infinity, std: 0, values: [] },
+            aggression: { min: Infinity, max: -Infinity, std: 0, values: [] },
+            cohesion: { min: Infinity, max: -Infinity, std: 0, values: [] },
+            reproChance: { min: Infinity, max: -Infinity, std: 0, values: [] },
+            foodStandards: { min: Infinity, max: -Infinity, std: 0, values: [] },
+            diet: { min: Infinity, max: -Infinity, std: 0, values: [] },
+            viewAngle: { min: Infinity, max: -Infinity, std: 0, values: [] },
           }
         };
       }
@@ -455,55 +481,148 @@ export class SimulationCore {
       byTribe[tribeName].averageAge += this.entities.age[i];
       byTribe[tribeName].averageEnergy += this.entities.energy[i];
       
-      // Accumulate gene values for mean calculation
+      // Accumulate gene values for mean calculation and collect for distribution
       const base = i * GENE_COUNT;
-      byTribe[tribeName].mean.speed += this.entities.genes[base];
-      byTribe[tribeName].mean.vision += this.entities.genes[base + 1];
-      byTribe[tribeName].mean.metabolism += this.entities.genes[base + 2];
-      byTribe[tribeName].mean.reproChance += this.entities.genes[base + 3];
-      byTribe[tribeName].mean.aggression += this.entities.genes[base + 4];
-      byTribe[tribeName].mean.cohesion += this.entities.genes[base + 5];
-      byTribe[tribeName].mean.foodStandards += this.entities.genes[base + 6];
-      byTribe[tribeName].mean.diet += this.entities.genes[base + 7];
-      byTribe[tribeName].mean.viewAngle += this.entities.genes[base + 8];
+      const genes = [
+        this.entities.genes[base],
+        this.entities.genes[base + 1],
+        this.entities.genes[base + 2],
+        this.entities.genes[base + 3],
+        this.entities.genes[base + 4],
+        this.entities.genes[base + 5],
+        this.entities.genes[base + 6],
+        this.entities.genes[base + 7],
+        this.entities.genes[base + 8]
+      ];
+      
+      byTribe[tribeName].mean.speed += genes[0];
+      byTribe[tribeName].mean.vision += genes[1];
+      byTribe[tribeName].mean.metabolism += genes[2];
+      byTribe[tribeName].mean.reproChance += genes[3];
+      byTribe[tribeName].mean.aggression += genes[4];
+      byTribe[tribeName].mean.cohesion += genes[5];
+      byTribe[tribeName].mean.foodStandards += genes[6];
+      byTribe[tribeName].mean.diet += genes[7];
+      byTribe[tribeName].mean.viewAngle += genes[8];
+      
+      // Collect values for distribution
+      byTribe[tribeName].distribution.speed.values.push(genes[0]);
+      byTribe[tribeName].distribution.vision.values.push(genes[1]);
+      byTribe[tribeName].distribution.metabolism.values.push(genes[2]);
+      byTribe[tribeName].distribution.reproChance.values.push(genes[3]);
+      byTribe[tribeName].distribution.aggression.values.push(genes[4]);
+      byTribe[tribeName].distribution.cohesion.values.push(genes[5]);
+      byTribe[tribeName].distribution.foodStandards.values.push(genes[6]);
+      byTribe[tribeName].distribution.diet.values.push(genes[7]);
+      byTribe[tribeName].distribution.viewAngle.values.push(genes[8]);
     }
     
-    // Calculate averages
+    // Calculate averages and distributions for each tribe
     Object.values(byTribe).forEach((tribe: any) => {
       if (tribe.population > 0) {
         tribe.averageAge /= tribe.population;
         tribe.averageEnergy /= tribe.population;
         
-        // Calculate mean gene values
+        // Calculate mean gene values and distributions
         Object.keys(tribe.mean).forEach(key => {
           tribe.mean[key] /= tribe.population;
+          
+          // Calculate distribution stats for this trait
+          const dist = tribe.distribution[key];
+          if (dist.values.length > 0) {
+            dist.min = Math.min(...dist.values);
+            dist.max = Math.max(...dist.values);
+            
+            // Calculate standard deviation
+            const mean = tribe.mean[key];
+            const variance = dist.values.reduce((acc: number, val: number) => 
+              acc + Math.pow(val - mean, 2), 0) / dist.values.length;
+            dist.std = Math.sqrt(variance);
+            
+            // Remove values array to save memory
+            delete dist.values;
+          } else {
+            dist.min = 0;
+            dist.max = 0;
+            dist.std = 0;
+          }
         });
       }
     });
     
-    // Calculate global means
+    // Calculate global means and distributions
     const globalMean = {
       speed: 0, vision: 0, metabolism: 0, aggression: 0,
       cohesion: 0, reproChance: 0, foodStandards: 0,
       diet: 0, viewAngle: 0
     };
     
+    const globalDistribution: Record<string, {min: number, max: number, std: number, values: number[]}> = {
+      speed: { min: Infinity, max: -Infinity, std: 0, values: [] },
+      vision: { min: Infinity, max: -Infinity, std: 0, values: [] },
+      metabolism: { min: Infinity, max: -Infinity, std: 0, values: [] },
+      aggression: { min: Infinity, max: -Infinity, std: 0, values: [] },
+      cohesion: { min: Infinity, max: -Infinity, std: 0, values: [] },
+      reproChance: { min: Infinity, max: -Infinity, std: 0, values: [] },
+      foodStandards: { min: Infinity, max: -Infinity, std: 0, values: [] },
+      diet: { min: Infinity, max: -Infinity, std: 0, values: [] },
+      viewAngle: { min: Infinity, max: -Infinity, std: 0, values: [] },
+    };
+    
+    // Collect values for distribution calculation
     if (population > 0) {
-      Object.values(byTribe).forEach((tribe: any) => {
-        if (tribe.population > 0) {
-          Object.keys(globalMean).forEach(key => {
-            globalMean[key as keyof typeof globalMean] += tribe.mean[key] * tribe.population;
-          });
-        }
-      });
+      // First pass: collect all values
+      for (let i = 0; i < this.count; i++) {
+        if (!this.entities.alive[i]) continue;
+        
+        const base = i * GENE_COUNT;
+        globalDistribution.speed.values.push(this.entities.genes[base]);
+        globalDistribution.vision.values.push(this.entities.genes[base + 1]);
+        globalDistribution.metabolism.values.push(this.entities.genes[base + 2]);
+        globalDistribution.reproChance.values.push(this.entities.genes[base + 3]);
+        globalDistribution.aggression.values.push(this.entities.genes[base + 4]);
+        globalDistribution.cohesion.values.push(this.entities.genes[base + 5]);
+        globalDistribution.foodStandards.values.push(this.entities.genes[base + 6]);
+        globalDistribution.diet.values.push(this.entities.genes[base + 7]);
+        globalDistribution.viewAngle.values.push(this.entities.genes[base + 8]);
+      }
       
+      // Calculate means and distributions
       Object.keys(globalMean).forEach(key => {
-        globalMean[key as keyof typeof globalMean] /= population;
+        const dist = globalDistribution[key];
+        if (dist.values.length > 0) {
+          // Calculate mean
+          const sum = dist.values.reduce((a, b) => a + b, 0);
+          const mean = sum / dist.values.length;
+          globalMean[key as keyof typeof globalMean] = mean;
+          
+          // Find min/max
+          dist.min = Math.min(...dist.values);
+          dist.max = Math.max(...dist.values);
+          
+          // Calculate standard deviation
+          const variance = dist.values.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / dist.values.length;
+          dist.std = Math.sqrt(variance);
+        } else {
+          dist.min = 0;
+          dist.max = 0;
+          dist.std = 0;
+        }
       });
     }
     
     // Get food statistics if food system exists
     const foodStats = this.foodSystem ? this.foodSystem.getFoodStats() : undefined;
+    
+    // Clean up distribution for return (remove values array)
+    const cleanDistribution: Record<string, {min: number, max: number, std: number}> = {};
+    Object.keys(globalDistribution).forEach(key => {
+      cleanDistribution[key] = {
+        min: globalDistribution[key].min === Infinity ? 0 : globalDistribution[key].min,
+        max: globalDistribution[key].max === -Infinity ? 0 : globalDistribution[key].max,
+        std: globalDistribution[key].std
+      };
+    });
     
     return {
       population,
@@ -512,17 +631,7 @@ export class SimulationCore {
       food: foodStats,
       global: {
         mean: globalMean,
-        distribution: {
-          speed: { min: 0, max: 0, std: 0 },
-          vision: { min: 0, max: 0, std: 0 },
-          metabolism: { min: 0, max: 0, std: 0 },
-          aggression: { min: 0, max: 0, std: 0 },
-          cohesion: { min: 0, max: 0, std: 0 },
-          reproChance: { min: 0, max: 0, std: 0 },
-          foodStandards: { min: 0, max: 0, std: 0 },
-          diet: { min: 0, max: 0, std: 0 },
-          viewAngle: { min: 0, max: 0, std: 0 },
-        }
+        distribution: cleanDistribution as any
       }
     };
   }

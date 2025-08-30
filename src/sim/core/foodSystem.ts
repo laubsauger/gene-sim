@@ -130,43 +130,54 @@ export class FoodSystem {
     
     for (let i = 0; i < this.foodGrid.length; i++) {
       // Only regrow where food was originally present (maxCapacity > 0)
-      if (this.foodMaxCapacity[i] > 0 && this.foodGrid[i] < this.foodMaxCapacity[i]) {
+      const initialCapacity = this.foodMaxCapacity[i];
+      if (initialCapacity > 0) {
         // Skip if no regrowth
         if (this.regen === 0) continue;
         
-        // Simple cooldown phase (20% of total time, min 0.2s, max 5s)
-        if (this.foodCooldown[i] > 0) {
-          this.foodCooldown[i] -= dt;
-          continue;
+        // Calculate enhanced capacity for cells with initial capacity
+        // Low-capacity cells can grow to be more useful over time
+        let targetCapacity = initialCapacity;
+        
+        // If initial capacity was below consumable threshold, boost it
+        if (initialCapacity < 0.3) {
+          // Grow to at least consumable (0.3) plus a small bonus based on initial value
+          targetCapacity = 0.3 + initialCapacity * 0.5;
+        } else {
+          // Higher capacity cells can grow 20% beyond their initial value
+          targetCapacity = initialCapacity * 1.2;
         }
         
-        // Calculate total regrowth time based on regen value
-        // regen=0.5 -> 1 + 9 * 0.5 = 5.5s, regen=1.0 -> 1s, regen=0.1 -> 9.1s
-        const totalRegenTime = this.regen > 0 ? 1 + 18 * (1 - this.regen) : Number.MAX_VALUE;
-        
-        // Handle very fast regrowth case
-        if (this.regen >= 0.95) {
-          // Nearly instant regrowth
-          this.foodGrid[i] = this.foodMaxCapacity[i];
-          continue;
-        }
-        
-        // Growth phase - simple linear growth
-        const growthRate = this.foodMaxCapacity[i] / (totalRegenTime * 0.8); // 80% of time is growth
-        const growth = growthRate * dt;
-        
-        // Apply growth directly for smoother visual updates
-        const oldValue = this.foodGrid[i];
-        this.foodGrid[i] = Math.min(
-          this.foodMaxCapacity[i],
-          this.foodGrid[i] + growth
-        );
-        
-        // Debug logging extremely rarely (once every ~100,000 updates)
-        if (Math.random() < 0.000001 && growth > 0) {
-          console.log(`[FoodSystem] Regrowth: ${oldValue.toFixed(3)} -> ${this.foodGrid[i].toFixed(3)}, rate=${growthRate.toFixed(4)}, time=${totalRegenTime.toFixed(1)}s, regen=${this.regen}`);
+        // Only process if below target capacity
+        if (this.foodGrid[i] < targetCapacity) {
+          // Simple cooldown phase (20% of total time)
+          if (this.foodCooldown[i] > 0) {
+            this.foodCooldown[i] -= dt;
+            continue;
+          }
+          
+          // Calculate total regrowth time based on regen value
+          const totalRegenTime = this.regen > 0 ? 1 + 18 * (1 - this.regen) : Number.MAX_VALUE;
+          
+          // Handle very fast regrowth case
+          if (this.regen >= 0.95) {
+            // Nearly instant regrowth to target capacity
+            this.foodGrid[i] = targetCapacity;
+            continue;
+          }
+          
+          // Growth phase - simple linear growth
+          const growthRate = targetCapacity / (totalRegenTime * 0.8); // 80% of time is growth
+          const growth = growthRate * dt;
+          
+          // Apply growth directly for smoother visual updates
+          this.foodGrid[i] = Math.min(
+            targetCapacity,
+            this.foodGrid[i] + growth
+          );
         }
       }
+      // Cells with zero initial capacity stay at zero - no growth in barren areas
     }
     
     // Sync all changes to the shared buffer for rendering
@@ -190,8 +201,8 @@ export class FoodSystem {
         }
       }
       
-      // Debug log occasionally
-      if (Math.random() < 0.0002) { // Log very rarely to avoid spam
+      // Debug log very rarely
+      if (Math.random() < 0.00001) { // Log extremely rarely
         console.log(`[FoodSystem] Update: ${nonZeroCount} cells with food, max value: ${maxValue.toFixed(3)}, capacity: ${this.capacityParameter}`);
       }
     }
@@ -209,7 +220,10 @@ export class FoodSystem {
     
     // When using shared buffer, check and update it directly
     if (this.foodGridUint8 && this.isShared) {
-      const currentValue = this.foodGridUint8[idx] / 255;
+      const baseScale = 85;
+      const richnessMultiplier = Math.max(0.3, this.capacityParameter / 3);
+      const scaleFactor = baseScale * richnessMultiplier;
+      const currentValue = this.foodGridUint8[idx] / scaleFactor;
       if (currentValue > 0.3) {
         // Use atomic-like operation to consume food
         this.foodGridUint8[idx] = 0;
