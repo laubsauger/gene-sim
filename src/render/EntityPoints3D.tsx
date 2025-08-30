@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { batchWorldToSphere } from './utils/coordinateTransform';
@@ -13,6 +13,7 @@ interface EntityPoints3DProps {
   worldWidth: number;
   worldHeight: number;
   planetRadius: number;
+  sunRotation?: number;
 }
 
 const vertexShader = `
@@ -44,6 +45,7 @@ const fragmentShader = `
   varying vec3 vColor;
   varying float vAlive;
   varying vec3 vWorldPos;
+  uniform vec3 sunPosition;
   
   void main() {
     if (vAlive < 0.5) discard;
@@ -53,8 +55,15 @@ const fragmentShader = `
     vec3 cameraDir = normalize(cameraPosition);  // Direction from origin to camera
     float dotProduct = dot(entityDir, cameraDir);
     
-    // Show entities on hemisphere facing camera (positive dot product)
-    if (dotProduct < -0.1) discard;  // Hide on far side
+    // Show entities on hemisphere facing camera (positive dot product means same side)
+    if (dotProduct < 0.0) discard;  // Hide on far side
+
+    // Calculate sun lighting
+    vec3 sunDir = normalize(sunPosition);
+    float sunLight = dot(entityDir, sunDir);
+
+    // Darken entities on night side
+    float lighting = 0.2 + 0.8 * smoothstep(-0.2, 0.2, sunLight);
     
     // Create circular points
     vec2 center = gl_PointCoord - vec2(0.5);
@@ -67,7 +76,10 @@ const fragmentShader = `
     // Slight fade at horizon
     alpha *= smoothstep(-0.1, 0.1, dotProduct) * 0.8 + 0.2;
     
-    gl_FragColor = vec4(vColor, alpha);
+    // Apply lighting to color
+    vec3 litColor = vColor * lighting;
+
+    gl_FragColor = vec4(litColor, alpha);
   }
 `;
 
@@ -80,12 +92,19 @@ export function EntityPoints3D({
   pointSize,
   worldWidth,
   worldHeight,
-  planetRadius
+  planetRadius,
+  sunRotation = 0
 }: EntityPoints3DProps) {
   const meshRef = useRef<THREE.Points>(null);
   const geometryRef = useRef<THREE.BufferGeometry>(null);
   const positions3DRef = useRef<Float32Array>(new Float32Array(count * 3));
   
+  // Static sun position
+  const sunPosition = useMemo(() => {
+    const sunDistance = planetRadius * 8;
+    return new THREE.Vector3(sunDistance, planetRadius * 2, sunDistance * 0.5);
+  }, [planetRadius]);
+
   // Initialize geometry
   useEffect(() => {
     if (!geometryRef.current) return;
@@ -119,7 +138,7 @@ export function EntityPoints3D({
       pos,
       worldWidth,
       worldHeight,
-      planetRadius * 1.002  // Slightly above planet surface
+      planetRadius * 1.001 // Just slightly above planet surface
     );
     
     // Update position attribute
@@ -149,22 +168,23 @@ export function EntityPoints3D({
     // Update bounding sphere for proper culling
     geometry.boundingSphere = new THREE.Sphere(
       new THREE.Vector3(0, 0, 0),
-      planetRadius * 1.1
+      planetRadius * 1.01
     );
   });
   
   return (
-    <points ref={meshRef}>
+    <points ref={meshRef} renderOrder={10}>
       <bufferGeometry ref={geometryRef} />
       <shaderMaterial
         vertexShader={vertexShader}
         fragmentShader={fragmentShader}
         uniforms={{
-          size: { value: pointSize * 1.8 }  // Good visibility
+          size: { value: pointSize * 0.8 },  // Reduced size for more realistic scale
+          sunPosition: { value: sunPosition }
         }}
         transparent
         depthWrite={false}  // Don't write depth for points
-        depthTest={true}    // Test depth for planet occlusion
+        depthTest={false}   // Disable to prevent planet occlusion
         blending={THREE.NormalBlending}  // Normal blending for proper visibility
       />
     </points>

@@ -25,38 +25,47 @@ export function Starfield({ count = 5000, radius = 8000 }: StarfieldProps) {
       positions[i * 3 + 1] = y;
       positions[i * 3 + 2] = z;
       
-      // Star colors - mostly white with some slight color variations
+      // Star colors - more vibrant with better variation
       const starType = Math.random();
-      if (starType < 0.7) {
-        // White stars
-        colors[i * 3] = 1;
-        colors[i * 3 + 1] = 1;
-        colors[i * 3 + 2] = 1;
-      } else if (starType < 0.85) {
-        // Blueish stars
-        colors[i * 3] = 0.8;
-        colors[i * 3 + 1] = 0.9;
-        colors[i * 3 + 2] = 1;
+      const brightness = 0.8 + Math.random() * 0.2; // Vary brightness
+      
+      if (starType < 0.6) {
+        // White/bright stars
+        colors[i * 3] = brightness;
+        colors[i * 3 + 1] = brightness;
+        colors[i * 3 + 2] = brightness;
+      } else if (starType < 0.75) {
+        // Blue giants
+        colors[i * 3] = 0.6 * brightness;
+        colors[i * 3 + 1] = 0.8 * brightness;
+        colors[i * 3 + 2] = 1.0 * brightness;
+      } else if (starType < 0.87) {
+        // Yellow stars
+        colors[i * 3] = 1.0 * brightness;
+        colors[i * 3 + 1] = 0.9 * brightness;
+        colors[i * 3 + 2] = 0.6 * brightness;
       } else if (starType < 0.95) {
-        // Yellowish stars
-        colors[i * 3] = 1;
-        colors[i * 3 + 1] = 0.95;
-        colors[i * 3 + 2] = 0.8;
+        // Orange stars
+        colors[i * 3] = 1.0 * brightness;
+        colors[i * 3 + 1] = 0.7 * brightness;
+        colors[i * 3 + 2] = 0.4 * brightness;
       } else {
-        // Reddish stars
-        colors[i * 3] = 1;
-        colors[i * 3 + 1] = 0.8;
-        colors[i * 3 + 2] = 0.7;
+        // Red giants
+        colors[i * 3] = 1.0 * brightness;
+        colors[i * 3 + 1] = 0.5 * brightness;
+        colors[i * 3 + 2] = 0.3 * brightness;
       }
       
-      // Vary star sizes - most are small, few are larger
+      // Vary star sizes - make them larger and more visible
       const sizeRand = Math.random();
-      if (sizeRand < 0.8) {
-        sizes[i] = Math.random() * 0.5 + 0.5; // Small stars: 0.5-1.0
-      } else if (sizeRand < 0.95) {
-        sizes[i] = Math.random() * 1 + 1; // Medium stars: 1.0-2.0
+      if (sizeRand < 0.7) {
+        sizes[i] = Math.random() * 1.5 + 1.0; // Small stars: 1.0-2.5
+      } else if (sizeRand < 0.9) {
+        sizes[i] = Math.random() * 2 + 2.5; // Medium stars: 2.5-4.5
+      } else if (sizeRand < 0.98) {
+        sizes[i] = Math.random() * 3 + 4; // Large stars: 4.0-7.0
       } else {
-        sizes[i] = Math.random() * 2 + 2; // Large stars: 2.0-4.0
+        sizes[i] = Math.random() * 4 + 6; // Very large stars: 6.0-10.0
       }
     }
     
@@ -73,8 +82,9 @@ export function Starfield({ count = 5000, radius = 8000 }: StarfieldProps) {
       vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
       gl_Position = projectionMatrix * mvPosition;
       
-      // Size based on distance for realistic appearance
-      gl_PointSize = size * (1000.0 / -mvPosition.z);
+      // Size based on distance but clamped for visibility
+      gl_PointSize = size * (2000.0 / -mvPosition.z);
+      gl_PointSize = clamp(gl_PointSize, 1.0, 20.0);
     }
   `;
   
@@ -91,12 +101,16 @@ export function Starfield({ count = 5000, radius = 8000 }: StarfieldProps) {
       
       // Create soft glow falloff
       float intensity = 1.0 - smoothstep(0.0, 0.5, dist);
-      intensity = pow(intensity, 2.0); // Sharper center, softer edges
+      intensity = pow(intensity, 1.5); // Brighter overall
       
-      // Add twinkle effect
-      float twinkle = 0.8 + 0.2 * sin(dist * 50.0);
+      // Stronger glow for better visibility
+      float glow = 1.0 + 0.3 * (1.0 - dist);
       
-      gl_FragColor = vec4(vColor * intensity * twinkle, intensity);
+      // Boost the alpha for better visibility against black background
+      float alpha = intensity * 1.2;
+      alpha = clamp(alpha, 0.0, 1.0);
+      
+      gl_FragColor = vec4(vColor * intensity * glow, alpha);
     }
   `;
   

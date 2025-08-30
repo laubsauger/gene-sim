@@ -75,30 +75,18 @@ export function Sun({ position }: SunProps) {
     }
   });
   
+  // Note: This sun's actual position in world space is: parent group rotation + local position
+  // The parent group (SolarSystem) rotates, so the sun orbits around the planet
   return (
     <group position={position} ref={groupRef}>
-      {/* Directional light with shadows */}
-      <directionalLight
-        position={[0, 0, 100]}
-        intensity={1.5}
-        color="#fff5e6"
-        target-position={[0, 0, 0]}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-1500}
-        shadow-camera-right={1500}
-        shadow-camera-top={1500}
-        shadow-camera-bottom={-1500}
-        shadow-camera-near={1}
-        shadow-camera-far={5000}
-      />
+      {/* Directional light moved to parent level and will be updated in useFrame */}
       
       {/* Point light for glow */}
       <pointLight
         intensity={0.8}
         color="#ffcc66"
         distance={5000}
-        decay={2}
+        decay={1}
       />
       
       {/* Main sun core */}
@@ -197,10 +185,10 @@ export function Moon({ planetRadius, orbitRadius, orbitSpeed }: MoonProps) {
         const phase = Math.cos(moonAngle - sunAngle);
         
         // Much darker on far side
-        moonMaterialRef.current.emissiveIntensity = Math.max(0, phase * 0.05);
-        // Also adjust main color darkness
-        const brightness = 0.3 + Math.max(0, phase) * 0.7;
-        moonMaterialRef.current.color = new THREE.Color(brightness * 0.7, brightness * 0.7, brightness * 0.7);
+        moonMaterialRef.current.emissiveIntensity = Math.max(0, phase * 0.02);
+        // Also adjust main color darkness - darker overall
+        const brightness = 0.15 + Math.max(0, phase) * 0.6;
+        moonMaterialRef.current.color = new THREE.Color(brightness * 0.6, brightness * 0.6, brightness * 0.6);
       }
     }
   });
@@ -208,8 +196,14 @@ export function Moon({ planetRadius, orbitRadius, orbitSpeed }: MoonProps) {
   const moonRadius = planetRadius * 0.22; // Smaller moon
   
   return (
-    <group ref={groupRef} renderOrder={10}>
-      <mesh ref={meshRef} position={[orbitRadius, 50, 0]} castShadow receiveShadow renderOrder={10}>
+    <group ref={groupRef}>
+      <mesh
+        ref={meshRef}
+        position={[orbitRadius, 50, 0]}
+        castShadow
+        receiveShadow
+        renderOrder={999}  // Render moon last (highest priority)
+      >
         <sphereGeometry args={[moonRadius, 32, 32]} />
         <meshStandardMaterial
           ref={moonMaterialRef}
@@ -218,7 +212,10 @@ export function Moon({ planetRadius, orbitRadius, orbitSpeed }: MoonProps) {
           metalness={0.02}
           emissive="#050505"
           emissiveIntensity={0.02}
-          bumpScale={0.02}
+          bumpScale={0.05}
+          transparent={false}  // Make moon opaque
+          depthWrite={true}    // Write to depth buffer
+          depthTest={true}     // Test depth
         >
           {/* Add procedural bump map for moon craters */}
           <canvasTexture
@@ -308,33 +305,5 @@ export function Moon({ planetRadius, orbitRadius, orbitSpeed }: MoonProps) {
         </meshStandardMaterial>
       </mesh>
     </group>
-  );
-}
-
-interface OrbitLineProps {
-  radius: number;
-  color?: string;
-  opacity?: number;
-}
-
-export function OrbitLine({ radius, color = '#ffffff', opacity = 0.2 }: OrbitLineProps) {
-  const points = [];
-  const segments = 64;
-  
-  for (let i = 0; i <= segments; i++) {
-    const angle = (i / segments) * Math.PI * 2;
-    points.push(new THREE.Vector3(
-      Math.cos(angle) * radius,
-      0,
-      Math.sin(angle) * radius
-    ));
-  }
-  
-  const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-  
-  return (
-    <line geometry={lineGeometry}>
-      <lineBasicMaterial color={color} transparent opacity={opacity} />
-    </line>
   );
 }

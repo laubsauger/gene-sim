@@ -21,13 +21,13 @@ export function PlanetSphere({ radius, worldWidth, worldHeight }: PlanetSpherePr
   
   return (
     <mesh ref={meshRef} receiveShadow>
-      <sphereGeometry args={[radius, 64, 64]} />
+      <sphereGeometry args={[radius, 128, 64]} />
       <meshStandardMaterial
-        color="#1a4d2e"
-        roughness={0.8}
-        metalness={0.2}
-        emissive="#0a1f13"
-        emissiveIntensity={0.1}
+        color="#2a5d3e"
+        roughness={0.95}
+        metalness={0.05}
+        emissive="#050a07"
+        emissiveIntensity={0.02}
       />
     </mesh>
   );

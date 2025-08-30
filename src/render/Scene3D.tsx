@@ -5,11 +5,13 @@ import * as THREE from 'three';
 import { EntityPoints3D } from './EntityPoints3D';
 import { PlanetSphere } from './PlanetSphere';
 import { Starfield } from './Starfield';
-import { Sun, Moon, OrbitLine } from './CelestialBodies';
-import { CloudSystemShell } from './CloudLayerShell';
+import { Sun, Moon } from './CelestialBodies';
+import { CloudSystemProcedural } from './CloudLayerProcedural';
+import { DebugArrows } from './DebugArrows';
 import type { SimClient } from '../client/setupSimClientHybrid';
 
 const PLANET_RADIUS = 500;
+const AXIAL_TILT = 23.5 * Math.PI / 180; // Earth's axial tilt
 
 // FPS tracking component (reused from Scene2D)
 function FPSTracker({ client }: { client: SimClient }) {
@@ -33,19 +35,8 @@ function FPSTracker({ client }: { client: SimClient }) {
 }
 
 // Atmosphere effect component  
-function Atmosphere({ radius, sunRotation }: { radius: number; sunRotation: number }) {
+function Atmosphere({ radius, staticSunPosition }: { radius: number; staticSunPosition: THREE.Vector3 }) {
   const atmosphereRadius = radius * 1.15; // Larger for better coverage
-  const meshRef = useRef<THREE.Mesh>(null);
-  
-  // Calculate sun position in world space matching the actual sun position
-  const sunPosition = useMemo(() => {
-    const sunDistance = radius * 8;
-    return new THREE.Vector3(
-      Math.cos(sunRotation) * sunDistance,
-      radius * 2,
-      Math.sin(sunRotation) * sunDistance * 0.5
-    );
-  }, [sunRotation, radius]);
   
   const vertexShader = `
     varying vec3 vNormal;
@@ -74,13 +65,16 @@ function Atmosphere({ radius, sunRotation }: { radius: number; sunRotation: numb
       // Calculate sun direction from planet center to sun
       vec3 sunDir = normalize(sunPosition);
       
-      // How much this point faces the sun
-      float sunDot = dot(normal, sunDir);
+      // The fragment's position on the sphere (normalized)
+      vec3 sphereNormal = normalize(vWorldPosition);
+
+      // How much this point on the sphere faces the sun
+      float sunDot = dot(sphereNormal, sunDir);
       
       // View angle for limb effects
       float viewDot = dot(viewDirection, normal);
       float limb = 1.0 - abs(viewDot);
-      float atmosphereThickness = pow(limb, 0.6);
+      float atmosphereThickness = pow(limb, 0.8);  // Softer falloff
       
       // Color palette
       vec3 dayBlue = vec3(0.3, 0.6, 1.0);
@@ -89,81 +83,69 @@ function Atmosphere({ radius, sunRotation }: { radius: number; sunRotation: numb
       vec3 duskBlue = vec3(0.1, 0.15, 0.3);
       vec3 nightDark = vec3(0.01, 0.02, 0.05);
       
-      // Continuous gradient based on sun angle
+      // Smooth continuous gradient based on sun angle
       vec3 color;
       float intensity;
       
-      if (sunDot > 0.5) {
+      // Use smoothstep for smoother transitions
+      if (sunDot > 0.3) {
         // Day side
-        color = dayBlue;
-        intensity = 0.7;
-      } else if (sunDot > 0.0) {
-        // Approaching sunset
-        float t = 1.0 - (sunDot * 2.0); // 0 at 0.5, 1 at 0
-        color = mix(dayBlue, sunsetOrange, t);
-        intensity = 0.6 + t * 0.2;
-      } else if (sunDot > -0.2) {
-        // Sunset/twilight band
-        float t = -sunDot * 5.0; // 0 at 0, 1 at -0.2
-        color = mix(sunsetOrange, twilightRed, t);
-        intensity = 0.8 - t * 0.3;
-      } else if (sunDot > -0.5) {
+        float t = smoothstep(0.3, 0.7, sunDot);
+        color = mix(vec3(0.4, 0.65, 1.0), dayBlue, t);
+        intensity = 0.6 + t * 0.1;
+      } else if (sunDot > -0.1) {
+        // Sunset transition - smooth blend
+        float t = (0.3 - sunDot) / 0.4;  // 0 at 0.3, 1 at -0.1
+        vec3 midColor = mix(dayBlue, sunsetOrange, smoothstep(0.0, 0.5, t));
+        color = mix(midColor, twilightRed, smoothstep(0.5, 1.0, t));
+        intensity = 0.7 - t * 0.2;
+      } else if (sunDot > -0.4) {
         // Twilight to dusk
-        float t = (-0.2 - sunDot) / 0.3; // 0 at -0.2, 1 at -0.5
-        color = mix(twilightRed, duskBlue, t);
-        intensity = 0.5 - t * 0.3;
+        float t = (-0.1 - sunDot) / 0.3;
+        color = mix(twilightRed, duskBlue, smoothstep(0.0, 1.0, t));
+        intensity = 0.5 - t * 0.25;
       } else {
         // Night side
-        float t = min(1.0, (-0.5 - sunDot) * 2.0);
+        float t = smoothstep(-0.4, -0.8, sunDot);
         color = mix(duskBlue, nightDark, t);
-        intensity = 0.2 - t * 0.15;
+        intensity = 0.25 - t * 0.2;
       }
       
-      // Add terminator glow
-      float terminator = exp(-15.0 * abs(sunDot)) * limb * limb;
+      // Add terminator glow based on sun position
+      float terminator = exp(-8.0 * abs(sunDot));  // Glow strength at terminator
+      terminator *= limb * limb;  // Only at edge of sphere from camera view
       color = mix(color, sunsetOrange, terminator * 0.3);
       
       float alpha = atmosphereThickness * intensity;
       
-      // Fade at extreme viewing angles
-      alpha *= 1.0 - smoothstep(0.85, 1.0, limb);
+      // Remove the view angle fade that's causing the black band
+      // Just use a softer edge transition
+      alpha *= 1.0 - smoothstep(0.9, 1.0, limb);
       
       // Overall opacity control
       alpha *= 0.35;
       
+      // Prevent rendering of nearly transparent pixels
+      if (alpha < 0.005) discard;
+
       gl_FragColor = vec4(color, alpha);
     }
   `;
   
-  // Update sun position uniform every frame
-  useFrame(() => {
-    if (meshRef.current) {
-      const material = meshRef.current.material as THREE.ShaderMaterial;
-      if (material.uniforms.sunPosition) {
-        const sunDistance = radius * 8;
-        material.uniforms.sunPosition.value.set(
-          Math.cos(sunRotation) * sunDistance,
-          radius * 2,
-          Math.sin(sunRotation) * sunDistance * 0.5
-        );
-      }
-    }
-  });
-  
   return (
-    <mesh ref={meshRef} scale={[1, 1, 1]}>
+    <mesh scale={[1, 1, 1]} renderOrder={100}>
       <sphereGeometry args={[atmosphereRadius, 64, 64]} />
       <shaderMaterial
         vertexShader={vertexShader}
         fragmentShader={fragmentShader}
         uniforms={{
-          sunPosition: { value: sunPosition }
+          sunPosition: { value: staticSunPosition }
         }}
         transparent
         side={THREE.BackSide}
         depthWrite={false}
-        depthTest={true}
-        blending={THREE.AdditiveBlending}
+        depthTest={false}  // Disable to prevent planet occlusion
+        blending={THREE.NormalBlending}
       />
     </mesh>
   );
@@ -173,12 +155,14 @@ function EntitiesLayer3D({
   client, 
   entitySize,
   worldWidth,
-  worldHeight 
+  worldHeight,
+  staticSunPosition
 }: { 
   client: SimClient; 
   entitySize: number;
   worldWidth: number;
   worldHeight: number;
+  staticSunPosition: THREE.Vector3;
 }) {
   const { buffers } = client;
   const [ready, setReady] = useState(false);
@@ -221,7 +205,47 @@ function EntitiesLayer3D({
       worldWidth={worldWidth}
       worldHeight={worldHeight}
       planetRadius={PLANET_RADIUS}
+      sunRotation={0}  // Static sun, no rotation needed
     />
+  );
+}
+
+// Planet and moon system - rotates together
+function PlanetSystem({ planetRadius, isPaused, children }: { 
+  planetRadius: number;
+  isPaused: boolean;
+  children: React.ReactNode;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const tiltedGroupRef = useRef<THREE.Group>(null);
+  const rotationRef = useRef(0);
+  const moonOrbitRadius = planetRadius * 2;
+  
+  useFrame((state, delta) => {
+    if (tiltedGroupRef.current) {
+      // Rotate planet around its tilted axis (always rotate, even when paused for now)
+      rotationRef.current += delta * 0.1; // Day/night cycle speed
+      tiltedGroupRef.current.rotation.y = rotationRef.current;
+    }
+  });
+  
+  return (
+    <group ref={groupRef}>
+      {/* Apply axial tilt first */}
+      <group rotation={[0, 0, AXIAL_TILT]}>
+        {/* Then rotate around the tilted Y axis */}
+        <group ref={tiltedGroupRef}>
+          {children}
+        </group>
+        
+        {/* Moon orbits around the tilted axis */}
+        <Moon 
+          planetRadius={planetRadius} 
+          orbitRadius={moonOrbitRadius}
+          orbitSpeed={0.2}
+        />
+      </group>
+    </group>
   );
 }
 
@@ -231,53 +255,15 @@ export interface Scene3DProps {
   entitySize: number;
 }
 
-// Solar system component to handle celestial body rotations
-function SolarSystem({ planetRadius, onRotationUpdate, isPaused }: { 
-  planetRadius: number;
-  onRotationUpdate?: (rotation: number) => void;
-  isPaused: boolean;
-}) {
-  const groupRef = useRef<THREE.Group>(null);
-  const rotationRef = useRef(0);
-  
-  useFrame((state, delta) => {
-    if (groupRef.current) {
-      // Always rotate for development (ignore pause)
-      rotationRef.current += delta * 0.05;
-      groupRef.current.rotation.y = rotationRef.current;
-    }
-    
-    // Update rotation for atmosphere
-    if (onRotationUpdate) {
-      onRotationUpdate(rotationRef.current);
-    }
-  });
-  
-  const sunDistance = planetRadius * 8;
-  const moonOrbitRadius = planetRadius * 2;
-  
-  return (
-    <group ref={groupRef}>
-      {/* Sun */}
-      <Sun position={[sunDistance, planetRadius * 2, sunDistance * 0.5]} />
-      
-      {/* Moon with orbit */}
-      <Moon 
-        planetRadius={planetRadius} 
-        orbitRadius={moonOrbitRadius}
-        orbitSpeed={0.2}
-      />
-      
-      {/* Moon orbit line */}
-      <OrbitLine radius={moonOrbitRadius} color="#4a5568" opacity={0.1} />
-    </group>
-  );
-}
-
 export function Scene3D({ client, world, entitySize }: Scene3DProps) {
   const controlsRef = useRef<any>(null);
-  const [sunRotation, setSunRotation] = useState(0);
   const [isPaused, setIsPaused] = useState(true);
+  
+  // Static sun position
+  const staticSunPosition = useMemo(() => {
+    const sunDistance = PLANET_RADIUS * 8;
+    return new THREE.Vector3(sunDistance, PLANET_RADIUS * 2, sunDistance * 0.5);
+  }, []);
   
   // Listen for pause state from simulation
   useEffect(() => {
@@ -328,57 +314,79 @@ export function Scene3D({ client, world, entitySize }: Scene3DProps) {
       <Stats showPanel={0} className="stats-panel" />
       <FPSTracker client={client} />
       
-      {/* Reduced ambient for more dramatic lighting */}
-      <ambientLight intensity={0.1} />
+      {/* Minimal ambient to prevent pure black shadows */}
+      <ambientLight intensity={0.01} />
       
-      {/* Hemisphere light for subtle sky/ground color */}
+      {/* Very subtle hemisphere light for slight color variation */}
       <hemisphereLight
         color="#4a6fa5"
-        groundColor="#1a0f05"
-        intensity={0.15}
+        groundColor="#0a0502"
+        intensity={0.02}
       />
       
-      {/* Render order 0: Planet base */}
-      <group renderOrder={0}>
+      {/* Static sun at fixed position */}
+      <group position={staticSunPosition.toArray()}>
+        <Sun position={[0, 0, 0]} />
+      </group>
+      
+      {/* Main directional light from static sun */}
+      <directionalLight
+        position={staticSunPosition.toArray()}
+        intensity={2.0}
+        color="#fff5e6"
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-left={-1500}
+        shadow-camera-right={1500}
+        shadow-camera-top={1500}
+        shadow-camera-bottom={-1500}
+        shadow-camera-near={1}
+        shadow-camera-far={10000}
+        target-position={[0, 0, 0]}
+      />
+      
+      {/* Rotating planet system */}
+      <PlanetSystem planetRadius={PLANET_RADIUS} isPaused={isPaused}>
+        {/* Planet base */}
         <PlanetSphere
           radius={PLANET_RADIUS}
           worldWidth={world.width}
           worldHeight={world.height}
         />
-      </group>
-      
-      {/* Render order 1: Entities on planet surface */}
-      <group renderOrder={1}>
+        
+        {/* Entities on surface */}
         <EntitiesLayer3D
           client={client}
           entitySize={entitySize}
           worldWidth={world.width}
           worldHeight={world.height}
+          staticSunPosition={staticSunPosition}
         />
-      </group>
-      
-      {/* Render order 2: Cloud layers */}
-      <group renderOrder={2}>
-        <CloudSystemShell planetRadius={PLANET_RADIUS} />
-      </group>
-      
-      {/* Render order 3: Atmosphere */}
-      <group renderOrder={3}>
-        <Atmosphere 
-          radius={PLANET_RADIUS} 
-          sunRotation={sunRotation}
+        
+        {/* Cloud layers above entities */}
+        <CloudSystemProcedural
+          planetRadius={PLANET_RADIUS}
+          sunRotation={0}  // Static sun
         />
+        
+        {/* Atmosphere - rendered last */}
+        <Atmosphere
+          radius={PLANET_RADIUS}
+          staticSunPosition={staticSunPosition}
+        />
+      </PlanetSystem>
+
+      {/* Static starfield background - doesn't rotate with camera */}
+      <group>
+        <Starfield count={12000} radius={15000} />
       </group>
-      
-      {/* Solar system with sun and moon - no explicit render order, uses per-object settings */}
-      <SolarSystem 
-        planetRadius={PLANET_RADIUS} 
-        onRotationUpdate={setSunRotation}
-        isPaused={isPaused}
+
+      {/* Debug visualization */}
+      <DebugArrows
+        planetRadius={PLANET_RADIUS}
+        sunRotation={0}  // Static sun
+        staticSunPosition={staticSunPosition}
       />
-      
-      {/* High-resolution starfield */}
-      <Starfield count={8000} radius={10000} />
     </Canvas>
   );
 }
