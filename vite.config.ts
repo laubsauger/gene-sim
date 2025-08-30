@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'fs'
 import path from 'path'
+import glsl from 'vite-plugin-glsl';
 
 // Plugin to handle WASM files and provide fallback
 function wasmPlugin(): Plugin {
@@ -34,7 +35,7 @@ function wasmPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), wasmPlugin()],
+  plugins: [react(), wasmPlugin(), glsl()], 
   base: process.env.NODE_ENV === 'production' ? '/gene-sim/' : '/',
   server: {
     headers: {
@@ -50,6 +51,11 @@ export default defineConfig({
     target: 'esnext'
   },
   optimizeDeps: {
+    // esbuildOptions: {
+    //   loader: {
+    //     ".glsl": "text",
+    //   },
+    // },
     exclude: ['gene_sim_core']
   }
 })

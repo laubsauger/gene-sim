@@ -71,8 +71,8 @@ export interface ControlsProps {
   onStart: () => void;
   entitySize: number;
   onEntitySizeChange: (size: number) => void;
-  renderMode?: '2D' | '3D';
-  onRenderModeChange?: (mode: '2D' | '3D') => void;
+  renderMode?: '2D' | '3D' | '3D-Planet';
+  onRenderModeChange?: (mode: '2D' | '3D' | '3D-Planet') => void;
 }
 
 export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeChange, renderMode = '2D', onRenderModeChange }: ControlsProps) {
@@ -275,6 +275,7 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          gap: '8px',
           minHeight: '60px',
           background: 'rgba(255, 255, 255, 0.05)',
           padding: '8px 12px',
@@ -282,33 +283,79 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
           border: '1px solid rgba(255, 255, 255, 0.1)',
         }}>
           <button
-            onClick={() => onRenderModeChange(renderMode === '2D' ? '3D' : '2D')}
+            onClick={() => onRenderModeChange('2D')}
             style={{
-              padding: '8px 16px',
-              fontSize: '14px',
+              padding: '8px 12px',
+              fontSize: '13px',
               lineHeight: '14px',
-              height: '40px',
-              background: renderMode === '3D' ? '#3b82f6' : '#6b7280',
+              height: '36px',
+              background: renderMode === '2D' ? '#3b82f6' : '#4b5563',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer',
-              minWidth: '80px',
+              minWidth: '50px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '6px',
+              gap: '4px',
               boxSizing: 'border-box',
               transition: 'background 0.2s',
             }}
-            title={`Switch to ${renderMode === '2D' ? '3D Planet' : '2D Flat'} view`}
+            title="2D Flat view"
           >
-            <span style={{ fontSize: '16px' }}>
-              {renderMode === '2D' ? '🌍' : '🗺️'}
-            </span>
-            <span style={{ fontWeight: '500' }}>
-              {renderMode === '2D' ? '3D' : '2D'}
-            </span>
+            <span style={{ fontSize: '14px' }}>🗺️</span>
+            <span style={{ fontWeight: '500' }}>2D</span>
+          </button>
+          <button
+            onClick={() => onRenderModeChange('3D')}
+            style={{
+              padding: '8px 12px',
+              fontSize: '13px',
+              lineHeight: '14px',
+              height: '36px',
+              background: renderMode === '3D' ? '#3b82f6' : '#4b5563',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              minWidth: '50px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              boxSizing: 'border-box',
+              transition: 'background 0.2s',
+            }}
+            title="3D Planet view"
+          >
+            <span style={{ fontSize: '14px' }}>🌍</span>
+            <span style={{ fontWeight: '500' }}>3D</span>
+          </button>
+          <button
+            onClick={() => onRenderModeChange('3D-Planet')}
+            style={{
+              padding: '8px 12px',
+              fontSize: '13px',
+              lineHeight: '14px',
+              height: '36px',
+              background: renderMode === '3D-Planet' ? '#3b82f6' : '#4b5563',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              minWidth: '60px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              boxSizing: 'border-box',
+              transition: 'background 0.2s',
+            }}
+            title="3D Orbital view"
+          >
+            <span style={{ fontSize: '14px' }}>🪐</span>
+            <span style={{ fontWeight: '500' }}>Orbit</span>
           </button>
         </div>
       )}

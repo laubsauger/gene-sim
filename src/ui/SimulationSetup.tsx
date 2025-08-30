@@ -362,34 +362,34 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
       hybridization: allowHybrids
     };
     
-    const totalPopulation = config.tribes.reduce((sum, t) => sum + t.count, 0);
-    console.log('[SimulationSetup] ===== FULL CONFIG UPDATE =====');
-    console.log('[SimulationSetup] Configuration being sent:', {
-      seed: config.seed,
-      cap: config.cap,
-      worldSize: `${config.world.width}x${config.world.height}`,
-      energy: config.energy,
-      foodGrid: {
-        cols: config.world.foodGrid.cols,
-        rows: config.world.foodGrid.rows,
-        regen: config.world.foodGrid.regen,
-        capacity: config.world.foodGrid.capacity,
-        distribution: config.world.foodGrid.distribution
-      },
-      hybridization: config.hybridization,
-      tribesCount: config.tribes.length,
-      totalPopulation
-    });
+    // const totalPopulation = config.tribes.reduce((sum, t) => sum + t.count, 0);
+    // console.log('[SimulationSetup] ===== FULL CONFIG UPDATE =====');
+    // console.log('[SimulationSetup] Configuration being sent:', {
+    //   seed: config.seed,
+    //   cap: config.cap,
+    //   worldSize: `${config.world.width}x${config.world.height}`,
+    //   energy: config.energy,
+    //   foodGrid: {
+    //     cols: config.world.foodGrid.cols,
+    //     rows: config.world.foodGrid.rows,
+    //     regen: config.world.foodGrid.regen,
+    //     capacity: config.world.foodGrid.capacity,
+    //     distribution: config.world.foodGrid.distribution
+    //   },
+    //   hybridization: config.hybridization,
+    //   tribesCount: config.tribes.length,
+    //   totalPopulation
+    // });
 
-    console.log('[SimulationSetup] Tribe details:');
-    config.tribes.forEach((tribe, idx) => {
-      console.log(`[SimulationSetup] Tribe ${idx}: "${tribe.name}"`, {
-        count: tribe.count,
-        spawn: tribe.spawn,
-        genes: tribe.genes
-      });
-    });
-    console.log('[SimulationSetup] =====================================');
+    // console.log('[SimulationSetup] Tribe details:');
+    // config.tribes.forEach((tribe, idx) => {
+    //   console.log(`[SimulationSetup] Tribe ${idx}: "${tribe.name}"`, {
+    //     count: tribe.count,
+    //     spawn: tribe.spawn,
+    //     genes: tribe.genes
+    //   });
+    // });
+    // console.log('[SimulationSetup] =====================================');
     
     // Pass config to App component
     if (onConfigChange) {

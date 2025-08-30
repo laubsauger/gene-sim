@@ -149,7 +149,7 @@ export function EntityPoints({
   // Create buffer attributes from SharedArrayBuffer views
   useEffect(() => {
     if (!pos || !color || !alive) {
-      console.log('[EntityPoints] Missing buffers:', { hasPos: !!pos, hasColor: !!color, hasAlive: !!alive });
+      // console.log('[EntityPoints] Missing buffers:', { hasPos: !!pos, hasColor: !!color, hasAlive: !!alive });
       return;
     }
     
@@ -158,13 +158,13 @@ export function EntityPoints({
     // Only log on significant changes or initial setup
     const shouldLog = !geom.attributes.aPos || Math.abs(aliveSum - (geom.userData?.lastAliveSum || 0)) > count * 0.1;
     if (shouldLog) {
-      console.log('[EntityPoints] Updating buffers:', { 
-        count, 
-        posLength: pos.length, 
-        colorLength: color.length,
-        aliveLength: alive.length,
-        aliveSum
-      });
+      // console.log('[EntityPoints] Updating buffers:', { 
+      //   count,
+      //   posLength: pos.length,
+      //   colorLength: color.length,
+      //   aliveLength: alive.length,
+      //   aliveSum
+      // });
       geom.userData = { lastAliveSum: aliveSum };
       
       // Debug: Check where alive entities actually are
@@ -175,13 +175,13 @@ export function EntityPoints({
           const y = pos[i * 2 + 1];
           if (x > -1000 && x < 5000 && y > -1000 && y < 5000) {
             visibleCount++;
-            if (visibleCount <= 3) {
-              console.log(`[EntityPoints] Alive entity at index ${i}: (${x.toFixed(1)}, ${y.toFixed(1)})`);
-            }
+            // if (visibleCount <= 3) {
+            //   console.log(`[EntityPoints] Alive entity at index ${i}: (${x.toFixed(1)}, ${y.toFixed(1)})`);
+            // }
           }
         }
       }
-      console.log(`[EntityPoints] ${visibleCount} entities in visible range out of ${aliveSum} alive`);
+      // console.log(`[EntityPoints] ${visibleCount} entities in visible range out of ${aliveSum} alive`);
     }
     
     // Debug: Check if entities are outside expected bounds - very infrequent
@@ -196,9 +196,9 @@ export function EntityPoints({
           }
         }
       }
-      if (positionsOutOfBounds.length > 0) {
-        console.warn('[EntityPoints] Entities outside bounds:', positionsOutOfBounds);
-      }
+      // if (positionsOutOfBounds.length > 0) {
+      //   console.warn('[EntityPoints] Entities outside bounds:', positionsOutOfBounds);
+      // }
     }
     
     // Always recreate attributes when buffers change to ensure updates

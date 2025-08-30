@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Scene2D } from './render/Scene2D';
 import { Scene3D } from './render/Scene3D';
+import { Scene3DPlanetCanvas } from './render/Scene3DPlanetCanvas';
 import { createSimClient, detectBestMode, type SimMode, type SimClient } from './client/setupSimClientHybrid';
 import { Controls } from './ui/Controls';
 import { StatsPanel } from './ui/StatsPanel';
@@ -35,7 +36,7 @@ export default function App() {
   const [currentSeed, setCurrentSeed] = useState<number>(Date.now());
   const [gameOver, setGameOver] = useState<{ finalTime: number; finalStats: SimStats } | null>(null);
   const [entitySize, setEntitySize] = useState(7.0); // Default entity size
-  const [renderMode, setRenderMode] = useState<'2D' | '3D'>('2D'); // Toggle between 2D and 3D
+  const [renderMode, setRenderMode] = useState<'2D' | '3D' | '3D-Planet'>('2D'); // Toggle between 2D, 3D and 3D-Planet
 
   const lastConfigRef = useRef<any>(null);
   
@@ -281,8 +282,14 @@ export default function App() {
             world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
             entitySize={entitySize}
           />
-        ) : (
+        ) : renderMode === '3D' ? (
           <Scene3D
+            client={client} 
+            world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
+            entitySize={entitySize}
+          />
+        ) : (
+          <Scene3DPlanetCanvas
             client={client} 
             world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
             entitySize={entitySize}

@@ -10,6 +10,7 @@ import { CloudSystemProcedural } from './CloudLayerProcedural';
 import { DebugArrows } from './DebugArrows';
 import { DevControls3D } from '../ui/DevControls3D';
 import type { SimClient } from '../client/setupSimClientHybrid';
+import type { MainMsg } from '../sim/types';
 
 const PLANET_RADIUS = 500;
 const AXIAL_TILT = 23.5 * Math.PI / 180; // Earth's axial tilt
@@ -279,7 +280,7 @@ export function Scene3D({ client, world, entitySize }: Scene3DProps) {
   
   // Listen for pause state from simulation
   useEffect(() => {
-    const unsubscribe = client.onMessage((msg) => {
+    const unsubscribe = client.onMessage((msg: MainMsg) => {
       if (msg.type === 'pauseState') {
         setIsPaused(msg.payload.paused);
       }

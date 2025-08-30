@@ -756,6 +756,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@rollup/pluginutils@npm:^5.1.4":
+  version: 5.2.0
+  resolution: "@rollup/pluginutils@npm:5.2.0"
+  dependencies:
+    "@types/estree": "npm:^1.0.0"
+    estree-walker: "npm:^2.0.2"
+    picomatch: "npm:^4.0.2"
+  peerDependencies:
+    rollup: ^1.20.0||^2.0.0||^3.0.0||^4.0.0
+  peerDependenciesMeta:
+    rollup:
+      optional: true
+  checksum: 10c0/794890d512751451bcc06aa112366ef47ea8f9125dac49b1abf72ff8b079518b09359de9c60a013b33266541634e765ae61839c749fae0edb59a463418665c55
+  languageName: node
+  linkType: hard
+
 "@rollup/rollup-android-arm-eabi@npm:4.49.0":
   version: 4.49.0
   resolution: "@rollup/rollup-android-arm-eabi@npm:4.49.0"
@@ -951,7 +967,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/estree@npm:1.0.8, @types/estree@npm:^1.0.6":
+"@types/estree@npm:1.0.8, @types/estree@npm:^1.0.0, @types/estree@npm:^1.0.6":
   version: 1.0.8
   resolution: "@types/estree@npm:1.0.8"
   checksum: 10c0/39d34d1afaa338ab9763f37ad6066e3f349444f9052b9676a7cc0252ef9485a41c6d81c9c4e0d26e9077993354edf25efc853f3224dd4b447175ef62bdcc86a5
@@ -1817,6 +1833,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"estree-walker@npm:^2.0.2":
+  version: 2.0.2
+  resolution: "estree-walker@npm:2.0.2"
+  checksum: 10c0/53a6c54e2019b8c914dc395890153ffdc2322781acf4bd7d1a32d7aedc1710807bdcd866ac133903d5629ec601fbb50abe8c2e5553c7f5a0afdd9b6af6c945af
+  languageName: node
+  linkType: hard
+
 "esutils@npm:^2.0.2":
   version: 2.0.3
   resolution: "esutils@npm:2.0.3"
@@ -2005,6 +2028,7 @@ __metadata:
     typescript: "npm:~5.8.3"
     typescript-eslint: "npm:^8.39.1"
     vite: "npm:^7.1.2"
+    vite-plugin-glsl: "npm:^1.5.1"
   languageName: unknown
   linkType: soft
 
@@ -3354,6 +3378,17 @@ __metadata:
   version: 3.11.0
   resolution: "utility-types@npm:3.11.0"
   checksum: 10c0/2f1580137b0c3e6cf5405f37aaa8f5249961a76d26f1ca8efc0ff49a2fc0e0b2db56de8e521a174d075758e0c7eb3e590edec0832eb44478b958f09914920f19
+  languageName: node
+  linkType: hard
+
+"vite-plugin-glsl@npm:^1.5.1":
+  version: 1.5.1
+  resolution: "vite-plugin-glsl@npm:1.5.1"
+  dependencies:
+    "@rollup/pluginutils": "npm:^5.1.4"
+  peerDependencies:
+    vite: ">= 3.x"
+  checksum: 10c0/7b34ecfabbf5dbc4fb8c07975343746037b5f418b2e5b5c415560506651b584e921c5c67db994eae78e8ae0151b93d6c5174201ed14af5ea0ed50f1c408e15ed
   languageName: node
   linkType: hard
 

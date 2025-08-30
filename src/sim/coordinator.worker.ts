@@ -68,24 +68,24 @@ class SimulationCoordinator {
    */
   async init(msg: any) {
     const init = msg.payload;
-    console.log('[Coordinator] ===== RECEIVED CONFIG FROM MAIN THREAD =====');
-    console.log('[Coordinator] Full configuration:', {
-      seed: init.seed,
-      cap: init.cap,
-      energy: init.energy,
-      worldSize: init.world ? `${init.world.width}x${init.world.height}` : 'default',
-      foodGrid: init.world?.foodGrid,
-      hybridization: init.hybridization,
-      tribesCount: init.tribes?.length || 0,
-      totalPopulation: init.tribes?.reduce((sum: number, t: any) => sum + t.count, 0) || 0
-    });
-    console.log('[Coordinator] Tribes:', init.tribes?.map((t: any) => ({
-      name: t.name,
-      count: t.count,
-      hasSpawn: !!t.spawn,
-      hasGenes: !!t.genes
-    })));
-    console.log('[Coordinator] ============================================');
+    // console.log('[Coordinator] ===== RECEIVED CONFIG FROM MAIN THREAD =====');
+    // console.log('[Coordinator] Full configuration:', {
+    //   seed: init.seed,
+    //   cap: init.cap,
+    //   energy: init.energy,
+    //   worldSize: init.world ? `${init.world.width}x${init.world.height}` : 'default',
+    //   foodGrid: init.world?.foodGrid,
+    //   hybridization: init.hybridization,
+    //   tribesCount: init.tribes?.length || 0,
+    //   totalPopulation: init.tribes?.reduce((sum: number, t: any) => sum + t.count, 0) || 0
+    // });
+    // console.log('[Coordinator] Tribes:', init.tribes?.map((t: any) => ({
+    //   name: t.name,
+    //   count: t.count,
+    //   hasSpawn: !!t.spawn,
+    //   hasGenes: !!t.genes
+    // })));
+    // console.log('[Coordinator] ============================================');
     
     // Determine worker count based on available cores
     const coreCount = navigator.hardwareConcurrency || 4;
@@ -99,9 +99,9 @@ class SimulationCoordinator {
     this.state.worldWidth = init.world.width;
     this.state.worldHeight = init.world.height;
     
-    console.log(`[Coordinator] Allocating for cap: ${this.state.entityCount}, starting population: ${actualPopulation}`)
-    
-    console.log(`[Coordinator] Using ${this.state.workerCount} workers`);
+    // console.log(`[Coordinator] Allocating for cap: ${this.state.entityCount}, starting population: ${actualPopulation}`)
+
+    // console.log(`[Coordinator] Using ${this.state.workerCount} workers`);
     
     // Allocate shared memory for all entities
     this.allocateSharedMemory(init);
@@ -155,9 +155,9 @@ class SimulationCoordinator {
       posView[i * 2 + 1] = -10000;  // y  
     }
     
-    console.log(`[Coordinator] Initialized buffers (alive=0, pos=-10000,-10000) for ${count} slots`);
-    
-    console.log('[Coordinator] Allocated shared memory for', count, 'entities');
+    // console.log(`[Coordinator] Initialized buffers (alive=0, pos=-10000,-10000) for ${count} slots`);
+
+    // console.log('[Coordinator] Allocated shared memory for', count, 'entities');
     
     // Allocate food grid if specified
     if (init.world?.foodGrid) {
@@ -167,7 +167,7 @@ class SimulationCoordinator {
       this.foodRows = rows;
       
       // Don't initialize food here - worker 0 will initialize it with proper noise pattern
-      console.log('[Coordinator] Allocated food grid:', cols, 'x', rows);
+      // console.log('[Coordinator] Allocated food grid:', cols, 'x', rows);
     }
   }
   
@@ -188,7 +188,7 @@ class SimulationCoordinator {
     const entitiesPerWorker = Math.ceil(entityCount / workerCount);
     const actualEntitiesPerWorker = Math.ceil(actualPopulation / workerCount);
     
-    console.log(`[Coordinator] Spatial layout: ${cols}x${rows} regions`);
+    // console.log(`[Coordinator] Spatial layout: ${cols}x${rows} regions`);
     
     // Create workers
     for (let i = 0; i < workerCount; i++) {
@@ -246,7 +246,7 @@ class SimulationCoordinator {
       
       this.state.workers.push(workerInfo);
       
-      console.log(`[Coordinator] Worker ${i}: buffer ${workerInfo.entityStart}-${workerInfo.entityEnd}, actual ${actualStart}-${actualEnd} in region (${col},${row})`);
+      // console.log(`[Coordinator] Worker ${i}: buffer ${workerInfo.entityStart}-${workerInfo.entityEnd}, actual ${actualStart}-${actualEnd} in region (${col},${row})`);
     }
   }
   
@@ -255,9 +255,9 @@ class SimulationCoordinator {
    */
   private waitForAllWorkers(): Promise<void> {
     return new Promise((resolve) => {
-      console.log(`[Coordinator] Waiting for workers: ${this.workersReady}/${this.state.workerCount} ready`);
+      // console.log(`[Coordinator] Waiting for workers: ${this.workersReady}/${this.state.workerCount} ready`);
       if (this.workersReady >= this.state.workerCount) {
-        console.log(`[Coordinator] All workers ready, proceeding`);
+        // console.log(`[Coordinator] All workers ready, proceeding`);
         resolve();
       } else {
         this.allWorkersReadyCallback = resolve;
@@ -273,26 +273,26 @@ class SimulationCoordinator {
     
     switch (msg.type) {
       case 'worker-ready':
-        console.log(`[Coordinator] Worker ${workerId} ready (${this.workersReady + 1}/${this.state.workerCount})`);
+        // console.log(`[Coordinator] Worker ${workerId} ready (${this.workersReady + 1}/${this.state.workerCount})`);
         worker.status = 'idle';
         this.workersReady++;
         
         if (this.workersReady >= this.state.workerCount && this.allWorkersReadyCallback) {
-          console.log(`[Coordinator] All workers ready, calling callback`);
+          // console.log(`[Coordinator] All workers ready, calling callback`);
           
           // Add debugging to verify the final spawning results
           setTimeout(() => {
-            console.log(`[Coordinator] ===== SPAWNING VERIFICATION =====`);
-            console.log(`[Coordinator] Expected population: ${this.state.actualPopulation}`);
-            console.log(`[Coordinator] Buffer capacity: ${this.state.entityCount}`);
-            console.log(`[Coordinator] Workers: ${this.state.workerCount}`);
+            // console.log(`[Coordinator] ===== SPAWNING VERIFICATION =====`);
+            // console.log(`[Coordinator] Expected population: ${this.state.actualPopulation}`);
+            // console.log(`[Coordinator] Buffer capacity: ${this.state.entityCount}`);
+            // console.log(`[Coordinator] Workers: ${this.state.workerCount}`);
             
             // Request immediate stats from all workers to verify spawning
             this.state.workers.forEach(w => {
               w.worker.postMessage({ type: 'stats' });
             });
-            console.log(`[Coordinator] Stats requested from all workers for verification`);
-            console.log(`[Coordinator] =========================================`);
+            // console.log(`[Coordinator] Stats requested from all workers for verification`);
+            // console.log(`[Coordinator] =========================================`);
           }, 500); // Wait 500ms for workers to finish spawning
           
           this.allWorkersReadyCallback();
@@ -381,7 +381,7 @@ class SimulationCoordinator {
     });
     
     if (targetWorker && targetWorker.id !== fromWorkerId) {
-      console.log(`[Coordinator] Migrating entity ${entityId} from worker ${fromWorkerId} to ${targetWorker.id}`);
+      // console.log(`[Coordinator] Migrating entity ${entityId} from worker ${fromWorkerId} to ${targetWorker.id}`);
       
       // Send migration command to target worker
       targetWorker.worker.postMessage({
