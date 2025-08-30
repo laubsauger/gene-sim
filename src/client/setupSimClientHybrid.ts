@@ -18,6 +18,7 @@ export class HybridSimClient {
   private pos: Float32Array | null = null;
   private color: Uint8Array | null = null;
   private alive: Uint8Array | null = null;
+  private age: Float32Array | null = null;
   private food: Uint8Array | null = null;
   private count = 0;
   private foodCols = 0;
@@ -79,6 +80,7 @@ export class HybridSimClient {
           pos: sab.pos?.byteLength,
           color: sab.color?.byteLength,
           alive: sab.alive?.byteLength,
+          age: sab.ages?.byteLength,
           food: sab.food?.byteLength,
           meta,
           foodMeta
@@ -86,6 +88,7 @@ export class HybridSimClient {
         this.pos = new Float32Array(sab.pos);
         this.color = new Uint8Array(sab.color);
         this.alive = new Uint8Array(sab.alive);
+        this.age = sab.ages ? new Float32Array(sab.ages) : null;
         if (sab.food) {
           this.food = new Uint8Array(sab.food);
         }
@@ -178,12 +181,17 @@ export class HybridSimClient {
     return this.ready;
   }
   
+  isInitializing(): boolean {
+    return this.initializing;
+  }
+  
   // Compatibility with old client interface
   get buffers() {
     return {
       pos: this.pos,
       color: this.color,
       alive: this.alive,
+      age: this.age,
       food: this.food,
       count: this.count,
       foodCols: this.foodCols,

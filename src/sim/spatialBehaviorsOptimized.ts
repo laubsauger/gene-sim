@@ -345,14 +345,18 @@ export function efficientMovementOptimized(
     }
   }
   
-  // Flocking forces for allies
+  // Flocking forces for allies - enhanced for herbivore herding
   if (nearbyAllies > 0) {
-    const cohesionFactor = cohesion * 0.1 * (1 + packHuntBonus);
+    // Herbivores get stronger herding behavior
+    const isHerbivore = diet < -0.3;
+    const herdingBoost = isHerbivore ? 1.5 : 1.0;
+    const cohesionFactor = cohesion * 0.1 * (1 + packHuntBonus) * herdingBoost;
     
-    // Alignment
+    // Alignment - herbivores align more strongly
     if (nearbyAllies > 1) {
-      vx += (alignX / nearbyAllies - vx) * cohesionFactor;
-      vy += (alignY / nearbyAllies - vy) * cohesionFactor;
+      const alignmentStrength = isHerbivore ? 1.2 : 1.0;
+      vx += (alignX / nearbyAllies - vx) * cohesionFactor * alignmentStrength;
+      vy += (alignY / nearbyAllies - vy) * cohesionFactor * alignmentStrength;
     }
     
     // Cohesion - use weighted center to avoid bias
@@ -377,9 +381,43 @@ export function efficientMovementOptimized(
         centerX /= validCount;
         centerY /= validCount;
         const dist = Math.sqrt(centerX * centerX + centerY * centerY) || 1;
-        // Apply cohesion force towards relative center
-        vx += (centerX / dist) * speed * cohesionFactor * 0.5;
-        vy += (centerY / dist) * speed * cohesionFactor * 0.5;
+        
+        // Herbivores: maintain optimal herd distance (not too close, not too far)
+        if (isHerbivore) {
+          const optimalHerdDist = 50 + nearbyAllies * 2; // Larger herds need more space
+          if (dist < optimalHerdDist * 0.7) {
+            // Too close to center - spread out a bit
+            vx -= (centerX / dist) * speed * cohesionFactor * 0.3;
+            vy -= (centerY / dist) * speed * cohesionFactor * 0.3;
+          } else if (dist > optimalHerdDist * 1.5) {
+            // Too far - move toward herd
+            vx += (centerX / dist) * speed * cohesionFactor * 0.8;
+            vy += (centerY / dist) * speed * cohesionFactor * 0.8;
+          } else {
+            // Optimal distance - gentle cohesion
+            vx += (centerX / dist) * speed * cohesionFactor * 0.4;
+            vy += (centerY / dist) * speed * cohesionFactor * 0.4;
+          }
+        } else {
+          // Non-herbivores: standard cohesion
+          vx += (centerX / dist) * speed * cohesionFactor * 0.5;
+          vy += (centerY / dist) * speed * cohesionFactor * 0.5;
+        }
+      }
+    }
+    
+    // Herbivore herd migration: if alone or in small group, seek larger herds
+    if (isHerbivore && nearbyAllies < 5) {
+      // Look for distant allies to form larger herds
+      for (let n = 0; n < neighborCount; n++) {
+        const neighbor = neighborCache[n];
+        if (neighbor.isAlly && neighbor.distSq > visionSq * 0.5) {
+          // Distant ally - move toward them to form herd
+          const dist = Math.sqrt(neighbor.distSq) + 0.1;
+          vx += (neighbor.dx / dist) * speed * 0.2;
+          vy += (neighbor.dy / dist) * speed * 0.2;
+          break; // Just move toward one distant group
+        }
       }
     }
   }
@@ -592,32 +630,50 @@ export function efficientMovementOptimized(
       }
     }
   
-  // Food seeking behavior - simplified for performance
+  // Food seeking behavior - improved with line of sight preference
   let foodForceX = 0, foodForceY = 0;
   
-  if (myEnergy < 80) {
+  // Always scan for food if not completely full, but with varying urgency
+  const satiation = myEnergy / energyConfig.max; // 0-1, how full we are
+  const shouldSeekFood = satiation < 0.95; // Seek food unless nearly full
+  
+  if (shouldSeekFood) {
     const cellWidth = world.width / foodCols;
     const cellHeight = world.height / foodRows;
     const fx = Math.floor((px / world.width) * foodCols);
     const fy = Math.floor((py / world.height) * foodRows);
     
-    // Only check current cell and immediate neighbors if very hungry
+    // Determine scan radius based on hunger and vision
+    // More hungry = wider search, but limited by vision
+    const hungerLevel = 1 - satiation;
+    const visionCells = Math.ceil(vision / Math.min(cellWidth, cellHeight));
+    const scanRadius = Math.min(visionCells, Math.ceil(hungerLevel * 5 + 1));
+    
+    // Adjust pickiness based on hunger - more hungry = less picky
+    const adjustedFoodStandards = foodStandards * (0.3 + satiation * 0.7);
+    
     if (myEnergy < 40) {
       let bestFood = 0;
       let bestFoodX = 0, bestFoodY = 0;
       
-      // Check 3x3 grid
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
+      // Desperate mode - scan wider area within vision
+      for (let dy = -scanRadius; dy <= scanRadius; dy++) {
+        for (let dx = -scanRadius; dx <= scanRadius; dx++) {
           const nx = fx + dx;
           const ny = fy + dy;
           if (nx >= 0 && nx < foodCols && ny >= 0 && ny < foodRows) {
             const idx = ny * foodCols + nx;
             const food = foodGrid[idx];
-            if (food > bestFood && food > foodStandards) {
-              bestFood = food;
-              bestFoodX = (nx + 0.5) * cellWidth;
-              bestFoodY = (ny + 0.5) * cellHeight;
+            if (food > bestFood && food > adjustedFoodStandards) {
+              // Check if it's within actual vision range
+              const foodX = (nx + 0.5) * cellWidth;
+              const foodY = (ny + 0.5) * cellHeight;
+              const distToFood = Math.sqrt((foodX - px) * (foodX - px) + (foodY - py) * (foodY - py));
+              if (distToFood <= vision) {
+                bestFood = food;
+                bestFoodX = foodX;
+                bestFoodY = foodY;
+              }
             }
           }
         }
@@ -642,46 +698,58 @@ export function efficientMovementOptimized(
         foodForceY = Math.sin(escapeAngle) * speed * escapeUrgency;
       }
     } else {
-      // Less hungry - check current cell and immediate neighbors
-      let hasFood = false;
-      const idx = fy * foodCols + fx;
+      // Not desperate - prefer to stay near food or move to visible food
+      let bestFood = 0;
+      let bestFoodX = 0, bestFoodY = 0;
+      let currentCellFood = foodGrid[fy * foodCols + fx];
       
-      // Check current cell first
-      if (foodGrid[idx] > foodStandards) {
-        hasFood = true;
-        const centerX = (fx + 0.5) * cellWidth;
-        const centerY = (fy + 0.5) * cellHeight;
-        const dx = centerX - px;
-        const dy = centerY - py;
-        const distSq = dx * dx + dy * dy;
-        if (distSq > 100) { // Only if not already at center
-          const dist = Math.sqrt(distSq);
-          foodForceX = (dx / dist) * speed * 0.2;
-          foodForceY = (dy / dist) * speed * 0.2;
-        }
-      } else {
-        // Quick check of immediate neighbors for any food
-        for (let dy = -1; dy <= 1 && !hasFood; dy++) {
-          for (let dx = -1; dx <= 1 && !hasFood; dx++) {
-            const nx = fx + dx;
-            const ny = fy + dy;
-            if (nx >= 0 && nx < foodCols && ny >= 0 && ny < foodRows) {
-              const nidx = ny * foodCols + nx;
-              if (foodGrid[nidx] > foodStandards) {
-                hasFood = true;
+      // Scan area based on satiation - well-fed entities scan less
+      const moderateScanRadius = Math.max(1, Math.floor(scanRadius * 0.6));
+      
+      for (let dy = -moderateScanRadius; dy <= moderateScanRadius; dy++) {
+        for (let dx = -moderateScanRadius; dx <= moderateScanRadius; dx++) {
+          const nx = fx + dx;
+          const ny = fy + dy;
+          if (nx >= 0 && nx < foodCols && ny >= 0 && ny < foodRows) {
+            const idx = ny * foodCols + nx;
+            const food = foodGrid[idx];
+            if (food > bestFood && food > adjustedFoodStandards) {
+              const foodX = (nx + 0.5) * cellWidth;
+              const foodY = (ny + 0.5) * cellHeight;
+              const distToFood = Math.sqrt((foodX - px) * (foodX - px) + (foodY - py) * (foodY - py));
+              if (distToFood <= vision) {
+                bestFood = food;
+                bestFoodX = foodX;
+                bestFoodY = foodY;
               }
             }
           }
         }
+      }
+      
+      if (bestFood > 0) {
+        // Move toward best food source, but with less urgency when not hungry
+        const dx = bestFoodX - px;
+        const dy = bestFoodY - py;
+        const dist = Math.sqrt(dx * dx + dy * dy);
         
-        // If no food nearby even when moderately hungry, move away
-        if (!hasFood) {
-          const hungerUrgency = (80 - myEnergy) / 80;
-          const escapeAngle = rand() * Math.PI * 2;
-          const escapeUrgency = 0.2 + hungerUrgency * 0.3; // Less urgent than when starving
-          foodForceX = Math.cos(escapeAngle) * speed * escapeUrgency;
-          foodForceY = Math.sin(escapeAngle) * speed * escapeUrgency;
+        // If we're at a food source and not very hungry, stay put or move slowly
+        if (currentCellFood > adjustedFoodStandards && satiation > 0.6) {
+          // Just drift slowly around the food area
+          foodForceX = (dx / dist) * speed * 0.05;
+          foodForceY = (dy / dist) * speed * 0.05;
+        } else {
+          // Move toward food with urgency based on hunger
+          const urgency = 0.1 + hungerLevel * 0.5;
+          foodForceX = (dx / dist) * speed * urgency;
+          foodForceY = (dy / dist) * speed * urgency;
         }
+      } else if (hungerLevel > 0.2) {
+        // No food found and getting hungry - explore
+        const escapeAngle = rand() * Math.PI * 2;
+        const escapeUrgency = 0.2 + hungerLevel * 0.3;
+        foodForceX = Math.cos(escapeAngle) * speed * escapeUrgency;
+        foodForceY = Math.sin(escapeAngle) * speed * escapeUrgency;
       }
     }
   }

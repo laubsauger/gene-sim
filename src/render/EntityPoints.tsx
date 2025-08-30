@@ -38,35 +38,43 @@ export function EntityPoints({
         vAlive = aAlive;
         vec4 mvPosition = modelViewMatrix * vec4(aPos, 0.0, 1.0);
 
-        // Age-based scale and brightness
+        // Age-based scale and color adjustments
         // Age transitions: 0-10 = newborn, 10-30 = young, 30-60 = adult, 60+ = old
         float ageValue = aAge;
-        float scaleFactor = 0.8; // Start at 0.8x size
-        float brightnessFactor = 0.8; // Start at 0.8 brightness
+        float scaleFactor = 0.7; // Start at 0.7x size
+        float lightnessFactor = 1.4; // Start lighter (1.4x brightness)
         
         if (ageValue < 10.0) {
-          // Newborn to young: rapid growth
+          // Newborn to young: rapid growth, transition from light to normal
           float t = ageValue / 10.0;
-          scaleFactor = 0.8 + 0.15 * t; // 0.8 to 0.95
-          brightnessFactor = 0.8 + 0.15 * t; // 0.8 to 0.95
+          scaleFactor = 0.7 + 0.2 * t; // 0.7 to 0.9
+          lightnessFactor = 1.4 - 0.3 * t; // 1.4 to 1.1 (lighter to normal)
         } else if (ageValue < 30.0) {
-          // Young to adult: slower growth
+          // Young to adult: slower growth, continue darkening
           float t = (ageValue - 10.0) / 20.0;
-          scaleFactor = 0.95 + 0.05 * t; // 0.95 to 1.0
-          brightnessFactor = 0.95 + 0.05 * t; // 0.95 to 1.0
+          scaleFactor = 0.9 + 0.1 * t; // 0.9 to 1.0
+          lightnessFactor = 1.1 - 0.1 * t; // 1.1 to 1.0
         } else if (ageValue < 60.0) {
-          // Adult: peak size and brightness
+          // Adult: peak size and normal color
           scaleFactor = 1.0;
-          brightnessFactor = 1.0;
+          lightnessFactor = 1.0;
         } else {
-          // Old: slight dimming but maintain size
+          // Old: maintain size but darker colors
           float t = min(1.0, (ageValue - 60.0) / 40.0);
           scaleFactor = 1.0;
-          brightnessFactor = 1.0 - 0.2 * t; // Fade to 0.8 brightness
+          lightnessFactor = 1.0 - 0.3 * t; // Darken to 0.7 brightness
         }
         
-        // Apply brightness to color (not opacity)
-        vColor = aCol * brightnessFactor;
+        // Apply lightness adjustment to color
+        // For lighter colors, we blend with white; for darker, we multiply
+        if (lightnessFactor > 1.0) {
+          // Lighter: blend with white
+          float blendFactor = (lightnessFactor - 1.0);
+          vColor = mix(aCol, vec3(1.0, 1.0, 1.0), blendFactor * 0.3);
+        } else {
+          // Darker: multiply color
+          vColor = aCol * lightnessFactor;
+        }
 
         // Account for perspective - make points scale with distance
         // For orthographic camera, this will be constant

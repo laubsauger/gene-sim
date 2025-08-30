@@ -35,13 +35,13 @@ export function ModeSelector({ currentMode, onModeChange, disabled }: ModeSelect
   const modes: { value: SimMode; label: string; description: string; available: boolean }[] = [
     {
       value: 'js',
-      label: 'JavaScript',
+      label: 'Single Threaded',
       description: 'Standard JS implementation (baseline)',
       available: true,
     },
     {
       value: 'multi-worker',
-      label: 'Multi-Worker',
+      label: 'Multi Threaded',
       description: `${capabilities.cores} cores (4-8x faster)`,
       available: capabilities.hasSAB && capabilities.cores >= 4,
     },
@@ -69,16 +69,12 @@ export function ModeSelector({ currentMode, onModeChange, disabled }: ModeSelect
   return (
     <div style={{
       marginBottom: '16px',
-      padding: '12px',
-      background: 'rgba(0, 0, 0, 0.6)',
-      borderRadius: '8px',
-      border: '1px solid rgba(255, 255, 255, 0.1)',
     }}>
       <div style={{
         fontSize: '12px',
         fontWeight: 'bold',
         marginBottom: '8px',
-        color: '#888',
+        color: '#a0aec0',
       }}>
         Simulation Mode
       </div>
@@ -125,7 +121,7 @@ export function ModeSelector({ currentMode, onModeChange, disabled }: ModeSelect
         color: '#666',
       }}>
         {currentMode === 'js' && 'Using standard JavaScript implementation'}
-        {currentMode === 'multi-worker' && `Using ${capabilities.cores} worker threads`}
+        {currentMode === 'multi-worker' && `Using up to ${capabilities.cores} worker threads`}
       </div>
       
       {!capabilities.hasSAB && (

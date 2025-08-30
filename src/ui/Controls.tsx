@@ -127,45 +127,65 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
   return (
     <div style={{
       display: 'flex',
-      gap: '8px',
+      gap: '16px',
       padding: '12px',
       background: 'rgba(0, 0, 0, 0.7)',
       borderRadius: '8px',
       backdropFilter: 'blur(10px)',
+      alignItems: 'stretch',
+      flexWrap: 'wrap',
     }}>
-      <button
-        onClick={handlePause}
-        disabled={!isRunning}
-        style={{
-          padding: '8px 16px',
-          fontSize: '16px',
-          lineHeight: '16px',
-          height: '36px',
-          background: !isRunning ? '#4b5563' : (isPaused ? '#22c55e' : '#ef4444'),
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: isRunning ? 'pointer' : 'not-allowed',
-          opacity: isRunning ? 1 : 0.5,
-          minWidth: '50px',
-          width: '50px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxSizing: 'border-box',
-        }}
-      >
-        <span style={{ fontSize: '16px', lineHeight: '16px', display: 'block' }}>
-          {isPaused ? '▶' : '⏸'}
-        </span>
-      </button>
+      {/* Pause/Play Button - Centered in its container */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '60px',
+        background: 'rgba(255, 255, 255, 0.05)',
+        padding: '8px 12px',
+        borderRadius: '6px',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+      }}>
+        <button
+          onClick={handlePause}
+          disabled={!isRunning}
+          style={{
+            padding: '8px 16px',
+            fontSize: '16px',
+            lineHeight: '16px',
+            height: '40px',
+            background: !isRunning ? '#4b5563' : (isPaused ? '#22c55e' : '#ef4444'),
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: isRunning ? 'pointer' : 'not-allowed',
+            opacity: isRunning ? 1 : 0.5,
+            minWidth: '60px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxSizing: 'border-box',
+          }}
+        >
+          <span style={{ fontSize: '18px', lineHeight: '18px', display: 'block' }}>
+            {isPaused ? '▶' : '⏸'}
+          </span>
+        </button>
+      </div>
       
+      {/* Speed and Size Controls */}
       <div style={{ 
         display: 'flex', 
         flexDirection: 'column',
         gap: '8px',
-        flex: 1,
-        minWidth: '250px',
+        flex: '1 1 280px',
+        minWidth: '280px',
+        minHeight: '60px',
+        justifyContent: 'center',
+        background: 'rgba(255, 255, 255, 0.05)',
+        padding: '8px 12px',
+        borderRadius: '6px',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
       }}>
         <div style={{ 
           display: 'flex', 
@@ -246,6 +266,7 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
           </span>
         </div>
       </div>
+      
     </div>
   );
 }

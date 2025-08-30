@@ -176,6 +176,7 @@ function EntitiesLayer({ client, entitySize }: { client: SimClient; entitySize: 
       pos={activeBuffers.pos}
       color={activeBuffers.color}
       alive={activeBuffers.alive}
+      age={activeBuffers.age}
       count={activeBuffers.count}
       pointSize={renderSize}
     />

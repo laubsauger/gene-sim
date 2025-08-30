@@ -5,7 +5,6 @@ import { Controls } from './ui/Controls';
 import { StatsPanel } from './ui/StatsPanel';
 import { SimulationSetup } from './ui/SimulationSetup';
 import { GameOver } from './ui/GameOver';
-import { ModeSelector } from './ui/ModeSelector';
 import type { SimStats } from './sim/types';
 import './App.css';
 
@@ -98,7 +97,7 @@ export default function App() {
   const [showSetup, setShowSetup] = useState(true);
   const [currentSeed, setCurrentSeed] = useState<number>(Date.now());
   const [gameOver, setGameOver] = useState<{ finalTime: number; finalStats: SimStats } | null>(null);
-  const [entitySize, setEntitySize] = useState(2.0); // Default entity size
+  const [entitySize, setEntitySize] = useState(7.0); // Default entity size
 
   const lastConfigRef = useRef<any>(null);
   
@@ -355,13 +354,6 @@ export default function App() {
             entitySize={entitySize}
             onEntitySizeChange={setEntitySize}
           />
-          {showSetup && (
-            <ModeSelector
-              currentMode={simMode}
-              onModeChange={handleModeChange}
-              disabled={isRunning}
-            />
-          )}
         </div>
       </div>
       
@@ -378,6 +370,8 @@ export default function App() {
             isRunning={isRunning}
             onSeedChange={setCurrentSeed}
             onConfigChange={setSimConfig}
+            simMode={simMode}
+            onModeChange={handleModeChange}
           />
         ) : (
           <StatsPanel client={client} currentSeed={currentSeed} />

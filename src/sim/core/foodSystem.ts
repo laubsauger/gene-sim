@@ -7,12 +7,15 @@ export class FoodSystem {
   private foodMaxCapacity: Float32Array;
   private foodRegrowTimer: Float32Array;
   private foodAccumulator: Float32Array; // Accumulate small changes
+  private foodCooldown: Float32Array; // Cooldown before regrowth starts
   private cols: number;
   private rows: number;
   private worldWidth: number;
   private worldHeight: number;
   private regen: number;
   private isShared: boolean;
+  private baseCooldownTime: number = 3.0; // Base cooldown time at regen=0.5
+  private baseMaturationTime: number = 15.0; // Base maturation time for scaling
 
   constructor(
     cols: number,
@@ -34,6 +37,7 @@ export class FoodSystem {
     this.foodMaxCapacity = new Float32Array(size);
     this.foodRegrowTimer = new Float32Array(size);
     this.foodAccumulator = new Float32Array(size);
+    this.foodCooldown = new Float32Array(size);
     this.foodGridUint8 = sharedBuffer || null;
   }
 
@@ -63,6 +67,7 @@ export class FoodSystem {
         this.foodGrid[idx] = val;
         this.foodMaxCapacity[idx] = val;
         this.foodRegrowTimer[idx] = 0;
+        this.foodCooldown[idx] = 0;
       }
     }
     
@@ -80,33 +85,52 @@ export class FoodSystem {
       }
     }
     
-    // Now regrow based on current state with accumulation for small values
+    // Two-phase regrowth: cooldown then maturation
     for (let i = 0; i < this.foodGrid.length; i++) {
       if (this.foodGrid[i] < this.foodMaxCapacity[i]) {
-        // Use exponential curve: rate = base^(10*regen - 5)
-        // regen=0.0: no regrowth
-        // regen=0.1: very slow (~100s to reach 0.3)
-        // regen=0.3: slow (~20s to reach 0.3)
-        // regen=0.5: moderate (~5s to reach 0.3)
-        // regen=0.7: fast (~2s to reach 0.3)
-        // regen=0.9: very fast (~0.5s to reach 0.3)
-        // regen=1.0: instant
-        const scaledRegen = this.regen === 0 ? 0 : 
-                           this.regen === 1 ? 10 : // Instant regrowth
-                           Math.pow(2, this.regen * 10 - 5) * 0.01;
-        const regenPerFrame = scaledRegen * dt;
+        // Phase 1: Cooldown period after consumption
+        if (this.foodCooldown[i] > 0) {
+          this.foodCooldown[i] -= dt;
+          continue; // Skip regrowth during cooldown
+        }
         
-        // Accumulate small changes to avoid precision loss
-        this.foodAccumulator[i] += regenPerFrame;
+        // Phase 2: Maturation period
+        // Linear scaling as requested:
+        // regen=0.0: never regrows
+        // regen=1.0: instant regrowth (0.1 seconds)
+        // regen=0.5: ~15 seconds
+        // Linear interpolation between these points
+        let effectiveMaturationTime: number;
+        if (this.regen === 0) {
+          effectiveMaturationTime = Number.MAX_VALUE; // No regrowth
+        } else if (this.regen >= 0.99) {
+          // Near instant regrowth at max setting
+          effectiveMaturationTime = 0.1; // 0.1 seconds
+        } else {
+          // Linear scaling: at 0.5 we want 15 seconds
+          // Formula: time = maxTime * (1 - regen)
+          // where maxTime is calibrated so 0.5 gives 15 seconds
+          const maxTime = 30; // This makes 0.5 = 15 seconds
+          effectiveMaturationTime = maxTime * (1 - this.regen);
+        }
         
-        // Only apply accumulated changes when they're meaningful (>= 0.001)
-        if (this.foodAccumulator[i] >= 0.001) {
-          const newValue = Math.min(
-            this.foodMaxCapacity[i],
-            this.foodGrid[i] + this.foodAccumulator[i]
-          );
-          this.foodGrid[i] = newValue;
-          this.foodAccumulator[i] = 0; // Reset accumulator
+        if (effectiveMaturationTime > 0 && this.regen > 0) {
+          // Linear growth during maturation
+          const growthRate = this.foodMaxCapacity[i] / effectiveMaturationTime;
+          const growth = growthRate * dt;
+          
+          // Accumulate small changes to avoid precision loss
+          this.foodAccumulator[i] += growth;
+          
+          // Only apply accumulated changes when they're meaningful (>= 0.001)
+          if (this.foodAccumulator[i] >= 0.001) {
+            const newValue = Math.min(
+              this.foodMaxCapacity[i],
+              this.foodGrid[i] + this.foodAccumulator[i]
+            );
+            this.foodGrid[i] = newValue;
+            this.foodAccumulator[i] = 0; // Reset accumulator
+          }
         }
       }
     }
@@ -138,6 +162,7 @@ export class FoodSystem {
         this.foodGrid[idx] = 0;
         this.foodRegrowTimer[idx] = 0;
         this.foodAccumulator[idx] = 0; // Reset accumulator
+        this.foodCooldown[idx] = this.cooldownTime; // Start cooldown
         return 1;
       }
       return 0;
@@ -148,6 +173,7 @@ export class FoodSystem {
       this.foodGrid[idx] = 0;
       this.foodRegrowTimer[idx] = 0;
       this.foodAccumulator[idx] = 0; // Reset accumulator
+      this.foodCooldown[idx] = this.cooldownTime; // Start cooldown
       return 1;
     }
     return 0;
@@ -170,6 +196,7 @@ export class FoodSystem {
       this.foodGrid[i] = this.foodGridUint8[i] / 255;
       this.foodMaxCapacity[i] = this.foodGrid[i];
       this.foodRegrowTimer[i] = 0;
+      this.foodCooldown[i] = 0;
     }
   }
 

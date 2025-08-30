@@ -17,5 +17,5 @@ export const energyConfig = {
 
 // Performance constants
 export const FOOD_UPDATE_INTERVAL = 100; // ms
-export const STATS_UPDATE_INTERVAL = 500; // ms
+export const STATS_UPDATE_INTERVAL = 100; // ms - Reduced from 500ms for more responsive death visualization
 export const PERF_UPDATE_INTERVAL = 250; // ms

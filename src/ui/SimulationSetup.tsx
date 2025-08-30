@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { SimClient } from '../client/setupSimClientHybrid';
+import type { SimClient, SimMode } from '../client/setupSimClientHybrid';
 import type { SimInit, TribeInit, SpawnPattern } from '../sim/types';
 import { throttle } from '../utils/throttle';
+import { ModeSelector } from './ModeSelector';
 
 interface SimulationSetupProps {
   client: SimClient;
@@ -75,8 +76,8 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
         foodStandards: 0.4 + rng() * 0.4,
         viewAngle: 120 + rng() * 60,
         colorHue: 90 + rng() * 60 // Green spectrum
-      },
-      spawnPattern: 'herd' as const
+      }
+      // Adaptive spawn will create herds for herbivores automatically
     },
     // Another herbivore variant
     {
@@ -92,8 +93,8 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
         foodStandards: 0.5 + rng() * 0.3,
         viewAngle: 140 + rng() * 40,
         colorHue: 120 + rng() * 40 // Yellow-green spectrum
-      },
-      spawnPattern: 'herd' as const
+      }
+      // Adaptive spawn will create herds for herbivores automatically
     },
     // Mostly herbivore omnivores
     {
@@ -109,8 +110,8 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
         foodStandards: 0.3 + rng() * 0.3,
         viewAngle: 110 + rng() * 40,
         colorHue: 180 + rng() * 60 // Blue spectrum
-      },
-      spawnPattern: 'adaptive' as const
+      }
+      // Already uses adaptive by default
     },
     // Balanced Omnivores
     {
@@ -126,8 +127,8 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
         foodStandards: 0.2 + rng() * 0.4,
         viewAngle: 100 + rng() * 40,
         colorHue: 200 + rng() * 40 // Cyan spectrum
-      },
-      spawnPattern: 'adaptive' as const
+      }
+      // Already uses adaptive by default
     },
     // Opportunistic Omnivores (slight carnivore tendency - rare)
     {
@@ -143,8 +144,8 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
         foodStandards: 0.1 + rng() * 0.3,
         viewAngle: 130 + rng() * 40,
         colorHue: 270 + rng() * 60 // Purple spectrum
-      },
-      spawnPattern: 'scattered' as const
+      }
+      // Adaptive spawn will scatter omnivores/carnivores automatically
     },
     // Rare mild carnivore (only occasionally appears)
     {
@@ -160,8 +161,8 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
         foodStandards: 0.1 + rng() * 0.2,
         viewAngle: 90 + rng() * 40, // Narrower vision
         colorHue: 0 + rng() * 30 // Red spectrum
-      },
-      spawnPattern: 'scattered' as const
+      }
+      // Adaptive spawn will scatter carnivores automatically
     }
   ];
 
@@ -240,8 +241,8 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
       spawn: {
         x: 2000 + Math.cos(angle) * distance,
         y: 2000 + Math.sin(angle) * distance,
-        radius: spawnRadius,
-        pattern: archetype.spawnPattern
+        radius: spawnRadius
+        // Pattern defaults to 'adaptive' which adjusts based on diet
       },
       genes: finalGenes
     });
@@ -251,7 +252,7 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
   return tribes;
 }
 
-export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onConfigChange }: SimulationSetupProps) {
+export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onConfigChange, simMode, onModeChange }: SimulationSetupProps) {
   const [seed, setSeed] = useState(Date.now());
   const [tribes, setTribes] = useState(() => generateTribesFromSeed(Date.now()));
   const [worldWidth, setWorldWidth] = useState(4000);
@@ -270,6 +271,19 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   const [allowHybrids, setAllowHybrids] = useState(false);
   const [entityRenderSize, setEntityRenderSize] = useState(5);
   const [initialized, setInitialized] = useState(false);
+  const [clientInitializing, setClientInitializing] = useState(false);
+
+  // Check client initialization status periodically
+  useEffect(() => {
+    const checkStatus = setInterval(() => {
+      if (client) {
+        const isInit = client.isInitializing?.() || false;
+        setClientInitializing(isInit);
+      }
+    }, 100);
+    
+    return () => clearInterval(checkStatus);
+  }, [client]);
 
   const updateConfigImmediate = useCallback((overrides?: { seed?: number; tribes?: TribeInit[] }) => {
     const config: SimInit = {
@@ -555,6 +569,9 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                     borderRadius: '4px',
                     borderLeft: `3px solid hsl(${tribe.genes?.colorHue || 0}, 100%, 50%)`,
                     fontSize: '13px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
                   }}>
                     <input
                       value={tribe.name}
@@ -565,11 +582,11 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                         border: 'none',
                         color: '#fff',
                         fontWeight: 'bold',
-                        marginRight: '8px',
                         fontSize: '13px',
+                        flex: '0 0 auto',
                       }}
                     />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '140px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '1' }}>
                       <span style={{ color: '#a0aec0', fontSize: '12px', flexShrink: 0 }}>Pop:</span>
                       <StyledSlider
                         min={100}
@@ -589,7 +606,6 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                         removeTribe(i);
                       }}
                       style={{
-                        float: 'right',
                         background: '#dc2626',
                         border: 'none',
                         borderRadius: '3px',
@@ -597,6 +613,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                         padding: '4px 8px',
                         cursor: 'pointer',
                         fontSize: '11px',
+                        flex: '0 0 auto',
                       }}
                     >
                       Remove
@@ -832,6 +849,17 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
               </summary>
               <div style={{ padding: '12px', fontSize: '13px' }}>
                 <div style={{ display: 'grid', gap: '12px' }}>
+
+                  {/* Simulation Mode Selector */}
+                  {simMode && onModeChange && (
+                    <div>
+                      <ModeSelector
+                        currentMode={simMode}
+                        onModeChange={onModeChange}
+                        disabled={isRunning}
+                      />
+                    </div>
+                  )}
 
                   {/* World Settings & Food Grid - Combined Row */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -1122,19 +1150,33 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
         }}>
           <button
             onClick={onStart}
+            disabled={clientInitializing}
             style={{
               width: '100%',
               padding: '12px',
-              background: '#3b82f6',
-              border: 'none',
+              background: clientInitializing ? 'rgba(75, 85, 99, 0.2)' : 'rgba(147, 51, 234, 0.2)',
+              border: clientInitializing ? '2px solid #4b5563' : '2px solid #9333ea',
               borderRadius: '4px',
-              color: '#fff',
-              cursor: 'pointer',
+              color: clientInitializing ? '#6b7280' : '#fff',
+              cursor: clientInitializing ? 'not-allowed' : 'pointer',
               fontSize: '14px',
               fontWeight: 'bold',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              if (!clientInitializing) {
+                e.currentTarget.style.background = 'rgba(147, 51, 234, 0.3)';
+                e.currentTarget.style.borderColor = '#a855f7';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!clientInitializing) {
+                e.currentTarget.style.background = 'rgba(147, 51, 234, 0.2)';
+                e.currentTarget.style.borderColor = '#9333ea';
+              }
             }}
           >
-            Start Simulation
+            {clientInitializing ? 'Initializing...' : 'Start Simulation'}
           </button>
         </div>
       )}
