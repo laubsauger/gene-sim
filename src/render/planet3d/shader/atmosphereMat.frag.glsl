@@ -48,41 +48,45 @@ void main() {
   float sunsetFactor = exp(-10.0 * abs(sunDot)) * 2.0; // Peak at terminator
   float nightFactor = smoothstep(0.3, -0.3, sunDot);
   
-  // Define atmosphere colors
-  vec3 dayColor = vec3(0.35, 0.6, 1.0);        // Nice blue
-  vec3 sunsetColor = vec3(1.0, 0.5, 0.15);     // Orange glow
-  vec3 twilightColor = vec3(0.3, 0.2, 0.4);    // Purple twilight
-  vec3 nightColor = vec3(0.05, 0.08, 0.15);    // Dark blue night
+  // Define atmosphere colors - PURE saturated colors
+  vec3 dayColor = vec3(0.1, 0.5, 1.0);         // Pure sky blue
+  vec3 sunsetColor = vec3(1.0, 0.6, 0.2);      // Pure orange sunset
+  vec3 twilightColor = vec3(0.4, 0.2, 0.5);    // Purple twilight
+  vec3 nightColor = vec3(0.02, 0.05, 0.15);    // Dark blue night
   
-  // Blend colors smoothly
-  vec3 color = dayColor * dayFactor;
-  color += sunsetColor * sunsetFactor * (1.0 - dayFactor * 0.5);
-  color += twilightColor * nightFactor * (1.0 - sunsetFactor);
-  color = mix(color, nightColor, nightFactor * 0.7);
+  // Simple, clean blending without dilution
+  vec3 color;
+  if (sunDot > 0.0) {
+    // Day side
+    color = mix(sunsetColor, dayColor, smoothstep(0.0, 0.3, sunDot));
+  } else {
+    // Night side
+    color = mix(nightColor, twilightColor, smoothstep(-0.3, 0.0, sunDot));
+  }
   
-  // Add scattering for physical accuracy
-  float cosTheta = dot(L, V);
-  float mie = henyeyGreenstein(cosTheta, clamp(uAnisotropy, 0.0, 0.9));
-  float rayleigh = 0.75 * (1.0 + cosTheta * cosTheta);
+  // Add sunset band at terminator
+  float sunsetBand = exp(-20.0 * sunDot * sunDot); // Sharp peak at terminator
+  color = mix(color, sunsetColor, sunsetBand * 0.8);
   
-  // Enhance sunset glow with Mie scattering
-  color += uColorMie * mie * sunsetFactor * 0.3;
-  
-  // Smooth intensity
-  float intensity = 0.2 + dayFactor * 0.5 + sunsetFactor * 0.2;
-  intensity = max(intensity, 0.15); // Ensure night side has minimum visibility
+  // Intensity based on sun angle
+  float intensity = mix(0.3, 1.0, dayFactor);
   
   // Apply atmosphere thickness and intensity
-  float alpha = atmosphereThickness * intensity;
-
-  // Overall atmosphere opacity
-  alpha *= uDensity * 0.4;
+  float alpha = atmosphereThickness * intensity * 0.8;
   
-  // Apply exposure
+  // Smoother edge transition
+  float edgeFade = smoothstep(0.0, 0.1, limb) * smoothstep(1.0, 0.8, limb);
+  alpha *= (0.3 + edgeFade * 0.7);
+  
+  // Overall atmosphere opacity
+  alpha *= uDensity * 0.45;
+  
+  // Don't over-expose, just use natural colors
   color *= uExposure;
   
   // Very minimal cutoff to avoid artifacts
-  if (alpha < 0.008) discard;
+  if (alpha < 0.01) discard;
   
-  gl_FragColor = vec4(toSRGB(color), alpha);
+  // Output with sRGB for proper gradient
+  gl_FragColor = vec4(pow(color, vec3(1.0/2.2)), alpha);
 }
