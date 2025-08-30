@@ -166,33 +166,49 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
     }
   ];
 
-  // Weighted selection - herbivores are more common
-  const weightedArchetypes: typeof archetypes[0][] = [];
+  // Weighted selection favoring diet diversity but maintaining determinism
+  const selectedArchetypes: typeof archetypes[0][] = [];
   
-  // Add herbivores multiple times for higher weight
-  for (let j = 0; j < 3; j++) {
-    if (archetypes[0]) weightedArchetypes.push(archetypes[0]); // Grazers x3
-    if (archetypes[1]) weightedArchetypes.push(archetypes[1]); // Browsers x3
-  }
-  for (let j = 0; j < 2; j++) {
-    if (archetypes[2]) weightedArchetypes.push(archetypes[2]); // Foragers x2
-    if (archetypes[3]) weightedArchetypes.push(archetypes[3]); // Adaptors x2
-  }
-  if (archetypes[4]) weightedArchetypes.push(archetypes[4]); // Scavengers x1
+  // Create weighted pool with higher chances for balanced diets
+  const weightedPool: typeof archetypes[0][] = [];
   
-  // Hunters always available but with lower weight
-  if (archetypes[5]) {
-    weightedArchetypes.push(archetypes[5]); // Hunters x1 (less common than herbivores)
+  // Herbivores: common but not overwhelming (40% of pool)
+  for (let i = 0; i < 4; i++) {
+    if (archetypes[0]) weightedPool.push(archetypes[0]); // Grazers
+    if (archetypes[1]) weightedPool.push(archetypes[1]); // Browsers
   }
   
-  // Shuffle the weighted list
-  const shuffled = weightedArchetypes.sort(() => rng() - 0.5);
+  // Omnivores: moderate presence (50% of pool)
+  for (let i = 0; i < 3; i++) {
+    if (archetypes[2]) weightedPool.push(archetypes[2]); // Foragers
+    if (archetypes[3]) weightedPool.push(archetypes[3]); // Adaptors
+  }
+  for (let i = 0; i < 2; i++) {
+    if (archetypes[4]) weightedPool.push(archetypes[4]); // Scavengers
+  }
   
-  // Pick unique archetypes (avoid duplicates)
-  const selectedArchetypes = new Set<typeof archetypes[0]>();
-  for (let i = 0; i < tribesCount && selectedArchetypes.size < tribesCount; i++) {
-    if (i < shuffled.length) {
-      selectedArchetypes.add(shuffled[i]);
+  // Carnivores: guaranteed presence but rare (10% of pool)
+  for (let i = 0; i < 2; i++) {
+    if (archetypes[5]) weightedPool.push(archetypes[5]); // Hunters
+  }
+  
+  // Select tribes from weighted pool without replacement
+  const availablePool = [...weightedPool];
+  for (let i = 0; i < tribesCount && selectedArchetypes.length < tribesCount; i++) {
+    if (availablePool.length === 0) {
+      // Refill pool if empty
+      availablePool.push(...weightedPool);
+    }
+    
+    const idx = Math.floor(rng() * availablePool.length);
+    const selected = availablePool[idx];
+    selectedArchetypes.push(selected);
+    
+    // Remove all instances of this archetype to avoid duplicates
+    for (let j = availablePool.length - 1; j >= 0; j--) {
+      if (availablePool[j] === selected) {
+        availablePool.splice(j, 1);
+      }
     }
   }
 
@@ -207,17 +223,21 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
     const varCount = isHunter ? 200 : 400;
     const tribeCount = baseCount + Math.floor(rng() * varCount);
     
-    // Scale spawn radius with population to avoid overcrowding (moved up to use in distance calc)
-    // Balanced spacing - minimum 200, scales moderately with population
-    const minRadius = 200;
-    const radiusScale = Math.sqrt(tribeCount / 400); // Scale factor based on population density
-    const spawnRadius = Math.max(minRadius, minRadius * radiusScale + rng() * 50);
+    // Scale spawn radius with population to avoid overcrowding
+    // Use a moderate scaling for balanced spread
+    const minRadius = 200; // Moderate minimum radius
+    // Quadratic scaling for better spread at high populations
+    const radiusScale = Math.pow(tribeCount / 175, 0.75); // Balanced scaling
+    const spawnRadius = Math.max(minRadius, minRadius * radiusScale + rng() * 100); // Moderate random variation
+    // Add extra radius for very large populations
+    const extraRadius = tribeCount > 1800 ? (tribeCount - 1800) * 0.12 : 0; // Moderate extra scaling
+    const finalSpawnRadius = spawnRadius + extraRadius;
     
     // Add random offset to angle so tribes don't always spawn in same pattern
     const angleOffset = rng() * Math.PI * 0.3; // Random offset up to 54 degrees
     const angle = (tribeIndex / tribesCount) * Math.PI * 2 + angleOffset;
     // Keep spawns well within world bounds but closer to center
-    const maxDistance = Math.min(1200, 2000 - spawnRadius); // Don't spawn too close to edges
+    const maxDistance = Math.min(1200, 2000 - finalSpawnRadius); // Don't spawn too close to edges
     const distance = 600 + rng() * Math.min(500, maxDistance - 600);
     
     // Make sure colors are distinct - if too similar to existing, shift hue
@@ -241,7 +261,7 @@ function generateTribesFromSeed(seed: number): TribeInit[] {
       spawn: {
         x: 2000 + Math.cos(angle) * distance,
         y: 2000 + Math.sin(angle) * distance,
-        radius: spawnRadius
+        radius: finalSpawnRadius
         // Pattern defaults to 'adaptive' which adjusts based on diet
       },
       genes: finalGenes
@@ -259,8 +279,8 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   const [worldHeight, setWorldHeight] = useState(4000);
   const [foodCols, setFoodCols] = useState(256);
   const [foodRows, setFoodRows] = useState(256);
-  const [foodRegen, setFoodRegen] = useState(0.05); // 20 seconds to fully regrow
-  const [foodCapacity, setFoodCapacity] = useState(3);
+  const [foodRegen, setFoodRegen] = useState(0.35); // ~7 seconds to fully regrow
+  const [foodCapacity, setFoodCapacity] = useState(7);
   const [foodDistScale, setFoodDistScale] = useState(35);
   const [foodDistThreshold, setFoodDistThreshold] = useState(0.65);
   const [foodDistFrequency, setFoodDistFrequency] = useState(3);
@@ -351,20 +371,19 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
     window.dispatchEvent(new CustomEvent('simConfigUpdate'));
   }, [client, seed, maxEntities, worldWidth, worldHeight, foodCols, foodRows, foodRegen, foodCapacity, foodDistScale, foodDistThreshold, foodDistFrequency, tribes, startEnergy, maxEnergy, reproEnergy, allowHybrids]);
 
-  // Create throttled version for live updates - increased to 1 second to avoid rapid reinits
+  // Create throttled version for live updates - increased to 2 seconds to avoid rapid reinits
   const updateConfig = useMemo(
-    () => throttle(updateConfigImmediate, 1000),
+    () => throttle(updateConfigImmediate, 2000),
     [updateConfigImmediate]
   );
 
-  // Auto-update config when any setting changes
+  // Auto-update config when any setting changes (throttled to 2s)
   useEffect(() => {
     if (initialized && !isRunning) {
-      console.log('[SimulationSetup] Settings changed, triggering config update', {
-        foodDistThreshold,
-        foodCapacity,
-        startEnergy
-      });
+      // Reduced logging frequency for settings changes
+      if (Math.random() < 0.1) { // Log only 10% of the time
+        console.log('[SimulationSetup] Settings changed, triggering throttled config update');
+      }
       updateConfig();
     }
   }, [initialized, isRunning, updateConfig, seed, maxEntities, worldWidth, worldHeight,
@@ -1162,6 +1181,10 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
               fontSize: '14px',
               fontWeight: 'bold',
               transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: '44px', // Ensure consistent height
             }}
             onMouseEnter={(e) => {
               if (!clientInitializing) {
@@ -1176,7 +1199,30 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
               }
             }}
           >
-            {clientInitializing ? 'Initializing...' : 'Start Simulation'}
+            {clientInitializing ? (
+              <>
+                <span style={{ 
+                  display: 'inline-block',
+                  animation: 'spin 1s linear infinite',
+                  marginRight: '8px',
+                  fontSize: '16px',
+                }}>
+                  ⟳
+                </span>
+                Initializing...
+                <style>{`
+                  @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                  }
+                `}</style>
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: '16px', marginRight: '8px' }}>▶</span>
+                Start Simulation
+              </>
+            )}
           </button>
         </div>
       )}

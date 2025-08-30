@@ -187,6 +187,7 @@ function initializeAsMainWorker(msg: any) {
         pos: sharedBuffers.positions,
         color: sharedBuffers.colors,
         alive: sharedBuffers.alive,
+        ages: sharedBuffers.ages,
         food: sharedBuffers.foodGrid
       },
       meta: { count: cap },
@@ -324,10 +325,10 @@ function initializeAsSubWorker(msg: any) {
         x: worldWidth * (0.2 + 0.6 * (tribeIdx * 0.333 % 1)), 
         y: worldHeight * (0.2 + 0.6 * ((tribeIdx * 0.577) % 1))
       };
-      // Scale radius with population - balanced spacing
-      const baseRadius = tribe.spawn?.radius || 200;
-      const populationScale = Math.sqrt(count / 400); // Scale with population density
-      const radius = Math.max(baseRadius, baseRadius * populationScale * 0.8); // Reduced scaling
+      // Scale radius with population - moderate spacing
+      const baseRadius = tribe.spawn?.radius || 250; // Moderate base radius
+      const populationScale = Math.sqrt(count / 350); // Balanced scaling
+      const radius = Math.max(baseRadius, baseRadius * populationScale); // Standard scaling
       // Default to adaptive pattern for better emergent behavior
       const pattern = tribe.spawn?.pattern || 'adaptive';
       const geneSpec = { ...defaultGenes, ...tribe.genes };
@@ -337,99 +338,72 @@ function initializeAsSubWorker(msg: any) {
         console.log(`[Worker 0] Spawning ${tribe.name}: pattern="${pattern}", radius=${radius}, count=${count}, diet=${geneSpec.diet}`);
       }
 
-      // Helper for different spawn patterns with more randomness
+      // Natural spawn distribution: start with even distribution, then adjust for traits
       const getSpawnPosition = (index: number) => {
-        // Add deterministic variation based on tribe index and entity index
-        const variation = rand() * 0.2 + 0.9; // 0.9-1.1 variation (reduced)
+        // Step 1: Create natural initial distribution (even spread within radius)
+        const baseAngle = rand() * Math.PI * 2;
+        const baseR = Math.sqrt(rand()) * radius; // Even distribution
+        const baseX = spawn.x + Math.cos(baseAngle) * baseR;
+        const baseY = spawn.y + Math.sin(baseAngle) * baseR;
+        
+        // Step 2: Apply trait-based adjustments
+        const diet = geneSpec.diet || 0;
+        const herbivoreLevel = Math.max(0, -diet); // 0 to 1 for herbivore strength
+        const carnivoreLevel = Math.max(0, diet);  // 0 to 1 for carnivore strength
+        const cohesion = geneSpec.cohesion || 0.5;
+        const aggression = geneSpec.aggression || 0.3;
+        
+        // Step 3: Calculate clustering tendency based on traits
+        let clusteringStrength = 0.5; // Base clustering
+        
+        // Herbivores cluster more (safety in numbers)
+        clusteringStrength += herbivoreLevel * 0.4;
+        // High cohesion increases clustering
+        clusteringStrength += cohesion * 0.3;
+        // Carnivores spread out more (territorial)
+        clusteringStrength -= carnivoreLevel * 0.5;
+        // High aggression reduces clustering (territorial behavior)
+        clusteringStrength -= aggression * 0.3;
+        
+        // Clamp to reasonable range
+        clusteringStrength = Math.max(0.1, Math.min(0.9, clusteringStrength));
 
-        switch (pattern) {
-          case 'scattered':
-            // Random distribution within radius with jitter
-            const angle = rand() * Math.PI * 2;
-            const r = rand() * radius * variation;
-            const jitterX = (rand() - 0.5) * 5;
-            const jitterY = (rand() - 0.5) * 5;
-            return {
-              x: spawn.x + Math.cos(angle) * r + jitterX,
-              y: spawn.y + Math.sin(angle) * r + jitterY
-            };
-
-          case 'herd':
-            // Multiple small clusters with variation
-            const clusterCount = 3 + Math.floor(rand() * 3);
-            const clusterIndex = Math.floor(rand() * clusterCount); // Random cluster assignment
-            const clusterAngle = (clusterIndex / clusterCount) * Math.PI * 2 + rand() * 0.5;
-            const clusterRadius = radius * (0.2 + rand() * 0.1); // Smaller, tighter clusters
-            const clusterDist = radius * (0.5 + rand() * 0.2); // Closer together
-            const clusterX = spawn.x + Math.cos(clusterAngle) * clusterDist;
-            const clusterY = spawn.y + Math.sin(clusterAngle) * clusterDist;
-            const localAngle = rand() * Math.PI * 2;
-            const localR = Math.sqrt(rand()) * clusterRadius * variation;
-            return {
-              x: clusterX + Math.cos(localAngle) * localR,
-              y: clusterY + Math.sin(localAngle) * localR
-            };
-
-          case 'adaptive':
-            // Based on diet - herbivores form distinct herds, carnivores spread out
-            const diet = geneSpec.diet || 0;
-            const herbivoreLevel = Math.max(0, -diet); // 0 to 1 for herbivore strength
-            const carnivoreLevel = Math.max(0, diet);  // 0 to 1 for carnivore strength
-            
-            if (herbivoreLevel > 0.5) {
-              // Strong herbivores: form 2-4 distinct herds
-              const herdCount = 2 + Math.floor(rand() * 3);
-              const herdIndex = Math.floor(index * herdCount / count); // Distribute evenly across herds
-              const herdAngle = (herdIndex / herdCount) * Math.PI * 2 + rand() * 0.3;
-              const herdRadius = radius * 0.3; // Tight herds
-              const herdDist = radius * 0.7; // Herds spread around spawn point
-              const herdX = spawn.x + Math.cos(herdAngle) * herdDist;
-              const herdY = spawn.y + Math.sin(herdAngle) * herdDist;
-              // Within herd: tight clustering
-              const localAngle = rand() * Math.PI * 2;
-              const localR = Math.sqrt(rand()) * herdRadius;
-              return {
-                x: herdX + Math.cos(localAngle) * localR,
-                y: herdY + Math.sin(localAngle) * localR
-              };
-            } else if (carnivoreLevel > 0.3) {
-              // Carnivores: scattered with minimum spacing
-              const minDist = 50 + carnivoreLevel * 50; // More spacing for stronger carnivores
-              const attempts = 10;
-              let bestX = spawn.x, bestY = spawn.y;
-              for (let attempt = 0; attempt < attempts; attempt++) {
-                const angle = rand() * Math.PI * 2;
-                const r = (minDist + rand() * radius) * variation;
-                bestX = spawn.x + Math.cos(angle) * r;
-                bestY = spawn.y + Math.sin(angle) * r;
-                // Could add collision checking here if needed
-              }
-              return { x: bestX, y: bestY };
-            } else {
-              // Omnivores: moderate clustering
-              const clustering = 0.5 + herbivoreLevel * 0.3 - carnivoreLevel * 0.3;
-              const adaptiveAngle = rand() * Math.PI * 2;
-              const adaptiveR = Math.pow(rand(), clustering) * radius * variation;
-              return {
-                x: spawn.x + Math.cos(adaptiveAngle) * adaptiveR,
-                y: spawn.y + Math.sin(adaptiveAngle) * adaptiveR
-              };
-            }
-
-          case 'blob':
-          default:
-            // Tight circular cluster with minimum spacing
-            const minSpacing = 30; // Reduced minimum distance between entities
-            const rings = Math.ceil(Math.sqrt(count / Math.PI)); // Concentric rings
-            const ring = Math.floor(index / rings);
-            const angleInRing = (index % rings) / rings * Math.PI * 2;
-            const ringRadius = (ring / rings) * radius * variation;
-            const blobAngle = angleInRing + rand() * 0.2; // Small random offset
-            const blobR = Math.max(minSpacing * ring, ringRadius);
-            return {
-              x: spawn.x + Math.cos(blobAngle) * blobR,
-              y: spawn.y + Math.sin(blobAngle) * blobR
-            };
+        // Step 4: Apply clustering/spreading based on calculated tendency
+        if (clusteringStrength > 0.7) {
+          // Strong clustering: form herds
+          const herdCount = 3 + Math.floor(rand() * 3); // 3-5 herds
+          const herdIndex = Math.floor(index * herdCount / count);
+          const herdAngle = (herdIndex / herdCount) * Math.PI * 2 + rand() * 0.4;
+          const herdDist = radius * (0.6 + rand() * 0.2);
+          const herdCenterX = spawn.x + Math.cos(herdAngle) * herdDist;
+          const herdCenterY = spawn.y + Math.sin(herdAngle) * herdDist;
+          
+          // Position within herd
+          const localAngle = rand() * Math.PI * 2;
+          const localR = Math.sqrt(rand()) * radius * 0.3; // Tight herd
+          return {
+            x: herdCenterX + Math.cos(localAngle) * localR,
+            y: herdCenterY + Math.sin(localAngle) * localR
+          };
+        } else if (clusteringStrength < 0.3) {
+          // Strong dispersal: territorial spacing
+          const minSpacing = 50 + carnivoreLevel * 100;
+          const dispersalAngle = rand() * Math.PI * 2;
+          const dispersalDist = minSpacing + rand() * radius * 1.5;
+          return {
+            x: spawn.x + Math.cos(dispersalAngle) * dispersalDist,
+            y: spawn.y + Math.sin(dispersalAngle) * dispersalDist
+          };
+        } else {
+          // Moderate clustering: natural distribution with slight grouping
+          const groupingFactor = Math.pow(rand(), 1.0 - clusteringStrength);
+          const adjustedR = baseR * groupingFactor;
+          const jitterX = (rand() - 0.5) * 10;
+          const jitterY = (rand() - 0.5) * 10;
+          return {
+            x: spawn.x + Math.cos(baseAngle) * adjustedR + jitterX,
+            y: spawn.y + Math.sin(baseAngle) * adjustedR + jitterY
+          };
         }
       };
 
@@ -444,8 +418,14 @@ function initializeAsSubWorker(msg: any) {
         fullPos[totalIdx * 2 + 1] = y;
         fullAlive[totalIdx] = 1;
         fullTribeId[totalIdx] = tribeIdx;
-        fullEnergy[totalIdx] = config.energy?.start || 50;
-        fullAge[totalIdx] = 0;
+        // Add variance to prevent synchronized deaths
+        const baseEnergy = config.energy?.start || 50;
+        const energyVariance = baseEnergy * 0.3; // ±30% variance
+        fullEnergy[totalIdx] = Math.max(10, baseEnergy + (rand() - 0.5) * 2 * energyVariance);
+        
+        // Random initial age (0-20% of typical lifespan to spread out deaths)
+        const typicalLifespan = 80; // seconds at base metabolism
+        fullAge[totalIdx] = rand() * (typicalLifespan * 0.2);
         fullOrientation[totalIdx] = rand() * Math.PI * 2;
         
         // Set color based on tribe
@@ -639,6 +619,20 @@ self.addEventListener('message', (e: MessageEvent<WorkerMsg>) => {
       
     case 'renderFps':
       renderFps = msg.payload.fps;
+      break;
+      
+    case 'updateFoodParams':
+      if (sim && sim.food) {
+        const { capacity, regen } = msg.payload;
+        if (capacity !== undefined) {
+          // Update the capacity parameter for proper rendering
+          sim.food.setCapacityParameter(capacity);
+        }
+        if (regen !== undefined) {
+          // Update the regen rate
+          sim.food.regen = regen;
+        }
+      }
       break;
       
     case 'perf':

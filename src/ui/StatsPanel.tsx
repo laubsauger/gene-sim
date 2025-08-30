@@ -87,19 +87,36 @@ export const StatsPanel = memo(function StatsPanel({ client, currentSeed }: Stat
         )}
       </h3>
       <div style={{ display: 'grid', gap: '6px' }}>
-        {/* Population and time stats */}
+        {/* Population, food, and time stats */}
         <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr', // Equal width columns
+          gap: '8px',
           padding: '4px 0',
-          borderBottom: '1px solid rgba(255,255,255,0.1)'
+          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          textAlign: 'center'
         }}>
-          <div>
-            <span style={{ color: '#888' }}>Pop:</span> <b>{stats?.population?.toLocaleString() || '0'}</b>
+          <div style={{ minWidth: '60px' }}>
+            <span style={{ color: '#888' }}>Pop:</span><br />
+            <b style={{ fontSize: '11px' }}>{stats?.population?.toLocaleString() || '0'}</b>
           </div>
-          <div>
-            <span style={{ color: '#888' }}>Time:</span> <b>{stats?.time?.toFixed(1) || '0.0'}s</b>
+          <div style={{ minWidth: '70px' }}>
+            <span style={{ color: '#888' }}>Food:</span><br />
+            <b style={{ fontSize: '11px' }}>
+              {stats?.food ? 
+                `${(stats.food.percentage).toFixed(1)}%` : 
+                'N/A'
+              }
+            </b>
+            {stats?.food && (
+              <div style={{ fontSize: '8px', color: '#666', marginTop: '1px' }}>
+                {stats.food.current.toLocaleString()}/{stats.food.capacity.toLocaleString()}
+              </div>
+            )}
+          </div>
+          <div style={{ minWidth: '50px' }}>
+            <span style={{ color: '#888' }}>Time:</span><br />
+            <b style={{ fontSize: '11px' }}>{stats?.time?.toFixed(1) || '0.0'}s</b>
           </div>
         </div>
         

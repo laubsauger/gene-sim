@@ -121,7 +121,7 @@ export function ModeSelector({ currentMode, onModeChange, disabled }: ModeSelect
         color: '#666',
       }}>
         {currentMode === 'js' && 'Using standard JavaScript implementation'}
-        {currentMode === 'multi-worker' && `Using up to ${capabilities.cores} worker threads`}
+        {currentMode === 'multi-worker' && `Using ${capabilities.cores} worker threads`}
       </div>
       
       {!capabilities.hasSAB && (

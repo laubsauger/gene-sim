@@ -14,8 +14,7 @@ export class FoodSystem {
   private worldHeight: number;
   private regen: number;
   private isShared: boolean;
-  private baseCooldownTime: number = 3.0; // Base cooldown time at regen=0.5
-  private baseMaturationTime: number = 15.0; // Base maturation time for scaling
+  private capacityParameter: number = 1; // Store the original capacity parameter for rendering
 
   constructor(
     cols: number,
@@ -46,6 +45,8 @@ export class FoodSystem {
     threshold?: number;
     frequency?: number;
   }) {
+    // Store the capacity parameter for proper rendering normalization
+    this.capacityParameter = capacity;
     const noiseFood = createFractalNoise2D(seed);
     
     // Use distribution config or defaults
@@ -62,83 +63,136 @@ export class FoodSystem {
         // Apply scale to noise coordinates
         let val = (noiseFood(nx * scale * frequency, ny * scale * frequency) + 1) / 2;
         val = Math.pow(val, 1.5);
-        val = val > threshold ? capacity : 0;
+        // Instead of binary threshold, use smooth transition
+        // Below threshold: no food
+        // Above threshold: scale smoothly from 0 to capacity
+        if (val < threshold) {
+          val = 0;
+        } else {
+          // Scale from threshold to 1 -> 0 to capacity
+          val = ((val - threshold) / (1 - threshold)) * capacity;
+        }
         
-        this.foodGrid[idx] = val;
+        // Set max capacity to full calculated value
         this.foodMaxCapacity[idx] = val;
-        this.foodRegrowTimer[idx] = 0;
-        this.foodCooldown[idx] = 0;
+        
+        if (val > 0) {
+          // Start food at 30-60% of max capacity and let it mature
+          const startingPercent = 0.3 + Math.random() * 0.3; // 30-60%
+          this.foodGrid[idx] = val * startingPercent;
+          
+          // Set initial cooldown/timer so food grows naturally
+          this.foodRegrowTimer[idx] = 0;
+          this.foodCooldown[idx] = Math.random() * 2; // 0-2s random initial delay
+        } else {
+          // No food areas stay empty
+          this.foodGrid[idx] = 0;
+          this.foodRegrowTimer[idx] = 0;
+          this.foodCooldown[idx] = 0;
+        }
       }
     }
     
     this.syncToUint8();
+    
+    // Debug: Count how much food was initialized
+    let initFoodCount = 0;
+    let initMaxValue = 0;
+    for (let i = 0; i < this.foodGrid.length; i++) {
+      if (this.foodGrid[i] > 0) {
+        initFoodCount++;
+        initMaxValue = Math.max(initMaxValue, this.foodGrid[i]);
+      }
+    }
+    console.log(`[FoodSystem] Initialized: ${initFoodCount} cells with food (30-60% of max), max: ${initMaxValue.toFixed(3)}, capacity param: ${capacity}`);
   }
 
   update(dt: number) {
     // When using shared buffer, sync from it first to see other workers' consumption
     if (this.foodGridUint8 && this.isShared) {
       for (let i = 0; i < this.foodGridUint8.length; i++) {
-        const sharedValue = this.foodGridUint8[i] / 255;
+        // Convert back using the inverse of the scaling factor
+        const baseScale = 85;
+        const richnessMultiplier = Math.max(0.3, this.capacityParameter / 3);
+        const scaleFactor = baseScale * richnessMultiplier;
+        const sharedValue = this.foodGridUint8[i] / scaleFactor;
         // Always sync consumed cells (when shared is less than local)
         // This ensures consumption by any worker is reflected
         this.foodGrid[i] = Math.min(this.foodGrid[i], sharedValue);
       }
     }
     
-    // Two-phase regrowth: cooldown then maturation
+    // Calibrated regrowth timing:
+    // regen = 0.0: Never regrows
+    // regen = 0.5: 10 seconds to full capacity (mid-slider default)  
+    // regen = 1.0: 1 second to full capacity (fastest)
+    // Formula: totalTime = 1 + 9 * (1 - regen) seconds for regen > 0
+    
     for (let i = 0; i < this.foodGrid.length; i++) {
-      if (this.foodGrid[i] < this.foodMaxCapacity[i]) {
-        // Phase 1: Cooldown period after consumption
+      // Only regrow where food was originally present (maxCapacity > 0)
+      if (this.foodMaxCapacity[i] > 0 && this.foodGrid[i] < this.foodMaxCapacity[i]) {
+        // Skip if no regrowth
+        if (this.regen === 0) continue;
+        
+        // Simple cooldown phase (20% of total time, min 0.2s, max 5s)
         if (this.foodCooldown[i] > 0) {
           this.foodCooldown[i] -= dt;
-          continue; // Skip regrowth during cooldown
+          continue;
         }
         
-        // Phase 2: Maturation period
-        // Linear scaling as requested:
-        // regen=0.0: never regrows
-        // regen=1.0: instant regrowth (0.1 seconds)
-        // regen=0.5: ~15 seconds
-        // Linear interpolation between these points
-        let effectiveMaturationTime: number;
-        if (this.regen === 0) {
-          effectiveMaturationTime = Number.MAX_VALUE; // No regrowth
-        } else if (this.regen >= 0.99) {
-          // Near instant regrowth at max setting
-          effectiveMaturationTime = 0.1; // 0.1 seconds
-        } else {
-          // Linear scaling: at 0.5 we want 15 seconds
-          // Formula: time = maxTime * (1 - regen)
-          // where maxTime is calibrated so 0.5 gives 15 seconds
-          const maxTime = 30; // This makes 0.5 = 15 seconds
-          effectiveMaturationTime = maxTime * (1 - this.regen);
+        // Calculate total regrowth time based on regen value
+        // regen=0.5 -> 1 + 9 * 0.5 = 5.5s, regen=1.0 -> 1s, regen=0.1 -> 9.1s
+        const totalRegenTime = this.regen > 0 ? 1 + 18 * (1 - this.regen) : Number.MAX_VALUE;
+        
+        // Handle very fast regrowth case
+        if (this.regen >= 0.95) {
+          // Nearly instant regrowth
+          this.foodGrid[i] = this.foodMaxCapacity[i];
+          continue;
         }
         
-        if (effectiveMaturationTime > 0 && this.regen > 0) {
-          // Linear growth during maturation
-          const growthRate = this.foodMaxCapacity[i] / effectiveMaturationTime;
-          const growth = growthRate * dt;
-          
-          // Accumulate small changes to avoid precision loss
-          this.foodAccumulator[i] += growth;
-          
-          // Only apply accumulated changes when they're meaningful (>= 0.001)
-          if (this.foodAccumulator[i] >= 0.001) {
-            const newValue = Math.min(
-              this.foodMaxCapacity[i],
-              this.foodGrid[i] + this.foodAccumulator[i]
-            );
-            this.foodGrid[i] = newValue;
-            this.foodAccumulator[i] = 0; // Reset accumulator
-          }
+        // Growth phase - simple linear growth
+        const growthRate = this.foodMaxCapacity[i] / (totalRegenTime * 0.8); // 80% of time is growth
+        const growth = growthRate * dt;
+        
+        // Apply growth directly for smoother visual updates
+        const oldValue = this.foodGrid[i];
+        this.foodGrid[i] = Math.min(
+          this.foodMaxCapacity[i],
+          this.foodGrid[i] + growth
+        );
+        
+        // Debug logging extremely rarely (once every ~100,000 updates)
+        if (Math.random() < 0.000001 && growth > 0) {
+          console.log(`[FoodSystem] Regrowth: ${oldValue.toFixed(3)} -> ${this.foodGrid[i].toFixed(3)}, rate=${growthRate.toFixed(4)}, time=${totalRegenTime.toFixed(1)}s, regen=${this.regen}`);
         }
       }
     }
     
     // Sync all changes to the shared buffer for rendering
     if (this.foodGridUint8 && this.isShared) {
+      let nonZeroCount = 0;
+      let maxValue = 0;
       for (let i = 0; i < this.foodGrid.length; i++) {
-        this.foodGridUint8[i] = Math.floor(Math.max(0, Math.min(1, this.foodGrid[i])) * 255);
+        // Scale to make food visible with richness affecting brightness
+        // Higher richness (capacity) = brighter food
+        // Use fixed scaling that makes consumable threshold (0.3) visible
+        const baseScale = 85; // Base scaling factor
+        const richnessMultiplier = Math.max(0.3, this.capacityParameter / 3); // 0.3x to 1x multiplier
+        const scaleFactor = baseScale * richnessMultiplier;
+        const clamped = Math.max(0, Math.min(255, this.foodGrid[i] * scaleFactor));
+        this.foodGridUint8[i] = Math.floor(clamped);
+        
+        // Debug counting
+        if (this.foodGrid[i] > 0) {
+          nonZeroCount++;
+          maxValue = Math.max(maxValue, this.foodGrid[i]);
+        }
+      }
+      
+      // Debug log occasionally
+      if (Math.random() < 0.0002) { // Log very rarely to avoid spam
+        console.log(`[FoodSystem] Update: ${nonZeroCount} cells with food, max value: ${maxValue.toFixed(3)}, capacity: ${this.capacityParameter}`);
       }
     }
   }
@@ -162,7 +216,11 @@ export class FoodSystem {
         this.foodGrid[idx] = 0;
         this.foodRegrowTimer[idx] = 0;
         this.foodAccumulator[idx] = 0; // Reset accumulator
-        this.foodCooldown[idx] = this.cooldownTime; // Start cooldown
+        // Simple cooldown: 20% of total regen time
+        const totalTime = this.regen > 0 ? 1 + 18 * (1 - this.regen) : Number.MAX_VALUE;
+        const baseCooldown = totalTime * 0.2;
+        // Handle very high regen values
+        this.foodCooldown[idx] = this.regen >= 0.95 ? 0.01 : Math.max(0.1, baseCooldown);
         return 1;
       }
       return 0;
@@ -173,7 +231,11 @@ export class FoodSystem {
       this.foodGrid[idx] = 0;
       this.foodRegrowTimer[idx] = 0;
       this.foodAccumulator[idx] = 0; // Reset accumulator
-      this.foodCooldown[idx] = this.cooldownTime; // Start cooldown
+      // Simple cooldown: 20% of total regen time
+      const totalTime = this.regen > 0 ? 1 + 18 * (1 - this.regen) : Number.MAX_VALUE;
+      const baseCooldown = totalTime * 0.2;
+      // Handle very high regen values
+      this.foodCooldown[idx] = this.regen >= 0.95 ? 0.01 : Math.max(0.1, baseCooldown);
       return 1;
     }
     return 0;
@@ -183,9 +245,12 @@ export class FoodSystem {
     if (!this.foodGridUint8) return;
     
     for (let i = 0; i < this.foodGrid.length; i++) {
-      this.foodGridUint8[i] = Math.floor(
-        Math.max(0, Math.min(1, this.foodGrid[i])) * 255
-      );
+      // Use the same scaling as the update loop
+      const baseScale = 85;
+      const richnessMultiplier = Math.max(0.3, this.capacityParameter / 3);
+      const scaleFactor = baseScale * richnessMultiplier;
+      const clamped = Math.max(0, Math.min(255, this.foodGrid[i] * scaleFactor));
+      this.foodGridUint8[i] = Math.floor(clamped);
     }
   }
 
@@ -203,4 +268,30 @@ export class FoodSystem {
   getGrid() { return this.foodGrid; }
   getCols() { return this.cols; }
   getRows() { return this.rows; }
+  
+  getFoodStats() {
+    let currentFood = 0;
+    let maxCapacity = 0;
+    
+    for (let i = 0; i < this.foodGrid.length; i++) {
+      currentFood += this.foodGrid[i];
+      maxCapacity += this.foodMaxCapacity[i];
+    }
+    
+    const percentage = maxCapacity > 0 ? (currentFood / maxCapacity) * 100 : 0;
+    
+    return {
+      current: Math.round(currentFood),
+      capacity: Math.round(maxCapacity),
+      percentage: Math.round(percentage * 10) / 10 // Round to 1 decimal
+    };
+  }
+  
+  setCapacityParameter(capacity: number) {
+    // Update the capacity parameter for proper rendering normalization
+    // This allows updating the visual brightness without re-initializing the whole grid
+    this.capacityParameter = capacity;
+    // Immediately sync to update the visual representation
+    this.syncToUint8();
+  }
 }

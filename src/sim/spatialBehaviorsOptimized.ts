@@ -359,7 +359,13 @@ export function efficientMovementOptimized(
       vy += (alignY / nearbyAllies - vy) * cohesionFactor * alignmentStrength;
     }
     
-    // Cohesion - use weighted center to avoid bias
+    // Cohesion - moderated by hunger to allow food exploration
+    // When hungry, drastically reduce cohesion forces
+    const hungerModifier = myEnergy < 30 ? 0.1 :  // Starving - almost ignore cohesion
+                           myEnergy < 50 ? 0.3 :  // Very hungry - weak cohesion
+                           myEnergy < 70 ? 0.6 :  // Hungry - moderate cohesion
+                           1.0;                    // Well-fed - normal cohesion
+    
     if (nearbyAllies > 2) {
       // Calculate center of mass considering world wrapping
       let centerX = 0;
@@ -382,26 +388,29 @@ export function efficientMovementOptimized(
         centerY /= validCount;
         const dist = Math.sqrt(centerX * centerX + centerY * centerY) || 1;
         
+        // Apply hunger modifier to cohesion factor
+        const effectiveCohesion = cohesionFactor * hungerModifier;
+        
         // Herbivores: maintain optimal herd distance (not too close, not too far)
         if (isHerbivore) {
           const optimalHerdDist = 50 + nearbyAllies * 2; // Larger herds need more space
           if (dist < optimalHerdDist * 0.7) {
             // Too close to center - spread out a bit
-            vx -= (centerX / dist) * speed * cohesionFactor * 0.3;
-            vy -= (centerY / dist) * speed * cohesionFactor * 0.3;
+            vx -= (centerX / dist) * speed * effectiveCohesion * 0.3;
+            vy -= (centerY / dist) * speed * effectiveCohesion * 0.3;
           } else if (dist > optimalHerdDist * 1.5) {
-            // Too far - move toward herd
-            vx += (centerX / dist) * speed * cohesionFactor * 0.8;
-            vy += (centerY / dist) * speed * cohesionFactor * 0.8;
+            // Too far - move toward herd (but less when hungry)
+            vx += (centerX / dist) * speed * effectiveCohesion * 0.8;
+            vy += (centerY / dist) * speed * effectiveCohesion * 0.8;
           } else {
             // Optimal distance - gentle cohesion
-            vx += (centerX / dist) * speed * cohesionFactor * 0.4;
-            vy += (centerY / dist) * speed * cohesionFactor * 0.4;
+            vx += (centerX / dist) * speed * effectiveCohesion * 0.4;
+            vy += (centerY / dist) * speed * effectiveCohesion * 0.4;
           }
         } else {
           // Non-herbivores: standard cohesion
-          vx += (centerX / dist) * speed * cohesionFactor * 0.5;
-          vy += (centerY / dist) * speed * cohesionFactor * 0.5;
+          vx += (centerX / dist) * speed * effectiveCohesion * 0.5;
+          vy += (centerY / dist) * speed * effectiveCohesion * 0.5;
         }
       }
     }
@@ -632,6 +641,7 @@ export function efficientMovementOptimized(
   
   // Food seeking behavior - improved with line of sight preference
   let foodForceX = 0, foodForceY = 0;
+  let bestFood = 0; // Declare at function scope for dispersal behavior
   
   // Always scan for food if not completely full, but with varying urgency
   const satiation = myEnergy / energyConfig.max; // 0-1, how full we are
@@ -653,7 +663,6 @@ export function efficientMovementOptimized(
     const adjustedFoodStandards = foodStandards * (0.3 + satiation * 0.7);
     
     if (myEnergy < 40) {
-      let bestFood = 0;
       let bestFoodX = 0, bestFoodY = 0;
       
       // Desperate mode - scan wider area within vision
@@ -699,7 +708,6 @@ export function efficientMovementOptimized(
       }
     } else {
       // Not desperate - prefer to stay near food or move to visible food
-      let bestFood = 0;
       let bestFoodX = 0, bestFoodY = 0;
       let currentCellFood = foodGrid[fy * foodCols + fx];
       
@@ -757,6 +765,47 @@ export function efficientMovementOptimized(
   // Apply food seeking
   vx += foodForceX;
   vy += foodForceY;
+  
+  // DISPERSAL BEHAVIOR: If crowded area with no food, actively disperse
+  // Check if we're in a situation where we should actively disperse
+  if (nearbyAllies > 3 && bestFood === 0 && myEnergy < 70) {
+    // High competition, no food, and getting hungry - time to disperse!
+    const competitionPressure = Math.min(nearbyAllies / 10, 1.0); // 0-1 based on crowd size
+    const hungerPressure = (70 - myEnergy) / 70; // 0-1 based on hunger level
+    const dispersalUrgency = (competitionPressure + hungerPressure) * 0.5;
+    
+    // Calculate dispersal direction away from crowd center
+    let dispersalX = 0, dispersalY = 0;
+    let crowdCount = 0;
+    
+    // Find the center of the crowd to move away from it
+    for (let n = 0; n < neighborCount; n++) {
+      const neighbor = neighborCache[n];
+      if (neighbor.isAlly && neighbor.distSq < visionSq * 0.25) { // Close neighbors
+        dispersalX += neighbor.dx;
+        dispersalY += neighbor.dy;
+        crowdCount++;
+      }
+    }
+    
+    if (crowdCount > 0) {
+      // Move away from the crowd center
+      dispersalX /= crowdCount;
+      dispersalY /= crowdCount;
+      const dispersalDist = Math.sqrt(dispersalX * dispersalX + dispersalY * dispersalY) || 1;
+      
+      // Apply dispersal force away from crowd center
+      const dispersalStrength = speed * dispersalUrgency * 0.7;
+      vx -= (dispersalX / dispersalDist) * dispersalStrength;
+      vy -= (dispersalY / dispersalDist) * dispersalStrength;
+    }
+    
+    // Add some randomness to prevent getting stuck in local minima
+    const randomDispersalAngle = rand() * Math.PI * 2;
+    const randomStrength = speed * dispersalUrgency * 0.3;
+    vx += Math.cos(randomDispersalAngle) * randomStrength;
+    vy += Math.sin(randomDispersalAngle) * randomStrength;
+  }
   
   // Add random wander
   vx += (rand() - 0.5) * speed * 0.1;

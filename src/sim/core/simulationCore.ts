@@ -116,7 +116,10 @@ export class SimulationCore {
         if (inOur) inRegion++;
         else outRegion++;
       }
-      console.log(`[Worker Region ${this.workerRegion!.x},${this.workerRegion!.y}] Processing ${inRegion} entities (${outRegion} outside)`);
+      // Log occasionally to avoid spam
+      if (this.totalStepCount % 100 === 0) {
+        console.log(`[Worker Region ${this.workerRegion!.x},${this.workerRegion!.y}] Processing ${inRegion} entities (${outRegion} outside)`);
+      }
     }
 
     for (let i = 0; i < entitiesToCheck; i++) {
@@ -499,10 +502,14 @@ export class SimulationCore {
       });
     }
     
+    // Get food statistics if food system exists
+    const foodStats = this.foodSystem ? this.foodSystem.getFoodStats() : undefined;
+    
     return {
       population,
       time: this.time,
       byTribe,
+      food: foodStats,
       global: {
         mean: globalMean,
         distribution: {

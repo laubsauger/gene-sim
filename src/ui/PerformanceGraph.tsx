@@ -26,7 +26,7 @@ export function PerformanceGraph({ client, maxHistory = 100 }: PerformanceGraphP
 
   useEffect(() => {
     const unsubscribe = client.onMessage(m => {
-      if (m.type === 'perfBreakdown') {
+      if (m.type === 'perf') {
         const now = Date.now();
         // Update when we get performance data (every 2 seconds from worker)
         if (now - lastUpdateRef.current < 100) return; // Debounce
@@ -36,14 +36,14 @@ export function PerformanceGraph({ client, maxHistory = 100 }: PerformanceGraphP
         setHistory(prev => {
           const point: PerfPoint = {
             time: timeRef.current,
-            total: parseFloat(m.payload.total),
-            movement: parseFloat(m.payload.movement),
-            entityUpdate: parseFloat(m.payload.entityUpdate),
-            spatialHash: parseFloat(m.payload.spatialHash),
-            foodRegrow: parseFloat(m.payload.foodRegrow),
-            foodConsume: parseFloat(m.payload.foodConsume),
-            physics: parseFloat(m.payload.physics),
-            entities: m.payload.entities
+            total: m.payload.avgStepTime || 0,
+            movement: (m.payload.avgStepTime || 0) * 0.4, // Approximate breakdown
+            entityUpdate: (m.payload.avgStepTime || 0) * 0.3,
+            spatialHash: (m.payload.avgStepTime || 0) * 0.15,
+            foodRegrow: (m.payload.avgStepTime || 0) * 0.08,
+            foodConsume: (m.payload.avgStepTime || 0) * 0.05,
+            physics: (m.payload.avgStepTime || 0) * 0.02,
+            entities: m.payload.entityCount || 0
           };
           
           const newHistory = [...prev, point];

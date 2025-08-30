@@ -436,6 +436,7 @@ class SimulationCoordinator {
           population: 0,
           time: 0,
           byTribe: {},
+          food: { current: 0, capacity: 0, percentage: 0 },
           global: {
             mean: {
               speed: 0, vision: 0, metabolism: 0, aggression: 0,
@@ -460,6 +461,12 @@ class SimulationCoordinator {
         this.workerStats.forEach(workerStat => {
           aggregated.population += workerStat.population;
           aggregated.time = Math.max(aggregated.time, workerStat.time);
+          
+          // Merge food stats if available
+          if (workerStat.food) {
+            aggregated.food!.current += workerStat.food.current;
+            aggregated.food!.capacity += workerStat.food.capacity;
+          }
           
           // Merge tribe stats
           Object.entries(workerStat.byTribe).forEach(([tribeName, tribeData]) => {
@@ -519,9 +526,54 @@ class SimulationCoordinator {
           }
         });
         
+        // Calculate global means and distributions across all tribes
+        if (aggregated.population > 0) {
+          const geneNames = ['speed', 'vision', 'metabolism', 'aggression', 'cohesion', 'reproChance', 'foodStandards', 'diet', 'viewAngle'] as const;
+          
+          // Calculate global means (weighted by tribe populations)
+          geneNames.forEach(gene => {
+            let weightedSum = 0;
+            Object.values(aggregated.byTribe).forEach(tribe => {
+              if (tribe.mean && tribe.population > 0) {
+                weightedSum += tribe.mean[gene] * tribe.population;
+              }
+            });
+            aggregated.global.mean[gene] = weightedSum / aggregated.population;
+          });
+          
+          // Calculate global distributions (use worker stats if available)
+          this.workerStats.forEach(workerStat => {
+            if (workerStat.global && workerStat.global.distribution) {
+              geneNames.forEach(gene => {
+                const workerDist = workerStat.global.distribution[gene];
+                const globalDist = aggregated.global.distribution[gene];
+                
+                if (workerDist) {
+                  globalDist.min = Math.min(globalDist.min, workerDist.min);
+                  globalDist.max = Math.max(globalDist.max, workerDist.max);
+                  // Simple approximation for std - could be improved
+                  globalDist.std = Math.max(globalDist.std, workerDist.std);
+                }
+              });
+            }
+          });
+          
+          // Fix any infinite values that weren't set
+          geneNames.forEach(gene => {
+            const dist = aggregated.global.distribution[gene];
+            if (dist.min === Infinity) dist.min = 0;
+            if (dist.max === -Infinity) dist.max = 0;
+          });
+        }
+        
+        // Calculate food percentage after aggregation
+        if (aggregated.food && aggregated.food.capacity > 0) {
+          aggregated.food.percentage = (aggregated.food.current / aggregated.food.capacity) * 100;
+        }
+        
         // Log stats summary occasionally instead of every frame
         this.statsLogCounter = (this.statsLogCounter || 0) + 1;
-        if (this.statsLogCounter % 20 === 0) { // Every ~5 seconds
+        if (this.statsLogCounter % 50 === 0) { // Every ~12 seconds
           const summary = Object.entries(aggregated.byTribe)
             .map(([name, data]) => `${name}:${data.population}`)
             .join(', ');
@@ -630,6 +682,7 @@ class SimulationCoordinator {
           pos: this.sharedBuffers.positions,  // This contains x,y interleaved
           color: this.sharedBuffers.colors,
           alive: this.sharedBuffers.alive,
+          ages: this.sharedBuffers.ages,
           food: this.foodBuffer || new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT * 256 * 256),
         },
         meta: { count: this.state.entityCount },  // Full buffer size for sparse entity storage
@@ -686,6 +739,11 @@ class SimulationCoordinator {
       case 'renderFps':
         // Store render FPS and forward to workers
         this.state.renderFps = msg.payload.fps;
+        this.state.workers.forEach(w => w.worker.postMessage(msg));
+        break;
+        
+      case 'updateFoodParams':
+        // Forward to all workers to update their food systems
         this.state.workers.forEach(w => w.worker.postMessage(msg));
         break;
     }

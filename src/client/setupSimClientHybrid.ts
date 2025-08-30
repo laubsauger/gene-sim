@@ -148,6 +148,13 @@ export class HybridSimClient {
     } as WorkerMsg);
   }
   
+  updateFoodParams(capacity?: number, regen?: number) {
+    this._worker?.postMessage({
+      type: 'updateFoodParams',
+      payload: { capacity, regen },
+    } as WorkerMsg);
+  }
+  
   onMessage(listener: (msg: MainMsg) => void): () => void {
     this.listeners.push(listener);
     return () => {

@@ -94,6 +94,11 @@ export type SimStats = {
   time: number; // sim time in seconds
   population: number;
   byTribe: Record<string, any>;
+  food?: {
+    current: number; // current food amount across all cells
+    capacity: number; // maximum possible food amount
+    percentage: number; // current/capacity * 100
+  };
   global: {
     mean: {
       speed: number;
@@ -128,6 +133,7 @@ export type WorkerMsg =
   | { type: 'requestSnapshot' }
   | { type: 'setViewport'; payload: { x: number; y: number; w: number; h: number; zoom: number } }
   | { type: 'renderFps'; payload: { fps: number } }
+  | { type: 'updateFoodParams'; payload: { capacity?: number; regen?: number } }
   | { type: 'stats' }
   | { type: 'perf' };
 
