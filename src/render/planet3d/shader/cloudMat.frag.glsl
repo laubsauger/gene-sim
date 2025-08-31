@@ -48,13 +48,29 @@ void main(){
   // Direct 3D noise sampling to avoid projection stretching
   float timeMultiplier = 1.0 - uPaused;  // 0 when paused, 1 when moving
   
-  // Rotate the sphere position slightly for cloud movement
-  float rotAngle = 0.00001 * uTime * timeMultiplier;  // Very slow rotation
-  vec3 p = vec3(
-    spherePos.x * cos(rotAngle) - spherePos.z * sin(rotAngle),
-    spherePos.y + 0.000002 * sin(uTime * 0.002) * timeMultiplier,  // Slight vertical drift
-    spherePos.x * sin(rotAngle) + spherePos.z * cos(rotAngle)
-  ) * 5.0;  // Smaller scale for denser clouds
+  // Much slower cloud movement - fix the speed issue
+  float slowTime = uTime * 0.00005 * timeMultiplier;  // MUCH slower rotation
+  
+  // Use multiple octave rotation for more organic movement without emission points
+  float angle1 = slowTime;
+  float angle2 = slowTime * 0.7 + 1.0;  // Different phase
+  float angle3 = slowTime * 1.3 + 2.0;  // Another phase
+  
+  // Create organic movement by combining rotations
+  vec3 p1 = vec3(
+    spherePos.x * cos(angle1) - spherePos.z * sin(angle1),
+    spherePos.y,
+    spherePos.x * sin(angle1) + spherePos.z * cos(angle1)
+  );
+  
+  vec3 p2 = vec3(
+    p1.x * cos(angle2) - p1.y * sin(angle2),
+    p1.x * sin(angle2) + p1.y * cos(angle2),
+    p1.z
+  );
+  
+  // Final sampling position
+  vec3 p = p2 * 4.0;  // Scale for appropriate cloud size
   float k=1.5;  // Lower frequency for larger cloud formations
   float base=fbm(p*k); 
   float detail=fbm(p*k*3.0);  // More detailed overlay

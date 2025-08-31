@@ -58,9 +58,9 @@ export function makePlanetWithAtmosphere({
     uniforms: atmUniforms,
     transparent: true,
     depthWrite: false,  // Don't write depth (transparent layer)
-    depthTest: true,    // CRITICAL: Must test depth to be occluded by moon/entities
+    depthTest: true,    // Restore depth testing
     blending: THREE.AdditiveBlending,
-    side: THREE.BackSide,  // Render from inside out for rim effect
+    side: THREE.BackSide,  // Restore BackSide for proper rim effect
     vertexShader: atmosphereMatVertexShader,
     fragmentShader: atmosphereMatFragmentShader,
   });
