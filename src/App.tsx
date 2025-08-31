@@ -307,6 +307,14 @@ export default function App() {
     return () => document.removeEventListener('keydown', handleKeyPress);
   }, []);
   
+  // Trigger resize event when UI visibility changes
+  useEffect(() => {
+    // Dispatch resize event to update canvas dimensions
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 50); // Small delay to ensure DOM has updated
+  }, [controlsHidden, isFullscreen]);
+  
   useEffect(() => {
     return () => {
       console.log('[App] Cleaning up on unmount');

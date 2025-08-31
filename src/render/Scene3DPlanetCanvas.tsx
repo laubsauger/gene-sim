@@ -663,6 +663,9 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
           cloudMaterial.uniforms.uPaused.value = controls.pauseClouds ? 1 : 0;  // Set pause state
         }
       }
+      
+      // Force shadow map update to ensure moon shadows are visible
+      refs.sun.shadow.needsUpdate = true;
 
       // Update entities if they exist
       if (refs.entities && client.buffers) {

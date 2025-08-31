@@ -25,7 +25,7 @@ export function makeProceduralCloudShell({ radius }: { radius: number }) {
     fragmentShader: cloudMatFragmentShader,
   });
 
-  const cloudRadius = radius * 1.008;  // Much closer to surface for smaller, tighter clouds
+  const cloudRadius = radius * 1.02;  // Slightly higher above surface for better separation
   const cloudGeo = new THREE.SphereGeometry(cloudRadius, 64, 48);
   const cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
   cloudMesh.userData.isCloud = true;

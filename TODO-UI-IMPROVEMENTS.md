@@ -67,27 +67,6 @@
   - [ ] Update CAMERA_CONFIG in planetUtils.ts
   - [ ] Ensure controls.minDistance and maxDistance follow suit
 
-### 4b. ✅ Stylized Earth-Moon-Sun System (Completed)
-- [x] Adjust Moon distance for visual appeal
-  - [x] Reality: Moon is ~60 Earth radii away
-  - [x] Implemented: 5 Earth radii (stylized for better composition)
-  - [x] Update MOON_ORBIT_RADIUS in planetUtils.ts (final: 5)
-- [x] Scale Moon size appropriately
-  - [x] Reality: Moon radius is 0.27x Earth radius
-  - [x] Implemented: 0.25x (slightly smaller for visual balance)
-- [x] Adjust orbital speeds for better visual experience
-  - [x] Earth rotation: 0.05 (slower day/night)
-  - [x] Moon orbit: 0.15 (faster for visual interest)
-  - [x] Earth orbit: 0.02 (very slow, comfortable viewing)
-- [x] Stylize Sun for visual impact
-  - [x] Sun radius: 2.0 (larger for dramatic effect)
-  - [x] Multiple halo layers for impressive glow
-  - [x] Brighter point light (0.8 intensity)
-- [x] Fine-tune overall system
-  - [x] Earth orbit: 10 units from sun
-  - [x] Camera distances optimized for composition
-  - [ ] Consider adding speed multiplier controls for each rotation/orbit independently
-
 ### 5. Moon Visual Improvements
 - [ ] Add crater texture to moon
   - [ ] Source realistic moon texture map
@@ -302,8 +281,6 @@ class StarField {
 - [ ] No performance degradation with new textures
 - [ ] Cloud rendering has no visible seams
 - [ ] Orbital mechanics speed control is smooth
-- [ ] Camera modes transition smoothly
-- [ ] Mobile responsive (if applicable)
 - [ ] Terminator band appears natural and wide enough
 - [ ] Bloom effect doesn't impact performance significantly
 - [ ] Starfield renders efficiently even at 100k stars

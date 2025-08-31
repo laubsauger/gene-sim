@@ -182,3 +182,50 @@ Index 8: viewAngle (60-180 degrees)
 - tribe_id: Uint16Array / Vec<u16>
 - genes: Float32Array / Vec<f32> (9 * entity_count)
 - do not commit to github and do not set yourself as author in any commit messages
+
+## UI Style Guide
+
+### Button Styling
+All buttons use a semi-transparent glass morphism design with colored borders:
+- **Background**: `${color}20` (12.5% opacity of the theme color)
+- **Border**: `1px solid ${color}` (full color border)
+- **Border Radius**: `4px` (consistent rounding)
+- **Backdrop Filter**: `blur(10px)` for glass effect
+- **Hover State**: Increase background opacity to ~25% (`${color}40`)
+- **Active/Toggle State**: Uses same styling, inactive shows gray
+- **Button Groups**: First button rounded left, last button rounded right, middle buttons square
+
+### Slider Styling
+Sliders follow the same semi-transparent pattern:
+- **Track Background**: Semi-transparent gradient with color at ~19% opacity
+- **Track Border**: `1px solid ${color}` matching button style
+- **Border Radius**: `3px` (less rounded than buttons for better track appearance)
+- **Thumb**: White with colored border, scales on hover
+- **Backdrop Filter**: `blur(10px)` for consistency
+- **CompactSlider**: Reusable component with consistent label/value display
+
+### Color Palette
+```typescript
+const colorMap = {
+  blue: '#3b82f6',    // Primary actions, speed controls, view modes
+  green: '#10b981',   // Size/growth controls, play buttons, food settings
+  purple: '#9333ea',  // Special features
+  violet: '#8b5cf6',  // Boundaries, visual settings
+  gray: '#6b7280',    // Inactive/disabled states
+  red: '#ef4444',     // Stop/pause actions
+  emerald: '#059669', // Biome/nature controls
+  amber: '#f59e0b',   // Energy settings, warnings
+};
+```
+
+### Control Groups
+- **Labels**: 9px uppercase text in `#64748b` color
+- **Spacing**: 2-4px gap between label and controls
+- **Organization**: Related controls grouped together (VIEW, LAYERS, etc.)
+
+### Component Examples
+- **StyledButton**: Reusable button component in `src/ui/ButtonStyles.tsx`
+- **CompactSlider**: Space-efficient slider in `src/ui/CompactSlider.tsx`
+- **ButtonGroup**: Container for grouped toggle buttons with proper border rounding
+
+This design provides visual consistency across all UI controls while maintaining readability over the 3D scene background.

@@ -4,6 +4,7 @@ import type { SimInit, TribeInit, SpawnPattern } from '../sim/types';
 import { throttle } from '../utils/throttle';
 import { ModeSelector } from './ModeSelector';
 import { BiomeGenerator } from '../sim/biomes';
+import { CompactSlider } from './CompactSlider';
 
 interface SimulationSetupProps {
   client: SimClient;
@@ -290,6 +291,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   const [seed, setSeed] = useState(Date.now());
   const [worldWidth, setWorldWidth] = useState(8000);
   const [worldHeight, setWorldHeight] = useState(8000);
+  const [collapsed, setCollapsed] = useState(false);
   
   // Cache biome data - only regenerate when seed or world size changes
   const biomeData = useMemo(() => {
@@ -671,19 +673,19 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                         flex: '0 0 auto',
                       }}
                     />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '1' }}>
-                      <span style={{ color: '#a0aec0', fontSize: '12px', flexShrink: 0 }}>Pop:</span>
-                      <StyledSlider
+                    <div style={{ flex: '1' }}>
+                      <CompactSlider
+                        label="Pop"
                         min={100}
                         max={20000}
-                        step={100}
                         value={tribe.count}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateTribe(i, { ...tribe, count: Number(e.target.value) })}
-                        style={{ width: '80px', flexShrink: 1 }}
+                        onChange={(value) => updateTribe(i, { ...tribe, count: value })}
+                        step={100}
+                        color={`hsl(${tribe.genes?.colorHue || 0}, 70%, 50%)`}
+                        displayValue={tribe.count.toLocaleString()}
+                        labelWidth={24}
+                        valueWidth={40}
                       />
-                      <span style={{ fontSize: '12px', color: '#cbd5e0', minWidth: '35px', textAlign: 'right', flexShrink: 0 }}>
-                        {tribe.count}
-                      </span>
                     </div>
                     <button
                       onClick={(e) => {
@@ -1062,16 +1064,17 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                         </div>
                       </div>
                       <div style={{ marginTop: '8px' }}>
-                        <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                          Regen Rate
-                          <span style={{ color: '#4a5568', fontSize: '10px', marginLeft: '4px' }}>({foodRegen.toFixed(2)} - ~{Math.round(1 / foodRegen)}s)</span>
-                        </label>
-                        <StyledSlider
+                        <CompactSlider
+                          label="Regen"
                           min={0.01}
                           max={1.0}
                           step={0.01}
                           value={foodRegen}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFoodRegen(Number(e.target.value))}
+                          onChange={setFoodRegen}
+                          color="#10b981"
+                          displayValue={`${foodRegen.toFixed(2)} (~${Math.round(1 / foodRegen)}s)`}
+                          labelWidth={35}
+                          valueWidth={75}
                         />
                       </div>
                     </div>
@@ -1082,44 +1085,43 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                     <label style={{ color: '#a0aec0', fontSize: '12px', fontWeight: '500', marginBottom: '8px', display: 'block' }}>
                       Food Distribution
                     </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <div>
-                        <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                          Island Size ({foodDistScale.toFixed(0)})
-                        </label>
-                        <StyledSlider
-                          min={1}
-                          max={1000}
-                          value={foodDistScale}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFoodDistScale(Number(e.target.value))}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                          Complexity ({foodDistFrequency.toFixed(2)})
-                        </label>
-                        <StyledSlider
-                          min={0.01}
-                          max={50}
-                          step={0.01}
-                          value={foodDistFrequency}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFoodDistFrequency(Number(e.target.value))}
-                        />
-                      </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <CompactSlider
+                        label="Islands"
+                        min={1}
+                        max={1000}
+                        value={foodDistScale}
+                        onChange={setFoodDistScale}
+                        color="#10b981"
+                        displayValue={foodDistScale.toFixed(0)}
+                        labelWidth={45}
+                        valueWidth={40}
+                      />
+                      <CompactSlider
+                        label="Complex"
+                        min={0.01}
+                        max={50}
+                        step={0.01}
+                        value={foodDistFrequency}
+                        onChange={setFoodDistFrequency}
+                        color="#10b981"
+                        displayValue={foodDistFrequency.toFixed(2)}
+                        labelWidth={45}
+                        valueWidth={40}
+                      />
                     </div>
-                    <div style={{ marginTop: '8px' }}>
-                      <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                        Scarcity
-                        <span style={{ color: '#4a5568', fontSize: '10px', marginLeft: '4px' }}>({foodDistThreshold.toFixed(2)})</span>
-                      </label>
-                      <StyledSlider
+                      <CompactSlider
+                        label="Scarcity"
                         min={0.25}
                         max={1}
                         step={0.05}
                         value={foodDistThreshold}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFoodDistThreshold(Number(e.target.value))}
+                        onChange={setFoodDistThreshold}
+                        color="#10b981"
+                        displayValue={foodDistThreshold.toFixed(2)}
+                        labelWidth={45}
+                        valueWidth={40}
                       />
-                    </div>
                   </div>
 
                   {/* Energy Settings */}
@@ -1127,39 +1129,39 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                     <label style={{ color: '#a0aec0', fontSize: '12px', fontWeight: '500', marginBottom: '8px', display: 'block' }}>
                       Energy Settings
                     </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <div>
-                        <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                          Starting ({startEnergy})
-                        </label>
-                        <StyledSlider
-                          min={20}
-                          max={80}
-                          value={startEnergy}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStartEnergy(Number(e.target.value))}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                          Maximum ({maxEnergy})
-                        </label>
-                        <StyledSlider
-                          min={80}
-                          max={150}
-                          value={maxEnergy}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxEnergy(Number(e.target.value))}
-                        />
-                      </div>
-                    </div>
-                    <div style={{ marginTop: '8px' }}>
-                      <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                        Reproduction Threshold ({reproEnergy})
-                      </label>
-                      <StyledSlider
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <CompactSlider
+                        label="Start"
+                        min={20}
+                        max={80}
+                        value={startEnergy}
+                        onChange={setStartEnergy}
+                        color="#f59e0b"
+                        displayValue={startEnergy}
+                        labelWidth={45}
+                        valueWidth={35}
+                      />
+                      <CompactSlider
+                        label="Max"
+                        min={80}
+                        max={150}
+                        value={maxEnergy}
+                        onChange={setMaxEnergy}
+                        color="#f59e0b"
+                        displayValue={maxEnergy}
+                        labelWidth={45}
+                        valueWidth={35}
+                      />
+                      <CompactSlider
+                        label="Repro"
                         min={40}
                         max={80}
                         value={reproEnergy}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReproEnergy(Number(e.target.value))}
+                        onChange={setReproEnergy}
+                        color="#f59e0b"
+                        displayValue={reproEnergy}
+                        labelWidth={45}
+                        valueWidth={35}
                       />
                     </div>
                   </div>
@@ -1189,28 +1191,27 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
                     <label style={{ color: '#a0aec0', fontSize: '12px', fontWeight: '500', marginBottom: '8px', display: 'block' }}>
                       Visual Settings
                     </label>
-                    <div>
-                      <label style={{ color: '#718096', fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                        Entity Render Size ({entityRenderSize}px)
-                      </label>
-                      <StyledSlider
-                        min={3}
-                        max={20}
-                        step={1}
-                        value={entityRenderSize}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          const newSize = Number(e.target.value);
-                          setEntityRenderSize(newSize);
-                          // Dispatch event so Scene2D can update
-                          window.dispatchEvent(new CustomEvent('entityRenderSizeChange', { detail: newSize }));
-                        }}
-                      />
+                    <CompactSlider
+                      label="Entity Size"
+                      min={3}
+                      max={20}
+                      step={1}
+                      value={entityRenderSize}
+                      onChange={(newSize) => {
+                        setEntityRenderSize(newSize);
+                        // Dispatch event so Scene2D can update
+                        window.dispatchEvent(new CustomEvent('entityRenderSizeChange', { detail: newSize }));
+                      }}
+                      color="#8b5cf6"
+                      displayValue={`${entityRenderSize}px`}
+                      labelWidth={60}
+                      valueWidth={35}
+                    />
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
                         <span style={{ fontSize: '10px', color: '#4a5568' }}>Tiny</span>
                         <span style={{ fontSize: '10px', color: '#4a5568' }}>Normal</span>
                         <span style={{ fontSize: '10px', color: '#4a5568' }}>Large</span>
                       </div>
-                    </div>
                   </div>
 
                 </div>

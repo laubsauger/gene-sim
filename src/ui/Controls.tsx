@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { SimClient } from '../client/setupSimClientHybrid';
+import { CompactSlider } from './CompactSlider';
+import { StyledButton, ButtonGroup } from './ButtonStyles';
 
 // Reuse the StyledSlider from SimulationSetup
 interface StyledSliderProps {
@@ -254,271 +256,166 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
       overflowX: 'auto',
     }}>
       {/* Pause/Play Button */}
-      <button
+      <StyledButton
         onClick={handlePause}
         disabled={!isRunning}
-        style={{
-          padding: '6px 12px',
-          fontSize: '14px',
-          height: '32px',
-          background: !isRunning ? '#4b5563' : (isPaused ? '#22c55e' : '#ef4444'),
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: isRunning ? 'pointer' : 'not-allowed',
-          opacity: isRunning ? 1 : 0.5,
-          minWidth: '45px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
+        color={isPaused ? 'green' : 'red'}
+        size="small"
+        style={{ minWidth: '45px' }}
       >
         <span style={{ fontSize: '16px' }}>
           {isPaused ? '▶' : '⏸'}
         </span>
-      </button>
+      </StyledButton>
       
-      {/* Speed and Size Controls */}
+      {/* Speed and Size Controls - Stacked */}
       <div style={{ 
         display: 'flex', 
-        gap: '12px',
-        alignItems: 'center',
-        flex: '0 1 auto',
-        minWidth: '0',
+        flexDirection: 'column',
+        gap: '4px',
+        minWidth: '140px',
+        padding: '4px 8px',
+        background: 'rgba(255, 255, 255, 0.03)',
+        borderRadius: '4px',
       }}>
-        <span style={{ 
-          color: '#888', 
-          fontSize: '11px',
-          fontWeight: '500',
-        }}>
-          Speed
-        </span>
-        <input
-          type="range"
+        <CompactSlider
+          label="Speed"
+          value={sliderValue}
+          onChange={(value) => {
+            setSliderValue(value);
+            const speedMul = speedValues[value];
+            handleSpeed(speedMul);
+          }}
           min={0}
           max={speedValues.length - 1}
           step={1}
-          value={sliderValue}
-          onChange={handleSliderChange}
-          style={{
-            width: '100px',
-            height: '20px',
-          }}
-          className="custom-slider"
+          color="#3b82f6"
+          displayValue={`${speed < 1 ? speed.toFixed(1) : speed}×`}
         />
-        <span style={{ 
-          color: '#60a5fa', 
-          fontSize: '12px',
-          fontWeight: '600',
-          minWidth: '30px',
-        }}>
-          {speed < 1 ? speed.toFixed(1) : speed}×
-        </span>
-        
-        <span style={{ 
-          color: '#888', 
-          fontSize: '11px',
-          fontWeight: '500',
-          marginLeft: '8px',
-        }}>
-          Size
-        </span>
-        <input
-          type="range"
+        <CompactSlider
+          label="Size"
+          value={entitySize}
+          onChange={(value) => {
+            console.log('[Controls] Entity size slider changed to:', value);
+            onEntitySizeChange(value);
+          }}
           min={0.5}
           max={25}
           step={0.1}
-          value={entitySize}
-          onChange={(e) => {
-            const newSize = parseFloat(e.target.value);
-            console.log('[Controls] Entity size slider changed to:', newSize);
-            onEntitySizeChange(newSize);
-          }}
-          style={{
-            width: '80px',
-            height: '20px',
-          }}
-          className="custom-slider"
+          color="#10b981"
+          displayValue={entitySize.toFixed(1)}
         />
-        <span style={{ 
-          color: '#60a5fa', 
-          fontSize: '12px',
-          fontWeight: '600',
-          minWidth: '30px',
-        }}>
-          {entitySize.toFixed(1)}
-        </span>
       </div>
       
-      {/* Render Mode Toggle */}
+      {/* View Mode */}
       {onRenderModeChange && (
-        <div style={{
-          display: 'flex',
-          gap: '2px',
-          borderRadius: '4px',
-          overflow: 'hidden',
-        }}>
-          <button
-            onClick={() => onRenderModeChange('2D')}
-            style={{
-              padding: '6px 10px',
-              fontSize: '12px',
-              height: '32px',
-              background: renderMode === '2D' ? '#3b82f6' : '#4b5563',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0',
-              cursor: 'pointer',
-              transition: 'background 0.2s',
-            }}
-            title="2D Flat view"
-          >
-            2D
-          </button>
-          <button
-            onClick={() => onRenderModeChange('3D')}
-            style={{
-              padding: '6px 10px',
-              fontSize: '12px',
-              height: '32px',
-              background: renderMode === '3D' ? '#3b82f6' : '#4b5563',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0',
-              cursor: 'pointer',
-              transition: 'background 0.2s',
-            }}
-            title="3D Planet view"
-          >
-            3D
-          </button>
-          <button
-            onClick={() => onRenderModeChange('3D-Planet')}
-            style={{
-              padding: '6px 10px',
-              fontSize: '12px',
-              height: '32px',
-              background: renderMode === '3D-Planet' ? '#3b82f6' : '#4b5563',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0',
-              cursor: 'pointer',
-              transition: 'background 0.2s',
-            }}
-            title="3D Orbital view"
-          >
-            Orbit
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '9px', color: '#64748b', fontWeight: '500', marginBottom: '2px' }}>VIEW</span>
+          <ButtonGroup>
+            <StyledButton
+              onClick={() => onRenderModeChange('2D')}
+              active={renderMode === '2D'}
+              color="blue"
+              size="small"
+              variant="toggle"
+              title="2D Flat view"
+            >
+              2D
+            </StyledButton>
+            <StyledButton
+              onClick={() => onRenderModeChange('3D')}
+              active={renderMode === '3D'}
+              color="blue"
+              size="small"
+              variant="toggle"
+              title="3D Planet view"
+            >
+              3D
+            </StyledButton>
+            <StyledButton
+              onClick={() => onRenderModeChange('3D-Planet')}
+              active={renderMode === '3D-Planet'}
+              color="blue"
+              size="small"
+              variant="toggle"
+              title="3D Orbital view"
+            >
+              Orbit
+            </StyledButton>
+          </ButtonGroup>
         </div>
       )}
       
-      {/* Food Display Toggle */}
-      {onShowFoodChange && (
-        <button
-          onClick={() => onShowFoodChange(!showFood)}
-          style={{
-            padding: '6px 10px',
-            fontSize: '12px',
-            height: '32px',
-            background: showFood ? '#10b981' : '#4b5563',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            transition: 'background 0.2s',
-          }}
-          title={showFood ? 'Hide food layer' : 'Show food layer'}
-        >
-          <span style={{ fontSize: '13px' }}>🌾</span>
-          Food
-        </button>
-      )}
-      
-      {/* Boundary Visualization Toggle */}
-      {onShowBoundariesChange && (
-        <button
-          onClick={() => onShowBoundariesChange(!showBoundaries)}
-          style={{
-            padding: '6px 10px',
-            fontSize: '12px',
-            height: '32px',
-            background: showBoundaries ? '#8b5cf6' : '#4b5563',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            transition: 'background 0.2s',
-          }}
-          title={showBoundaries ? 'Hide boundary lines' : 'Show boundary lines'}
-        >
-          Boundaries
-        </button>
-      )}
-      
-      {/* Biome Display Mode */}
-      {onBiomeModeChange && (
-        <div style={{
-          display: 'flex',
-          gap: '2px',
-          borderRadius: '4px',
-          overflow: 'hidden',
-        }}>
-          <button
-            onClick={() => onBiomeModeChange('hidden')}
-            style={{
-              padding: '6px 8px',
-              fontSize: '11px',
-              height: '32px',
-              background: biomeMode === 'hidden' ? '#6b7280' : '#374151',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0',
-              cursor: 'pointer',
-              transition: 'background 0.2s',
-            }}
-            title="Hide biomes"
-          >
-            Off
-          </button>
-          <button
-            onClick={() => onBiomeModeChange('natural')}
-            style={{
-              padding: '6px 8px',
-              fontSize: '11px',
-              height: '32px',
-              background: biomeMode === 'natural' ? '#059669' : '#374151',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0',
-              cursor: 'pointer',
-              transition: 'background 0.2s',
-            }}
-            title="Natural biome colors"
-          >
-            Natural
-          </button>
-          <button
-            onClick={() => onBiomeModeChange('highlight')}
-            style={{
-              padding: '6px 8px',
-              fontSize: '11px',
-              height: '32px',
-              background: biomeMode === 'highlight' ? '#7c3aed' : '#374151',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0',
-              cursor: 'pointer',
-              transition: 'background 0.2s',
-            }}
-            title="Highlight biome types"
-          >
-            Highlight
-          </button>
+      {/* Layers Section */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <span style={{ fontSize: '9px', color: '#64748b', fontWeight: '500', marginBottom: '2px' }}>LAYERS</span>
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+          {/* Food Display Toggle */}
+          {onShowFoodChange && (
+            <StyledButton
+              onClick={() => onShowFoodChange(!showFood)}
+              active={showFood}
+              color="green"
+              size="small"
+              variant="toggle"
+              title={showFood ? 'Hide food layer' : 'Show food layer'}
+            >
+              <span style={{ fontSize: '13px' }}>🌾</span>
+              Food
+            </StyledButton>
+          )}
+
+          {/* Boundary Visualization Toggle */}
+          {onShowBoundariesChange && (
+            <StyledButton
+              onClick={() => onShowBoundariesChange(!showBoundaries)}
+              active={showBoundaries}
+              color="violet"
+              size="small"
+              variant="toggle"
+              title={showBoundaries ? 'Hide boundary lines' : 'Show boundary lines'}
+            >
+              Boundaries
+            </StyledButton>
+          )}
+
+          {/* Biome Display Mode */}
+          {onBiomeModeChange && (
+            <ButtonGroup>
+              <StyledButton
+                onClick={() => onBiomeModeChange('hidden')}
+                active={biomeMode === 'hidden'}
+                color="gray"
+                size="small"
+                variant="toggle"
+                title="Hide biomes"
+              >
+                Off
+              </StyledButton>
+              <StyledButton
+                onClick={() => onBiomeModeChange('natural')}
+                active={biomeMode === 'natural'}
+                color="emerald"
+                size="small"
+                variant="toggle"
+                title="Natural biome colors"
+              >
+                Biomes
+              </StyledButton>
+              <StyledButton
+                onClick={() => onBiomeModeChange('highlight')}
+                active={biomeMode === 'highlight'}
+                color="purple"
+                size="small"
+                variant="toggle"
+                title="Highlight biome types"
+              >
+                Highlight
+              </StyledButton>
+            </ButtonGroup>
+          )}
         </div>
-      )}
+      </div>
       
       {/* UI Visibility and Fullscreen Controls */}
       <div style={{
@@ -527,42 +424,26 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
         marginLeft: 'auto', // Push to the right
       }}>
         {onToggleControls && (
-          <button
+          <StyledButton
             onClick={onToggleControls}
-            style={{
-              padding: '6px 10px',
-              fontSize: '12px',
-              height: '32px',
-              background: '#4b5563',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              transition: 'background 0.2s',
-            }}
+            color="gray"
+            size="small"
             title="Hide UI (F key)"
           >
             Hide UI
-          </button>
+          </StyledButton>
         )}
         {onToggleFullscreen && (
-          <button
+          <StyledButton
             onClick={onToggleFullscreen}
-            style={{
-              padding: '6px 10px',
-              fontSize: '12px',
-              height: '32px',
-              background: isFullscreen ? '#6b7280' : '#4b5563',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              transition: 'background 0.2s',
-            }}
+            active={isFullscreen}
+            color="gray"
+            size="small"
+            variant="toggle"
             title="Toggle fullscreen (F11)"
           >
             {isFullscreen ? 'Exit' : 'Full'}
-          </button>
+          </StyledButton>
         )}
       </div>
       
