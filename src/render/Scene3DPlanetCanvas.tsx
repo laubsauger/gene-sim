@@ -39,6 +39,7 @@ import {
   MOON_ORBIT_SPEED,
   CLOUD_ROTATION_SPEED,
   AXIAL_TILT,
+  MOON_ORBITAL_INCLINATION,
   INITIAL_CAMERA_POSITION,
   CAMERA_CONFIG,
   updateCloudUniforms
@@ -65,12 +66,13 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
   const [orbitalMode, setOrbitalMode] = useState(true); // Enable orbital mode by default
   const [followEarth, setFollowEarth] = useState(true); // Enable follow Earth by default
   const [pauseOrbits, setPauseOrbits] = useState(false); // New control to pause all orbital mechanics
-  const controlsRef = useRef({ showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits });
+  const [pauseClouds, setPauseClouds] = useState(false); // New control to pause cloud movement
+  const controlsRef = useRef({ showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits, pauseClouds });
 
   // Update controls ref when state changes
   useEffect(() => {
-    controlsRef.current = { showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits };
-  }, [showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits]);
+    controlsRef.current = { showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits, pauseClouds };
+  }, [showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits, pauseClouds]);
   const sceneRef = useRef<{
     renderer: THREE.WebGLRenderer;
     scene: THREE.Scene;
@@ -162,7 +164,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     controls.target.set(EARTH_ORBIT_RADIUS, 0, 0); // Look at Earth's initial position
 
     // Add ambient light for debugging
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.1); // Reduced for better shadows
     scene.add(ambientLight);
 
     // Add axis helper for orientation
@@ -177,13 +179,15 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     sun.position.set(100, 100, 100); // Initial position (will be updated per frame)
     sun.castShadow = true;
     sun.shadow.mapSize.set(4096, 4096); // Higher resolution for better shadows
-    sun.shadow.camera.left = -2000;
-    sun.shadow.camera.right = 2000;
-    sun.shadow.camera.top = 2000;
-    sun.shadow.camera.bottom = -2000;
+    // Expanded shadow camera for orbital mechanics
+    sun.shadow.camera.left = -EARTH_ORBIT_RADIUS * 2;
+    sun.shadow.camera.right = EARTH_ORBIT_RADIUS * 2;
+    sun.shadow.camera.top = EARTH_ORBIT_RADIUS * 2;
+    sun.shadow.camera.bottom = -EARTH_ORBIT_RADIUS * 2;
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 10000;
-    sun.shadow.bias = -0.0005; // Reduce shadow acne
+    sun.shadow.camera.far = EARTH_ORBIT_RADIUS * 4; // Cover full orbital range
+    sun.shadow.bias = -0.0001; // Fine-tuned for better shadows
+    sun.shadow.normalBias = 0.02; // Additional shadow acne prevention
     // Add target for directional light
     sun.target.position.set(EARTH_ORBIT_RADIUS, 0, 0); // Point at Earth's initial position
     scene.add(sun);
@@ -269,7 +273,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         depthTest: true,
       })
     );
-    sunGlow.scale.set(3, 3, 1); // Smaller glow
+    sunGlow.scale.set(2.2, 2.2, 1); // Even smaller inner glow
     sunGroup.add(sunGlow);
 
     // // Lens flare cross
@@ -314,11 +318,11 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         depthTest: true,
       })
     );
-    sunHalo.scale.set(4.5, 4.5, 1); // Smaller halo
+    sunHalo.scale.set(3.5, 3.5, 1); // Smaller outer halo
     sunGroup.add(sunHalo);
 
     // Point light for glow and additional illumination
-    const sunPointLight = new THREE.PointLight(0xffcc66, 1.5, EARTH_ORBIT_RADIUS * 3, 1);
+    const sunPointLight = new THREE.PointLight(0xffcc66, 0.5, EARTH_ORBIT_RADIUS * 3, 2); // Reduced intensity for better shadows
     sunGroup.add(sunPointLight);
 
     // ---------- EARTH STACK (per architecture) ----------
@@ -347,6 +351,9 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       radius: PLANET_RADIUS * 1.01, // Just above surface
     });
     const clouds = cloudResult.mesh;
+    // Enable shadow casting for clouds (subtle cloud shadows)
+    clouds.castShadow = true;
+    clouds.receiveShadow = false; // Clouds don't receive shadows, they cast them
     // Add clouds to earth group for proper layering
     earth.group.add(clouds);
 
@@ -504,21 +511,22 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       // Update controls
       refs.controls.update();
 
-      // Earth orbit mechanics (controlled by orbital mode and pause)
+      // Earth orbit mechanics on ecliptic plane (controlled by orbital mode and pause)
       let earthPos = new THREE.Vector3(0, 0, 0);
       if (controls.orbitalMode) {
         if (!controls.pauseOrbits) {
           const orbitTime = refs.clock.elapsedTime;  // Use elapsed time for continuous motion
+          // Earth orbits in the ecliptic plane (XZ plane, Y=0)
           const ex = Math.cos(orbitTime * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
           const ez = Math.sin(orbitTime * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
-          earthPos.set(ex, 0, ez);
+          earthPos.set(ex, 0, ez);  // Ecliptic plane
           refs.earth.group.position.copy(earthPos);
         } else {
           // When paused, maintain current position
           earthPos.copy(refs.earth.group.position);
         }
       } else {
-        // When orbital mode is off, Earth stays at orbit radius on x-axis
+        // When orbital mode is off, Earth stays at orbit radius on ecliptic plane
         earthPos.set(EARTH_ORBIT_RADIUS, 0, 0);
         refs.earth.group.position.copy(earthPos);
       }
@@ -536,10 +544,11 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         refs.camera.position.lerp(newCameraPos, lerpFactor);
       }
 
-      // Spin Earth with axial tilt
-      // Apply axial tilt to the rotation group
+      // Spin Earth with proper axial tilt relative to ecliptic plane
+      // Earth's rotation axis is tilted 23.5° from perpendicular to ecliptic
       if (!refs.earth.group.userData.tiltApplied) {
-        refs.earth.group.rotation.z = AXIAL_TILT;
+        // Apply axial tilt: Earth's axis tilted relative to its orbital plane (ecliptic)
+        refs.earth.group.rotation.z = AXIAL_TILT;  // 23.5° tilt from ecliptic normal
         refs.earth.group.userData.tiltApplied = true;
       }
       // Rotate Earth on its tilted axis (pause if orbital mechanics are paused)
@@ -547,15 +556,18 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         refs.earth.group.rotation.y = refs.clock.elapsedTime * EARTH_ROTATION_SPEED;
       }
 
-      // Moon orbit around Earth (relative to Earth's position)
+      // Moon orbit around Earth with 5.14° inclination from ecliptic
       if (!controls.pauseOrbits) {
         const moonTime = refs.clock.elapsedTime;  // Use elapsed time for continuous motion
-        const mx = Math.cos(moonTime * MOON_ORBIT_SPEED) * MOON_ORBIT_RADIUS;
-        const mz = Math.sin(moonTime * MOON_ORBIT_SPEED) * MOON_ORBIT_RADIUS;
-        // Position moon relative to Earth's current position
+        // Moon's orbit is tilted 5.14° from the ecliptic plane
+        const moonAngle = moonTime * MOON_ORBIT_SPEED;
+        const mx = Math.cos(moonAngle) * MOON_ORBIT_RADIUS;
+        const my = Math.sin(moonAngle) * MOON_ORBIT_RADIUS * Math.sin(MOON_ORBITAL_INCLINATION);  // Y component from inclination
+        const mz = Math.sin(moonAngle) * MOON_ORBIT_RADIUS * Math.cos(MOON_ORBITAL_INCLINATION);  // Z component
+        // Position moon relative to Earth's current position with proper orbital inclination
         refs.moon.position.set(
           earthPos.x + mx,
-          earthPos.y,
+          earthPos.y + my,  // Moon's orbit has vertical component due to inclination
           earthPos.z + mz
         );
       }
@@ -570,7 +582,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       refs.sun.target.updateMatrixWorld();
 
       // Feed sun direction to Earth materials (from origin to Earth)
-      refs.earth.uniforms.shared.uLightDir.value.copy(sunToEarth.clone().negate());
+      refs.earth.uniforms.shared.uLightDir.value.copy(sunToEarth); // Direction from sun to earth
 
       // Update shaders (now using cloudRotationSpeed properly)
       refs.earth.update({
@@ -580,13 +592,14 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         cloudRotationSpeed: CLOUD_ROTATION_SPEED
       });
 
-      // Update cloud uniforms with rotation (skip if clouds disabled)
+      // Update cloud uniforms with rotation and pause state
       if (refs.clouds) {
-        updateCloudUniforms(refs.clouds, {
-          lightDir: refs.earth.uniforms.shared.uLightDir.value,
-          time: refs.clock.elapsedTime,
-          rotationSpeed: CLOUD_ROTATION_SPEED,
-        });
+        const cloudMaterial = refs.clouds.material as THREE.ShaderMaterial;
+        if (cloudMaterial.uniforms) {
+          cloudMaterial.uniforms.uLightDir.value.copy(refs.earth.uniforms.shared.uLightDir.value);
+          cloudMaterial.uniforms.uTime.value = refs.clock.elapsedTime;
+          cloudMaterial.uniforms.uPaused.value = controls.pauseClouds ? 1 : 0;  // Set pause state
+        }
       }
 
       // Update entities if they exist
@@ -644,6 +657,8 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         setFollowEarth={setFollowEarth}
         pauseOrbits={pauseOrbits}
         setPauseOrbits={setPauseOrbits}
+        pauseClouds={pauseClouds}
+        setPauseClouds={setPauseClouds}
       />
       <div
         ref={mountRef}

@@ -6,7 +6,7 @@ precision highp float;
 varying vec3 vN;
 varying vec3 vPosW;
 uniform vec3 uLightDir;
-uniform float uTime, uCoverage, uDensity, uLightWrap, uTerminator;
+uniform float uTime, uPaused, uCoverage, uDensity, uLightWrap, uTerminator;
 uniform vec3 uDayTint, uNightTint;
 
 float hash(vec3 p){ 
@@ -42,21 +42,23 @@ void main(){
   float NdotL = dot(N, L);
   float wrap = clamp((NdotL + uLightWrap)/(1.0+uLightWrap), 0.0, 1.0);
   float day = smoothstep(0.0, uTerminator, wrap);
-  // Use world position for stable cloud sampling
-  // Clouds move east-west (around Y axis) with Earth's rotation, with slight north-south drift
+  // Use normalized world position for stable cloud sampling without distortion
   vec3 spherePos = normalize(vPosW);
-  // Apply rotation-based movement (longitude) and slight latitude drift
-  float longitude = atan(spherePos.z, spherePos.x);
-  float latitude = asin(spherePos.y);
+  
+  // Direct 3D noise sampling to avoid projection stretching
+  float timeMultiplier = 1.0 - uPaused;  // 0 when paused, 1 when moving
+  
+  // Rotate the sphere position slightly for cloud movement
+  float rotAngle = 0.00001 * uTime * timeMultiplier;  // Very slow rotation
   vec3 p = vec3(
-    cos(latitude) * cos(longitude + 0.003*uTime),  // Much slower east-west movement
-    sin(latitude + 0.001*sin(uTime*0.1)),          // Very slight north-south oscillation
-    cos(latitude) * sin(longitude + 0.003*uTime)   // Much slower east-west movement
-  ) * 6.0;
-  float k=1.5; 
+    spherePos.x * cos(rotAngle) - spherePos.z * sin(rotAngle),
+    spherePos.y + 0.000002 * sin(uTime * 0.002) * timeMultiplier,  // Slight vertical drift
+    spherePos.x * sin(rotAngle) + spherePos.z * cos(rotAngle)
+  ) * 5.0;  // Smaller scale for denser clouds
+  float k=1.5;  // Lower frequency for larger cloud formations
   float base=fbm(p*k); 
-  float detail=fbm(p*k*2.3); 
-  float mask=smoothstep(uCoverage, 1.0, mix(base, detail, 0.55));
+  float detail=fbm(p*k*3.0);  // More detailed overlay
+  float mask=smoothstep(uCoverage, 1.0, mix(base, detail, 0.7));  // More detail influence
   float thickness = mask; 
   float grazed = 1.0 - clamp(NdotL*0.7 + 0.3, 0.0, 1.0); 
   float shade = mix(1.0, 0.75, grazed * thickness);

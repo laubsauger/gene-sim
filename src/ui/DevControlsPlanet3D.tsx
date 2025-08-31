@@ -18,6 +18,8 @@ interface DevControlsPlanet3DProps {
   setFollowEarth: (follow: boolean) => void;
   pauseOrbits: boolean;
   setPauseOrbits: (pause: boolean) => void;
+  pauseClouds: boolean;
+  setPauseClouds: (pause: boolean) => void;
 }
 
 export function DevControlsPlanet3D({
@@ -39,6 +41,8 @@ export function DevControlsPlanet3D({
   setFollowEarth,
   pauseOrbits,
   setPauseOrbits,
+  pauseClouds,
+  setPauseClouds,
 }: DevControlsPlanet3DProps) {
   return (
     <div style={{
@@ -91,6 +95,14 @@ export function DevControlsPlanet3D({
             onChange={(e) => setPauseOrbits(e.target.checked)}
           />
           Pause Motion
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={pauseClouds}
+            onChange={(e) => setPauseClouds(e.target.checked)}
+          />
+          Pause Clouds
         </label>
       </div>
       
