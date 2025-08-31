@@ -5,6 +5,7 @@ precision highp float;
 
 varying vec3 vN;
 varying vec3 vPosW;
+varying vec3 vPosObject; // Receive object space position from vertex shader
 uniform vec3 uLightDir;
 uniform float uTime, uPaused, uCoverage, uDensity, uLightWrap, uTerminator;
 uniform vec3 uDayTint, uNightTint;
@@ -42,35 +43,27 @@ void main(){
   float NdotL = dot(N, L);
   float wrap = clamp((NdotL + uLightWrap)/(1.0+uLightWrap), 0.0, 1.0);
   float day = smoothstep(0.0, uTerminator, wrap);
-  // Use normalized world position for stable cloud sampling without distortion
-  vec3 spherePos = normalize(vPosW);
   
-  // Direct 3D noise sampling to avoid projection stretching
+  // Use object space position (normalized position on sphere) 
+  // This ensures clouds are always sampled from the same place regardless of camera
+  vec3 spherePos = normalize(vPosObject); // Use vertex position in object space
+  
+  // Direct 3D noise sampling in object space
   float timeMultiplier = 1.0 - uPaused;  // 0 when paused, 1 when moving
   
-  // Much slower cloud movement - fix the speed issue
+  // Much slower cloud movement
   float slowTime = uTime * 0.00005 * timeMultiplier;  // MUCH slower rotation
   
-  // Use multiple octave rotation for more organic movement without emission points
-  float angle1 = slowTime;
-  float angle2 = slowTime * 0.7 + 1.0;  // Different phase
-  float angle3 = slowTime * 1.3 + 2.0;  // Another phase
-  
-  // Create organic movement by combining rotations
-  vec3 p1 = vec3(
-    spherePos.x * cos(angle1) - spherePos.z * sin(angle1),
+  // Simple rotation around Y axis in object space
+  float angle = slowTime;
+  vec3 rotatedPos = vec3(
+    spherePos.x * cos(angle) - spherePos.z * sin(angle),
     spherePos.y,
-    spherePos.x * sin(angle1) + spherePos.z * cos(angle1)
+    spherePos.x * sin(angle) + spherePos.z * cos(angle)
   );
   
-  vec3 p2 = vec3(
-    p1.x * cos(angle2) - p1.y * sin(angle2),
-    p1.x * sin(angle2) + p1.y * cos(angle2),
-    p1.z
-  );
-  
-  // Final sampling position
-  vec3 p = p2 * 4.0;  // Scale for appropriate cloud size
+  // Final sampling position - use rotated object space position
+  vec3 p = rotatedPos * 4.0;  // Scale for appropriate cloud size
   float k=1.5;  // Lower frequency for larger cloud formations
   float base=fbm(p*k); 
   float detail=fbm(p*k*3.0);  // More detailed overlay

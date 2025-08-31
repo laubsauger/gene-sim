@@ -47,6 +47,8 @@ export default function App() {
   const [biomeMode, setBiomeMode] = useState<'hidden' | 'natural' | 'highlight'>('natural'); // Biome display mode
   const [biomeLegendCollapsed, setBiomeLegendCollapsed] = useState(false); // Biome legend collapse state
   const [simRestartKey, setSimRestartKey] = useState(0); // Force re-render on simulation restart
+  const [isFullscreen, setIsFullscreen] = useState(false); // Fullscreen mode
+  const [controlsHidden, setControlsHidden] = useState(false); // Hide all UI controls
 
   const lastConfigRef = useRef<any>(null);
   
@@ -268,6 +270,43 @@ export default function App() {
   }, [client]);
   
   // Cleanup on unmount
+  // Fullscreen handling
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+  
+  const toggleFullscreen = async () => {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      await document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  };
+  
+  // Keyboard shortcut for toggling controls visibility (F key)
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'f' && e.target === document.body && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setControlsHidden(prev => !prev);
+      }
+      if (e.key === 'F11') {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, []);
+  
   useEffect(() => {
     return () => {
       console.log('[App] Cleaning up on unmount');
@@ -279,14 +318,14 @@ export default function App() {
 
   return (
     <div style={{
-      display: 'grid',
-      gridTemplateColumns: biomeMode !== 'hidden' ? '1fr auto 420px' : '1fr 420px',
+      display: controlsHidden ? 'block' : 'grid',
+      gridTemplateColumns: biomeMode !== 'hidden' && !controlsHidden ? '1fr auto 420px' : controlsHidden ? '1fr' : '1fr 420px',
       height: '100vh',
       width: '100vw',
       overflow: 'hidden',
       // background: '#0a0a0a',
     }}>
-      <COIStatus />
+      {!controlsHidden && <COIStatus />}
       <div style={{ position: 'relative' }}>
         {renderMode === '2D' ? (
           <>
@@ -340,11 +379,15 @@ export default function App() {
             onShowBoundariesChange={setShowBoundaries}
             biomeMode={biomeMode}
             onBiomeModeChange={setBiomeMode}
+            controlsHidden={controlsHidden}
+            onToggleControls={() => setControlsHidden(!controlsHidden)}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={toggleFullscreen}
           />
         </div>
       </div>
       
-      {biomeMode !== 'hidden' && (
+      {biomeMode !== 'hidden' && !controlsHidden && (
         <BiomeLegend 
           biomeMode={biomeMode} 
           collapsed={biomeLegendCollapsed}
@@ -353,12 +396,13 @@ export default function App() {
         />
       )}
       
-      <div style={{
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        background: '#111',
-        borderLeft: '1px solid #222',
-      }}>
+      {!controlsHidden && (
+        <div style={{
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          background: '#111',
+          borderLeft: '1px solid #222',
+        }}>
         {showSetup ? (
           <SimulationSetup
             client={client}
@@ -399,6 +443,7 @@ export default function App() {
           </button>
         )} */}
       </div>
+      )}
       
       {gameOver && (
         <GameOver

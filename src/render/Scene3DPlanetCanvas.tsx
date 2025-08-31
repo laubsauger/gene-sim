@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { SimClient } from '../client/setupSimClientHybrid';
@@ -56,6 +56,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
   const mountRef = useRef<HTMLDivElement>(null);
   const [isPaused, setIsPaused] = useState(true);
   const fpsTracker = FPSTracker({ client });
+  const cinematicAnimationRef = useRef<{ startTime: number; duration: number; from: number; to: number; active: boolean } | null>(null);
 
   // Dev control states (like Scene3D)
   const [showEntities, setShowEntities] = useState(true);
@@ -505,12 +506,17 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       // Update visibility based on dev controls
       const controls = controlsRef.current;
 
+      // Distance-based culling for performance
+      const cameraDistance = refs.camera.position.distanceTo(refs.earth.group.position);
+      const planetScreenSize = (PLANET_RADIUS / cameraDistance) * Math.min(window.innerHeight, window.innerWidth);
+
       if (refs.earth?.meshes?.atmosphereMesh) {
-        refs.earth.meshes.atmosphereMesh.visible = controls.showAtmosphere;
+        // Cull atmosphere when planet is very small on screen
+        refs.earth.meshes.atmosphereMesh.visible = controls.showAtmosphere && planetScreenSize > 20;
       }
 
       if (refs.atmoDepth) {
-        refs.atmoDepth.visible = controls.showAtmosphere;
+        refs.atmoDepth.visible = controls.showAtmosphere && planetScreenSize > 20;
       }
 
       if (refs.moon) {
@@ -518,11 +524,13 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       }
 
       if (refs.clouds) {
-        refs.clouds.visible = controls.showClouds;
+        // Cull clouds when planet is small on screen
+        refs.clouds.visible = controls.showClouds && planetScreenSize > 10;
       }
 
       if (refs.entities) {
-        refs.entities.visible = controls.showEntities;
+        // Cull entities when they would be smaller than 0.5 pixels
+        refs.entities.visible = controls.showEntities && planetScreenSize > 50;
       }
 
       if (refs.axisHelper) {
@@ -538,11 +546,35 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         sunGroup.visible = controls.showSun;
       }
 
+      // Handle cinematic zoom animation
+      const anim = cinematicAnimationRef.current;
+      if (anim && anim.active) {
+        const elapsed = performance.now() - anim.startTime;
+        const progress = Math.min(elapsed / anim.duration, 1);
+
+        // Easing function (ease-in-out-cubic)
+        const eased = progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+        // Calculate new distance
+        const newDistance = anim.from + (anim.to - anim.from) * eased;
+
+        // Apply zoom - maintain current direction from target
+        const direction = refs.camera.position.clone().sub(refs.controls.target).normalize();
+        refs.camera.position.copy(refs.controls.target).addScaledVector(direction, newDistance);
+
+        // End animation
+        if (progress >= 1) {
+          anim.active = false;
+        }
+      }
+
       // Update controls
       refs.controls.update();
 
       // Earth orbit mechanics on ecliptic plane (controlled by orbital mode and pause)
-      let earthPos = new THREE.Vector3(0, 0, 0);
+      const earthPos = new THREE.Vector3(0, 0, 0);
       if (controls.orbitalMode) {
         if (!controls.pauseOrbits) {
           const orbitTime = refs.clock.elapsedTime;  // Use elapsed time for continuous motion
@@ -666,6 +698,44 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     };
   }, [client, world, isPaused]); // Don't add controls to deps to avoid recreating animation loop
 
+  // Cinematic zoom functions
+  const handleZoomToSurface = useCallback(() => {
+    if (!sceneRef.current) return;
+    const { controls, camera } = sceneRef.current;
+
+    // Get current distance
+    const currentDistance = camera.position.distanceTo(controls.target);
+    const targetDistance = PLANET_RADIUS * 1.5; // Safe distance above surface
+
+    // Start animation
+    cinematicAnimationRef.current = {
+      startTime: performance.now(),
+      duration: 2500, // 2.5 seconds
+      from: currentDistance,
+      to: targetDistance,
+      active: true
+    };
+  }, []);
+
+  const handleZoomToSystem = useCallback(() => {
+    if (!sceneRef.current) return;
+    const { controls, camera } = sceneRef.current;
+
+    // Get current distance
+    const currentDistance = camera.position.distanceTo(controls.target);
+    const targetDistance = CAMERA_CONFIG.maxDistance * 3; // Near maximum
+
+    // Start animation
+    cinematicAnimationRef.current = {
+      startTime: performance.now(),
+      duration: 3000, // 3 seconds for zoom out
+      from: currentDistance,
+      to: targetDistance,
+      active: true
+    };
+  }, []);
+
+
   return (
     <>
       <DevControlsPlanet3D
@@ -689,6 +759,8 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         setPauseOrbits={setPauseOrbits}
         pauseClouds={pauseClouds}
         setPauseClouds={setPauseClouds}
+        onZoomToSurface={handleZoomToSurface}
+        onZoomToSystem={handleZoomToSystem}
       />
       <div
         ref={mountRef}

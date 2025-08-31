@@ -16,6 +16,9 @@
 - [ ] Separate boundaries from biome controls visually
 - [ ] Add compact labels for all biome-related controls
 
+- [ ] Labels for all top levekl control groups
+- [ ] button for fullscreen of game canvas that toggles all controls visibilty off and lets us toggle them back in and out to get a true clean cinematic full screen option on demand.
+
 ### 3. Sidebar Improvements
 - [ ] Make "Simulation Setup" sidebar collapsible
   - [ ] Add collapse/expand button

@@ -10,7 +10,7 @@ export const MOON_ORBIT_RADIUS = 4;  // Slightly closer for better composition
 export const MOON_ORBIT_SPEED = 0.15;  // Faster moon orbit for visual interest
 export const MOON_RADIUS = 0.25;  // Slightly smaller for better visual balance
 export const ENTITY_ALTITUDE = 0.0015; // Offset to avoid z-fighting
-export const CLOUD_ROTATION_SPEED = 0.005;  // Slower cloud rotation for more realistic movement
+export const CLOUD_ROTATION_SPEED = 0.002;  // Even slower cloud rotation for more realistic movement
 export const CLOUD_ALTITUDE = 0.02; // Cloud layer altitude above surface
 export const AXIAL_TILT = 23.5 * Math.PI / 180; // Earth's axial tilt relative to ecliptic
 export const MOON_ORBITAL_INCLINATION = 5.14 * Math.PI / 180; // Moon's orbit tilt from ecliptic
@@ -41,8 +41,8 @@ export const CAMERA_CONFIG = {
   fov: 60,
   near: 0.01,
   far: 10000,
-  minDistance: PLANET_RADIUS * 1.07,  // Allow getting very close to surface
-  maxDistance: PLANET_RADIUS * 150,  // Allow zooming out much further to see full system
+  minDistance: PLANET_RADIUS * 1.15,  // Prevent clipping through planet
+  maxDistance: PLANET_RADIUS * 300,  // Allow zooming out twice as far to see full system
 };
 
 // Helper to calculate sun direction for a planet

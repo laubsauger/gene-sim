@@ -20,6 +20,8 @@ interface DevControlsPlanet3DProps {
   setPauseOrbits: (pause: boolean) => void;
   pauseClouds: boolean;
   setPauseClouds: (pause: boolean) => void;
+  onZoomToSurface?: () => void;
+  onZoomToSystem?: () => void;
 }
 
 export function DevControlsPlanet3D({
@@ -43,6 +45,8 @@ export function DevControlsPlanet3D({
   setPauseOrbits,
   pauseClouds,
   setPauseClouds,
+  onZoomToSurface,
+  onZoomToSystem,
 }: DevControlsPlanet3DProps) {
   return (
     <div style={{
@@ -164,6 +168,68 @@ export function DevControlsPlanet3D({
         />
         Debug (Axes)
       </label>
+      
+      {(onZoomToSurface || onZoomToSystem) && (
+        <div style={{ borderTop: '1px solid #333', paddingTop: '5px', marginTop: '5px' }}>
+          <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
+            Cinematic Zoom
+          </div>
+          <div style={{ display: 'flex', gap: '5px' }}>
+            {onZoomToSurface && (
+              <button
+                onClick={onZoomToSurface}
+                style={{
+                  flex: 1,
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  background: 'rgba(100, 150, 255, 0.2)',
+                  border: '1px solid rgba(100, 150, 255, 0.5)',
+                  borderRadius: '3px',
+                  color: '#aaf',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(100, 150, 255, 0.3)';
+                  e.currentTarget.style.borderColor = 'rgba(100, 150, 255, 0.7)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(100, 150, 255, 0.2)';
+                  e.currentTarget.style.borderColor = 'rgba(100, 150, 255, 0.5)';
+                }}
+              >
+                Zoom In
+              </button>
+            )}
+            {onZoomToSystem && (
+              <button
+                onClick={onZoomToSystem}
+                style={{
+                  flex: 1,
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  background: 'rgba(255, 150, 100, 0.2)',
+                  border: '1px solid rgba(255, 150, 100, 0.5)',
+                  borderRadius: '3px',
+                  color: '#faa',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 150, 100, 0.3)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 150, 100, 0.7)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 150, 100, 0.2)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 150, 100, 0.5)';
+                }}
+              >
+                Zoom Out
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
