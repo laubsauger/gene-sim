@@ -57,6 +57,12 @@
   - [ ] Smooth FOV adjustment for dramatic effect
   - [ ] Consider adding motion blur post-process (optional)
   - [ ] Sound effects support (future enhancement)
+- [ ] Extend zoom distance limits
+  - [ ] Maximum zoom out:
+    - [ ] Current: 150x planet radius
+    - [ ] Target: 300x planet radius (double current)
+  - [ ] Update CAMERA_CONFIG in planetUtils.ts
+  - [ ] Ensure controls.minDistance and maxDistance follow suit
 
 ### 4b. ✅ Stylized Earth-Moon-Sun System (Completed)
 - [x] Adjust Moon distance for visual appeal
@@ -99,6 +105,16 @@
   - [ ] Seamless tiling
   - [ ] Better blending at edges
   - [ ] Fix any visible seams in texture mapping
+- [ ] Fix cloud meridian mirroring issue
+  - [ ] Investigate coordinate system in ProceduralCloudShell shader
+  - [ ] Clouds appearing mirrored from meridian line
+  - [ ] Stretched on one side, compressed on other
+  - [ ] Likely UV projection or coordinate transform issue
+  - [ ] Check spherical coordinate calculations
+- [ ] Adjust cloud rotation speed
+  - [ ] Currently too fast (CLOUD_ROTATION_SPEED = 0.005)
+  - [ ] Reduce to more realistic speed
+  - [ ] Consider making it configurable
 
 ## Implementation Priority
 
@@ -161,9 +177,46 @@
   - [ ] GPU-based star positioning
   - [ ] Perlin noise for natural clustering
 
+### 10. Volumetric Lighting & Space Dust Effects
+
+- [ ] Investigate efficient volumetric lighting simulation
+  - [ ] Light shaft effects cast by planetary shadows
+  - [ ] Space dust particles catching sunlight
+  - [ ] Crepuscular rays around planet edges
+- [ ] Implementation approaches to investigate:
+  - [ ] **Screen-space volumetric scattering**
+    - [ ] Post-process effect using depth buffer
+    - [ ] Radial blur from sun position
+    - [ ] Mask by planet depth/shadow
+  - [ ] **Particle-based dust simulation**
+    - [ ] Sparse particle field (1k-10k particles)
+    - [ ] Only visible when lit by sun
+    - [ ] Fade in planet shadows
+    - [ ] Use additive blending for glow
+  - [ ] **Billboard quad technique**
+    - [ ] Large transparent quads with gradient textures
+    - [ ] Position between sun and camera
+    - [ ] Mask with planet shadow map
+    - [ ] Very efficient, good for mobile
+  - [ ] **Hybrid approach**
+    - [ ] Combine billboard cones for main shafts
+    - [ ] Add particle dust for detail
+    - [ ] Screen-space post-process for polish
+- [ ] Performance considerations:
+  - [ ] LOD system - reduce quality at distance
+  - [ ] Toggle for low-end devices
+  - [ ] Frame rate adaptive quality
+  - [ ] Limit to specific viewing angles
+- [ ] Visual targets:
+  - [ ] Subtle god rays during eclipses
+  - [ ] Dust motes visible in sunlight
+  - [ ] Atmospheric light scattering
+  - [ ] Shadow volume visualization
+
 ## Simulation Fixes
 
-### 10. Food Regrowth System Fix
+### 11. Food Regrowth System Fix
+
 - [ ] Fix food regrowth to work in all areas (not just high-capacity zones)
   - [ ] Investigate current regrowth logic in foodSystem.ts
   - [ ] Ensure regrowth rate is based on rolled maximum capacity per cell
@@ -176,6 +229,36 @@
   - [ ] Test across different biome types with varying capacities
 - [ ] Verify biome multipliers affect capacity but not regrowth prevention
 - [ ] Add debug visualization to confirm regrowth in all areas
+
+### 12. Distance-Based Culling System
+
+- [ ] Implement efficient LOD/culling for distant objects
+  - [ ] Core principle: Cull objects that would be < 1 pixel on screen
+  - [ ] Calculate screen-space size based on:
+    - [ ] Object world size
+    - [ ] Distance from camera
+    - [ ] Camera FOV and viewport dimensions
+  - [ ] Apply to all scene elements:
+    - [ ] Entities (already small, high priority for culling)
+    - [ ] Clouds (transparent layer, expensive to render)
+    - [ ] Atmosphere (transparent, can be culled at distance)
+    - [ ] Planet surface details (textures can be reduced)
+    - [ ] Moon (when very distant)
+- [ ] Implementation approach:
+  - [ ] Use THREE.LOD for multiple detail levels
+  - [ ] Custom frustum culling with size threshold
+  - [ ] visible = false when below pixel threshold
+  - [ ] Consider bounding sphere checks for efficiency
+- [ ] Performance targets:
+  - [ ] Maintain 60 FPS at max zoom out
+  - [ ] Simulation continues regardless of rendering
+  - [ ] Smooth transitions when objects appear/disappear
+  - [ ] No popping artifacts
+- [ ] Specific thresholds:
+  - [ ] Entities: Cull when < 0.5 pixels
+  - [ ] Clouds: Reduce quality or cull when < 10 pixels
+  - [ ] Atmosphere: Cull when planet < 20 pixels
+  - [ ] Fine details: Switch to low-res when planet < 100 pixels
 
 ## Technical Notes
 

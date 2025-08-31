@@ -41,7 +41,7 @@ export const CAMERA_CONFIG = {
   fov: 60,
   near: 0.01,
   far: 10000,
-  minDistance: PLANET_RADIUS * 1.05,  // Allow getting very close to surface
+  minDistance: PLANET_RADIUS * 1.07,  // Allow getting very close to surface
   maxDistance: PLANET_RADIUS * 150,  // Allow zooming out much further to see full system
 };
 
