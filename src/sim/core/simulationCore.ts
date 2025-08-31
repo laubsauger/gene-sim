@@ -48,6 +48,12 @@ export class SimulationCore {
   // Config
   allowHybrids: boolean = true;
   updateFood: boolean = true;  // Whether this instance should update food
+  
+  // Biome collision data
+  biomeTraversability?: Uint8Array;
+  biomeGridWidth: number = 0;
+  biomeGridHeight: number = 0;
+  biomeCellSize: number = 0;
   workerRegion?: { x: number; y: number; width: number; height: number; x2: number; y2: number };
   isMultiWorker: boolean = false;
   startIdx: number = 0;  // Start index for this worker's entities
@@ -207,22 +213,81 @@ export class SimulationCore {
         this.fullTribeId!,
         this.fullGenes!,
         this.fullEnergy!,
-        this.fullVel!
+        this.fullVel!,
+        this.food.getBiomeGenerator() || undefined
       );
 
-      // Apply velocity
+      // Apply velocity with biome collision detection
       const vx = this.fullVel[i * 2];
       const vy = this.fullVel[i * 2 + 1];
-      this.fullPos[i * 2] += vx * dt;
-      this.fullPos[i * 2 + 1] += vy * dt;
+      const currentX = this.fullPos[i * 2];
+      const currentY = this.fullPos[i * 2 + 1];
+      let nextX = currentX + vx * dt;
+      let nextY = currentY + vy * dt;
 
-      // Wrap world
-      this.fullPos[i * 2] = ((this.fullPos[i * 2] % this.worldWidth) + this.worldWidth) % this.worldWidth;
-      this.fullPos[i * 2 + 1] = ((this.fullPos[i * 2 + 1] % this.worldHeight) + this.worldHeight) % this.worldHeight;
+      // Wrap world coordinates for testing
+      nextX = ((nextX % this.worldWidth) + this.worldWidth) % this.worldWidth;
+      nextY = ((nextY % this.worldHeight) + this.worldHeight) % this.worldHeight;
+      
+      // Check biome collision - flip Y to match texture coordinate system
+      const flippedY = this.worldHeight - nextY;
+      if (this.isTraversable(nextX, flippedY)) {
+        // Move is valid
+        this.fullPos[i * 2] = nextX;
+        this.fullPos[i * 2 + 1] = nextY;
+      } else {
+        // Collision detected - apply strong repulsion force
+        // Calculate repulsion direction (away from the obstacle)
+        let repelX = 0;
+        let repelY = 0;
+        
+        // Sample nearby points to determine the gradient away from obstacles
+        const sampleDist = this.biomeCellSize * 0.5;
+        const samples = [
+          { dx: sampleDist, dy: 0 },
+          { dx: -sampleDist, dy: 0 },
+          { dx: 0, dy: sampleDist },
+          { dx: 0, dy: -sampleDist }
+        ];
+        
+        for (const sample of samples) {
+          const testX = ((currentX + sample.dx) % this.worldWidth + this.worldWidth) % this.worldWidth;
+          const testY = ((currentY + sample.dy) % this.worldHeight + this.worldHeight) % this.worldHeight;
+          const testFlippedY = this.worldHeight - testY;
+          if (this.isTraversable(testX, testFlippedY)) {
+            repelX += sample.dx;
+            repelY += sample.dy;
+          }
+        }
+        
+        // Normalize and apply strong repulsion
+        const repelMag = Math.sqrt(repelX * repelX + repelY * repelY);
+        if (repelMag > 0) {
+          repelX /= repelMag;
+          repelY /= repelMag;
+          // Apply strong repulsion force
+          const repelStrength = 50; // Strong push away from boundary
+          this.fullVel[i * 2] = repelX * repelStrength;
+          this.fullVel[i * 2 + 1] = repelY * repelStrength;
+        } else {
+          // Complete dead end - reverse with randomization to escape
+          const angle = this.rand() * Math.PI * 2;
+          this.fullVel[i * 2] = Math.cos(angle) * 30;
+          this.fullVel[i * 2 + 1] = Math.sin(angle) * 30;
+        }
+        
+        // Also try sliding for smoother movement
+        if (this.isTraversable(nextX, this.worldHeight - currentY)) {
+          this.fullPos[i * 2] = nextX;
+        } else if (this.isTraversable(currentX, flippedY)) {
+          this.fullPos[i * 2 + 1] = nextY;
+        }
+      }
     }
 
     // Food consumption
-    const consumed = this.food.consumeAt(this.fullPos![i * 2], this.fullPos![i * 2 + 1]);
+    const foodStandards = this.fullGenes![base + 6]; // Get pickiness gene
+    const consumed = this.food.consumeAt(this.fullPos![i * 2], this.fullPos![i * 2 + 1], foodStandards);
     if (consumed > 0) {
       const diet = this.fullGenes![base + 7];
       const plantFoodEfficiency = diet < 0 ? 1.0 : Math.max(0.3, 1.0 - Math.abs(diet));
@@ -396,27 +461,85 @@ export class SimulationCore {
         this.fullTribeId || undefined,
         this.fullGenes || undefined,
         this.fullEnergy || undefined,
-        this.fullVel || undefined
+        this.fullVel || undefined,
+        this.food.getBiomeGenerator() || undefined
       );
       
-      // Apply velocity to position (physics integration)
+      // Apply velocity with biome collision detection
       const vx = this.entities.vel[i * 2];
       const vy = this.entities.vel[i * 2 + 1];
-      
-      // Update position with velocity
-      this.entities.pos[i * 2] += vx * dt;
-      this.entities.pos[i * 2 + 1] += vy * dt;
+      const currentX = this.entities.pos[i * 2];
+      const currentY = this.entities.pos[i * 2 + 1];
+      let nextX = currentX + vx * dt;
+      let nextY = currentY + vy * dt;
       
       // Wrap around world boundaries
-      if (this.entities.pos[i * 2] < 0) this.entities.pos[i * 2] += this.worldWidth;
-      if (this.entities.pos[i * 2] >= this.worldWidth) this.entities.pos[i * 2] -= this.worldWidth;
-      if (this.entities.pos[i * 2 + 1] < 0) this.entities.pos[i * 2 + 1] += this.worldHeight;
-      if (this.entities.pos[i * 2 + 1] >= this.worldHeight) this.entities.pos[i * 2 + 1] -= this.worldHeight;
+      if (nextX < 0) nextX += this.worldWidth;
+      if (nextX >= this.worldWidth) nextX -= this.worldWidth;
+      if (nextY < 0) nextY += this.worldHeight;
+      if (nextY >= this.worldHeight) nextY -= this.worldHeight;
+      
+      // Check biome collision - flip Y to match texture coordinate system
+      const flippedY = this.worldHeight - nextY;
+      if (this.isTraversable(nextX, flippedY)) {
+        // Move is valid
+        this.entities.pos[i * 2] = nextX;
+        this.entities.pos[i * 2 + 1] = nextY;
+      } else {
+        // Collision detected - apply strong repulsion force
+        // Calculate repulsion direction (away from the obstacle)
+        let repelX = 0;
+        let repelY = 0;
+        
+        // Sample nearby points to determine the gradient away from obstacles
+        const sampleDist = this.biomeCellSize * 0.5;
+        const samples = [
+          { dx: sampleDist, dy: 0 },
+          { dx: -sampleDist, dy: 0 },
+          { dx: 0, dy: sampleDist },
+          { dx: 0, dy: -sampleDist }
+        ];
+        
+        for (const sample of samples) {
+          const testX = ((currentX + sample.dx) % this.worldWidth + this.worldWidth) % this.worldWidth;
+          const testY = ((currentY + sample.dy) % this.worldHeight + this.worldHeight) % this.worldHeight;
+          const testFlippedY = this.worldHeight - testY;
+          if (this.isTraversable(testX, testFlippedY)) {
+            repelX += sample.dx;
+            repelY += sample.dy;
+          }
+        }
+        
+        // Normalize and apply strong repulsion
+        const repelMag = Math.sqrt(repelX * repelX + repelY * repelY);
+        if (repelMag > 0) {
+          repelX /= repelMag;
+          repelY /= repelMag;
+          // Apply strong repulsion force
+          const repelStrength = 50; // Strong push away from boundary
+          this.entities.vel[i * 2] = repelX * repelStrength;
+          this.entities.vel[i * 2 + 1] = repelY * repelStrength;
+        } else {
+          // Complete dead end - reverse with randomization to escape
+          const angle = this.rand() * Math.PI * 2;
+          this.entities.vel[i * 2] = Math.cos(angle) * 30;
+          this.entities.vel[i * 2 + 1] = Math.sin(angle) * 30;
+        }
+        
+        // Also try sliding for smoother movement
+        if (this.isTraversable(nextX, this.worldHeight - currentY)) {
+          this.entities.pos[i * 2] = nextX;
+        } else if (this.isTraversable(currentX, flippedY)) {
+          this.entities.pos[i * 2 + 1] = nextY;
+        }
+      }
       
       // Food consumption
+      const foodStandards = this.entities.genes[base + 6]; // Get pickiness gene
       const consumed = this.food.consumeAt(
         this.entities.pos[i * 2],
-        this.entities.pos[i * 2 + 1]
+        this.entities.pos[i * 2 + 1],
+        foodStandards
       );
       
       if (consumed > 0) {
@@ -440,6 +563,28 @@ export class SimulationCore {
           }
         }
       }
+  }
+
+  // Check if a world position is traversable based on biome data
+  isTraversable(worldX: number, worldY: number): boolean {
+    // If no biome data, allow all movement
+    if (!this.biomeTraversability || this.biomeGridWidth === 0) {
+      return true;
+    }
+    
+    // Convert world coordinates to biome grid coordinates
+    const gridX = Math.floor(worldX / this.biomeCellSize);
+    const gridY = Math.floor(worldY / this.biomeCellSize);
+    
+    // Check bounds
+    if (gridX < 0 || gridX >= this.biomeGridWidth || 
+        gridY < 0 || gridY >= this.biomeGridHeight) {
+      return false; // Out of bounds = not traversable
+    }
+    
+    // Look up traversability in the map
+    const idx = gridY * this.biomeGridWidth + gridX;
+    return this.biomeTraversability[idx] === 1;
   }
 
   getStats(): SimStats {

@@ -67,12 +67,11 @@ interface SceneMode {
 ```typescript
 enum BiomeType {
   OCEAN = 'ocean',          // Non-traversable water
-  LAKE = 'lake',            // Inland water bodies
   MOUNTAIN = 'mountain',    // Non-traversable peaks
   FOREST = 'forest',        // Dense vegetation
   GRASSLAND = 'grassland',  // Open plains
   DESERT = 'desert',        // Low food availability
-  TUNDRA = 'tundra',        // Cold regions
+  TUNDRA = 'tundra',        // Cold/snowy regions
   SAVANNA = 'savanna'       // Mixed grass/trees
 }
 

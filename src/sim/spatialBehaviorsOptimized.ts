@@ -2,6 +2,7 @@
 // Maintains exact same behavior but with better performance
 import { SpatialHash } from './spatialHash';
 import { energyConfig } from './core/constants';
+import { BiomeGenerator } from './biomes';
 
 // Pre-allocated neighbor cache to avoid allocations - aggressively reduced for performance
 const MAX_NEIGHBORS = 20;
@@ -59,7 +60,8 @@ export function efficientMovementOptimized(
   fullTribeId?: Uint16Array,
   fullGenes?: Float32Array,
   fullEnergy?: Float32Array,
-  fullVel?: Float32Array
+  fullVel?: Float32Array,
+  biomeGenerator?: BiomeGenerator
 ): void {
   const G = 9;
   const base = i * G;
@@ -851,6 +853,46 @@ export function efficientMovementOptimized(
       const jitter = crowdStress * speed * 0.2 * hungerReduction;
       vx += (rand() - 0.5) * jitter;
       vy += (rand() - 0.5) * jitter;
+    }
+  }
+  
+  // Check biome traversability before updating velocity
+  if (biomeGenerator) {
+    // Calculate the next position based on current velocity
+    const nextX = px + vx;
+    const nextY = py + vy;
+    
+    // Check if the next position is traversable (flip Y to match texture coordinate system)
+    const flippedNextY = world.height - nextY;
+    if (!biomeGenerator.isTraversable(nextX, flippedNextY)) {
+      // Try to find an alternative direction
+      // First, try to slide along the obstacle
+      const angles = [Math.PI/4, -Math.PI/4, Math.PI/2, -Math.PI/2, Math.PI*3/4, -Math.PI*3/4, Math.PI];
+      const currentAngle = Math.atan2(vy, vx);
+      const currentSpeed = Math.sqrt(vx * vx + vy * vy);
+      
+      let foundAlternative = false;
+      for (const angleOffset of angles) {
+        const testAngle = currentAngle + angleOffset;
+        const testVx = Math.cos(testAngle) * currentSpeed * 0.5;
+        const testVy = Math.sin(testAngle) * currentSpeed * 0.5;
+        const testX = px + testVx;
+        const testY = py + testVy;
+        
+        const flippedTestY = world.height - testY;
+        if (biomeGenerator.isTraversable(testX, flippedTestY)) {
+          vx = testVx;
+          vy = testVy;
+          foundAlternative = true;
+          break;
+        }
+      }
+      
+      // If no alternative found, stop movement
+      if (!foundAlternative) {
+        vx *= 0.1;
+        vy *= 0.1;
+      }
     }
   }
   

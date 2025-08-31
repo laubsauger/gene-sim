@@ -73,9 +73,15 @@ export interface ControlsProps {
   onEntitySizeChange: (size: number) => void;
   renderMode?: '2D' | '3D' | '3D-Planet';
   onRenderModeChange?: (mode: '2D' | '3D' | '3D-Planet') => void;
+  showFood?: boolean;
+  onShowFoodChange?: (show: boolean) => void;
+  showBoundaries?: boolean;
+  onShowBoundariesChange?: (show: boolean) => void;
+  biomeMode?: 'hidden' | 'natural' | 'highlight';
+  onBiomeModeChange?: (mode: 'hidden' | 'natural' | 'highlight') => void;
 }
 
-export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeChange, renderMode = '2D', onRenderModeChange }: ControlsProps) {
+export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeChange, renderMode = '2D', onRenderModeChange, showFood = true, onShowFoodChange, showBoundaries = false, onShowBoundariesChange, biomeMode = 'natural', onBiomeModeChange }: ControlsProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [speed, setSpeed] = useState(1);
   const speedValues = [0.1, 0.25, 0.5, 1, 2, 4, 8, 12, 16];
@@ -246,7 +252,11 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
               max={25}
               step={0.1}
               value={entitySize}
-              onChange={(e) => onEntitySizeChange(parseFloat(e.target.value))}
+              onChange={(e) => {
+                const newSize = parseFloat(e.target.value);
+                console.log('[Controls] Entity size slider changed to:', newSize);
+                onEntitySizeChange(newSize);
+              }}
               style={{
                 width: '100%',
                 height: '12px',
@@ -356,6 +366,172 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
           >
             <span style={{ fontSize: '14px' }}>🪐</span>
             <span style={{ fontWeight: '500' }}>Orbit</span>
+          </button>
+        </div>
+      )}
+      
+      {/* Food Display Toggle */}
+      {onShowFoodChange && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '60px',
+          background: 'rgba(255, 255, 255, 0.05)',
+          padding: '8px 12px',
+          borderRadius: '6px',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+        }}>
+          <button
+            onClick={() => onShowFoodChange(!showFood)}
+            style={{
+              padding: '8px 12px',
+              fontSize: '13px',
+              lineHeight: '14px',
+              height: '36px',
+              background: showFood ? '#10b981' : '#4b5563',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              minWidth: '70px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              boxSizing: 'border-box',
+              transition: 'background 0.2s',
+            }}
+            title={showFood ? 'Hide food layer' : 'Show food layer'}
+          >
+            <span style={{ fontSize: '14px' }}>🌾</span>
+            <span style={{ fontWeight: '500' }}>Food</span>
+          </button>
+        </div>
+      )}
+      
+      {/* Boundary Visualization Toggle */}
+      {onShowBoundariesChange && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          minHeight: '60px',
+          background: 'rgba(255, 255, 255, 0.05)',
+          padding: '8px 12px',
+          borderRadius: '6px',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+        }}>
+          <button
+            onClick={() => onShowBoundariesChange(!showBoundaries)}
+            style={{
+              padding: '8px 12px',
+              fontSize: '12px',
+              lineHeight: '14px',
+              height: '36px',
+              background: showBoundaries ? '#8b5cf6' : '#4b5563',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+              transition: 'background 0.2s',
+            }}
+            title={showBoundaries ? 'Hide boundary lines' : 'Show boundary lines'}
+          >
+            <span style={{ fontSize: '14px' }}>🗺️</span>
+            <span style={{ fontWeight: '500' }}>Boundaries</span>
+          </button>
+        </div>
+      )}
+      
+      {/* Biome Display Mode */}
+      {onBiomeModeChange && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '4px',
+          minHeight: '60px',
+          background: 'rgba(255, 255, 255, 0.05)',
+          padding: '8px 12px',
+          borderRadius: '6px',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+        }}>
+          <button
+            onClick={() => onBiomeModeChange('hidden')}
+            style={{
+              padding: '6px 10px',
+              fontSize: '12px',
+              lineHeight: '14px',
+              height: '32px',
+              background: biomeMode === 'hidden' ? '#6b7280' : '#374151',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px 0 0 4px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxSizing: 'border-box',
+              transition: 'background 0.2s',
+            }}
+            title="Hide biomes"
+          >
+            <span style={{ fontWeight: '500' }}>Off</span>
+          </button>
+          <button
+            onClick={() => onBiomeModeChange('natural')}
+            style={{
+              padding: '6px 10px',
+              fontSize: '12px',
+              lineHeight: '14px',
+              height: '32px',
+              background: biomeMode === 'natural' ? '#059669' : '#374151',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              boxSizing: 'border-box',
+              transition: 'background 0.2s',
+            }}
+            title="Natural biome colors"
+          >
+            <span style={{ fontSize: '13px' }}>🏞️</span>
+            <span style={{ fontWeight: '500' }}>Natural</span>
+          </button>
+          <button
+            onClick={() => onBiomeModeChange('highlight')}
+            style={{
+              padding: '6px 10px',
+              fontSize: '12px',
+              lineHeight: '14px',
+              height: '32px',
+              background: biomeMode === 'highlight' ? '#7c3aed' : '#374151',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0 4px 4px 0',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              boxSizing: 'border-box',
+              transition: 'background 0.2s',
+            }}
+            title="Highlight biome types"
+          >
+            <span style={{ fontSize: '13px' }}>🗺️</span>
+            <span style={{ fontWeight: '500' }}>Highlight</span>
           </button>
         </div>
       )}

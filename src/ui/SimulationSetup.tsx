@@ -3,6 +3,7 @@ import type { SimClient, SimMode } from '../client/setupSimClientHybrid';
 import type { SimInit, TribeInit, SpawnPattern } from '../sim/types';
 import { throttle } from '../utils/throttle';
 import { ModeSelector } from './ModeSelector';
+import { BiomeGenerator } from '../sim/biomes';
 
 interface SimulationSetupProps {
   client: SimClient;
@@ -287,6 +288,19 @@ function generateTribesFromSeed(seed: number, worldWidth: number = 6000, worldHe
 
 export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onConfigChange, simMode, onModeChange }: SimulationSetupProps) {
   const [seed, setSeed] = useState(Date.now());
+  const [worldWidth, setWorldWidth] = useState(8000);
+  const [worldHeight, setWorldHeight] = useState(8000);
+  
+  // Cache biome data - only regenerate when seed or world size changes
+  const biomeData = useMemo(() => {
+    const biomeGen = new BiomeGenerator(seed, worldWidth, worldHeight);
+    const traversabilityMap = biomeGen.getTraversabilityMap();
+    const biomeGridArray = biomeGen.getBiomeGridArray();
+    const { width: gridWidth, height: gridHeight } = biomeGen.getGridDimensions();
+    const cellSize = biomeGen.getCellSize();
+    console.log('[SimulationSetup] Generated biome data for seed:', seed);
+    return { traversabilityMap, biomeGridArray, gridWidth, gridHeight, cellSize };
+  }, [seed, worldWidth, worldHeight]);
 
   // Generate food parameters from seed with modest variation
   const generateFoodParams = (seed: number) => {
@@ -304,8 +318,6 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   const initialFoodParams = generateFoodParams(seed);
 
   const [tribes, setTribes] = useState(() => generateTribesFromSeed(seed, 8000, 8000));
-  const [worldWidth, setWorldWidth] = useState(8000);
-  const [worldHeight, setWorldHeight] = useState(8000);
   const [foodCols, setFoodCols] = useState(512);
   const [foodRows, setFoodRows] = useState(512);
   const [foodRegen, setFoodRegen] = useState(0.0001); // ~7 seconds to fully regrow
@@ -335,8 +347,10 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   }, [client]);
 
   const updateConfigImmediate = useCallback((overrides?: { seed?: number; tribes?: TribeInit[] }) => {
+    const currentSeed = overrides?.seed ?? seed;
+    
     const config: SimInit = {
-      seed: overrides?.seed ?? seed,
+      seed: currentSeed,
       cap: maxEntities,
       world: {
         width: worldWidth,
@@ -351,7 +365,8 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
             threshold: foodDistThreshold,
             frequency: foodDistFrequency
           } : undefined
-        }
+        },
+        biomes: biomeData  // Use cached biome data
       },
       tribes: overrides?.tribes ?? tribes,
       energy: {
@@ -398,7 +413,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
     
     setInitialized(true);
     window.dispatchEvent(new CustomEvent('simConfigUpdate'));
-  }, [client, seed, maxEntities, worldWidth, worldHeight, foodCols, foodRows, foodRegen, foodCapacity, foodDistScale, foodDistThreshold, foodDistFrequency, tribes, startEnergy, maxEnergy, reproEnergy, allowHybrids]);
+  }, [client, seed, maxEntities, worldWidth, worldHeight, foodCols, foodRows, foodRegen, foodCapacity, foodDistScale, foodDistThreshold, foodDistFrequency, tribes, startEnergy, maxEnergy, reproEnergy, allowHybrids, biomeData, onConfigChange]);
 
   // Create throttled version for live updates - increased to 2 seconds to avoid rapid reinits
   const updateConfig = useMemo(

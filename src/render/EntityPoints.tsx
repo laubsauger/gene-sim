@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 
 interface EntityPointsProps {
@@ -20,8 +20,11 @@ export function EntityPoints({
   pointSize = 2 
 }: EntityPointsProps) {
   const geom = useMemo(() => new THREE.BufferGeometry(), []);
+  const initialSizeRef = useRef(pointSize);
   
-  const mat = useMemo(() => new THREE.ShaderMaterial({
+  const mat = useMemo(() => {
+    console.log('[EntityPoints] Creating material with initial size:', pointSize);
+    return new THREE.ShaderMaterial({
     depthWrite: true,
     depthTest: true,
     transparent: false, // No transparency needed - all entities are opaque
@@ -141,10 +144,18 @@ export function EntityPoints({
         gl_FragColor = vec4(finalColor, 1.0);
       }
     `,
-    uniforms: {
-      uSize: { value: pointSize }
-    },
-  }), [pointSize]);
+      uniforms: {
+        uSize: { value: initialSizeRef.current } // Use the actual initial size
+      },
+    });
+  }, []); // Only create material once
+
+  // Update uniform immediately on mount and when pointSize changes
+  useLayoutEffect(() => {
+    mat.uniforms.uSize.value = pointSize;
+    mat.needsUpdate = true;
+    console.log('[EntityPoints] Setting size uniform to:', pointSize, 'Material exists:', !!mat);
+  }, [pointSize, mat]);
 
   // Create buffer attributes from SharedArrayBuffer views
   useEffect(() => {

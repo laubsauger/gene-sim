@@ -8,6 +8,7 @@ import { StatsPanel } from './ui/StatsPanel';
 import { SimulationSetup } from './ui/SimulationSetup';
 import { GameOver } from './ui/GameOver';
 import { COIStatus } from './ui/COIStatus';
+import { BiomeLegend } from './ui/BiomeLegend';
 import type { SimStats } from './sim/types';
 import './App.css';
 
@@ -35,8 +36,16 @@ export default function App() {
   const [showSetup, setShowSetup] = useState(true);
   const [currentSeed, setCurrentSeed] = useState<number>(Date.now());
   const [gameOver, setGameOver] = useState<{ finalTime: number; finalStats: SimStats } | null>(null);
-  const [entitySize, setEntitySize] = useState(7.0); // Default entity size
+  const [entitySize, setEntitySize] = useState(() => {
+    const defaultSize = 6.0;
+    console.log('[App] Initializing default entity size to:', defaultSize);
+    return defaultSize;
+  }); // Default entity size
   const [renderMode, setRenderMode] = useState<'2D' | '3D' | '3D-Planet'>('2D'); // Toggle between 2D, 3D and 3D-Planet
+  const [showFood, setShowFood] = useState(true); // Toggle food display
+  const [showBoundaries, setShowBoundaries] = useState(false); // Toggle boundary visualization
+  const [biomeMode, setBiomeMode] = useState<'hidden' | 'natural' | 'highlight'>('natural'); // Biome display mode
+  const [simRestartKey, setSimRestartKey] = useState(0); // Force re-render on simulation restart
 
   const lastConfigRef = useRef<any>(null);
   
@@ -181,6 +190,7 @@ export default function App() {
     setIsRunning(true);
     setShowSetup(false);
     setGameOver(null);
+    setSimRestartKey(prev => prev + 1); // Force re-render of food/entity layers
     
     console.log('[App] About to unpause simulation...');
     client.pause(false); // Unpause the simulation
@@ -191,6 +201,7 @@ export default function App() {
     // Reset with same seed and config
     setGameOver(null);
     setIsRunning(false);
+    setSimRestartKey(prev => prev + 1); // Force re-render of food/entity layers
     
     // Re-initialize with the same config (force reinit)
     if (simConfig && client) {
@@ -277,22 +288,36 @@ export default function App() {
       <COIStatus />
       <div style={{ position: 'relative' }}>
         {renderMode === '2D' ? (
-          <Scene2D 
-            client={client} 
-            world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
-            entitySize={entitySize}
-          />
+          <>
+            <Scene2D 
+              client={client} 
+              world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
+              entitySize={entitySize}
+              seed={currentSeed}
+              showFood={showFood}
+              showBoundaries={showBoundaries}
+              biomeMode={biomeMode}
+              simRestartKey={simRestartKey}
+            />
+            <BiomeLegend biomeMode={biomeMode} />
+          </>
         ) : renderMode === '3D' ? (
           <Scene3D
             client={client} 
             world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
             entitySize={entitySize}
+            seed={currentSeed}
+            showFood={showFood}
+            biomeMode={biomeMode}
           />
         ) : (
           <Scene3DPlanetCanvas
             client={client} 
             world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
             entitySize={entitySize}
+            seed={currentSeed}
+            showFood={showFood}
+            biomeMode={biomeMode}
           />
         )}
         <div style={{
@@ -309,6 +334,12 @@ export default function App() {
             onEntitySizeChange={setEntitySize}
             renderMode={renderMode}
             onRenderModeChange={setRenderMode}
+            showFood={showFood}
+            onShowFoodChange={setShowFood}
+            showBoundaries={showBoundaries}
+            onShowBoundariesChange={setShowBoundaries}
+            biomeMode={biomeMode}
+            onBiomeModeChange={setBiomeMode}
           />
         </div>
       </div>

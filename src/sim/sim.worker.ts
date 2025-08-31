@@ -54,6 +54,8 @@ let sharedBuffers: {
   orientations: SharedArrayBuffer | ArrayBuffer;
   ages: SharedArrayBuffer | ArrayBuffer;
   foodGrid?: SharedArrayBuffer | ArrayBuffer;
+  biomeGrid?: SharedArrayBuffer | ArrayBuffer;  // Full biome type data
+  biomeTraversability?: SharedArrayBuffer | ArrayBuffer;  // Just traversability for collision
 } | null = null;
 
 // Timing and stats
@@ -92,6 +94,15 @@ function initializeAsMainWorker(msg: any) {
   sim.tribeNames = init.tribes?.map((t: any) => t.name) || [];
   sim.tribeColors = init.tribes?.map((t: any) => t.genes?.colorHue || 0) || [];
   
+  // Set up biome collision data if provided
+  if (init.world?.biomes) {
+    sim.biomeTraversability = init.world.biomes.traversabilityMap;
+    sim.biomeGridWidth = init.world.biomes.gridWidth;
+    sim.biomeGridHeight = init.world.biomes.gridHeight;
+    sim.biomeCellSize = init.world.biomes.cellSize;
+    console.log(`[Worker] Biome collision map loaded: ${sim.biomeGridWidth}x${sim.biomeGridHeight}, cell size: ${sim.biomeCellSize}`);
+  }
+  
   // Spawn initial entities
   let totalSpawned = 0;
   if (init.tribes) {
@@ -106,13 +117,35 @@ function initializeAsMainWorker(msg: any) {
       const geneSpec = { ...defaultGenes, ...tribe.genes };
       
       for (let i = 0; i < count && totalSpawned < cap; i++) {
-        const angle = rand() * Math.PI * 2;
-        const r = Math.sqrt(rand()) * radius;
-        const x = spawn.x + Math.cos(angle) * r;
-        const y = spawn.y + Math.sin(angle) * r;
+        let attempts = 0;
+        let spawned = false;
         
-        sim!.entities.spawn(totalSpawned, x, y, geneSpec, tribeIdx);
-        totalSpawned++;
+        while (!spawned && attempts < 100) {
+          const angle = rand() * Math.PI * 2;
+          const r = Math.sqrt(rand()) * radius;
+          const x = spawn.x + Math.cos(angle) * r;
+          const y = spawn.y + Math.sin(angle) * r;
+          
+          // Check if spawn location is traversable
+          const biomeGen = sim!.food.getBiomeGenerator();
+          if (!biomeGen || biomeGen.isTraversable(x, y)) {
+            sim!.entities.spawn(totalSpawned, x, y, geneSpec, tribeIdx);
+            totalSpawned++;
+            spawned = true;
+          }
+          attempts++;
+        }
+        
+        // If we couldn't find a traversable spot after 100 attempts, spawn anyway
+        // This prevents infinite loops if spawn area is mostly non-traversable
+        if (!spawned) {
+          const angle = rand() * Math.PI * 2;
+          const r = Math.sqrt(rand()) * radius;
+          const x = spawn.x + Math.cos(angle) * r;
+          const y = spawn.y + Math.sin(angle) * r;
+          sim!.entities.spawn(totalSpawned, x, y, geneSpec, tribeIdx);
+          totalSpawned++;
+        }
       }
     });
   }
@@ -149,6 +182,23 @@ function initializeAsMainWorker(msg: any) {
     sim.food.initialize(seed, capacity, distribution);
   }
   
+  // Add biome buffers for shared access
+  if (init.world?.biomes) {
+    const { gridWidth, gridHeight, traversabilityMap, biomeGridArray } = init.world.biomes;
+    const bufferSize = gridWidth * gridHeight;
+    
+    // Create shared buffers for biome data
+    sharedBuffers!.biomeTraversability = new BufferClass(Uint8Array.BYTES_PER_ELEMENT * bufferSize) as any;
+    const biomeTraversabilityView = new Uint8Array(sharedBuffers!.biomeTraversability!);
+    biomeTraversabilityView.set(traversabilityMap);
+    
+    if (biomeGridArray) {
+      sharedBuffers!.biomeGrid = new BufferClass(Uint8Array.BYTES_PER_ELEMENT * bufferSize) as any;
+      const biomeGridView = new Uint8Array(sharedBuffers!.biomeGrid!);
+      biomeGridView.set(biomeGridArray);
+    }
+  }
+  
   // Create views over shared buffers
   const pos = new Float32Array(sharedBuffers!.positions);
   const vel = new Float32Array(sharedBuffers!.velocities);
@@ -181,6 +231,12 @@ function initializeAsMainWorker(msg: any) {
   const foodMeta = sharedBuffers!.foodGrid && sim.food ? 
     { cols: sim.food.getCols(), rows: sim.food.getRows() } : 
     undefined;
+  
+  const biomeMeta = init.world?.biomes ? {
+    gridWidth: init.world.biomes.gridWidth,
+    gridHeight: init.world.biomes.gridHeight,
+    cellSize: init.world.biomes.cellSize
+  } : undefined;
     
   self.postMessage({
     type: 'ready',
@@ -190,10 +246,13 @@ function initializeAsMainWorker(msg: any) {
         color: sharedBuffers!.colors,
         alive: sharedBuffers!.alive,
         ages: sharedBuffers!.ages,
-        food: sharedBuffers!.foodGrid
+        food: sharedBuffers!.foodGrid,
+        biomeGrid: sharedBuffers!.biomeGrid,
+        biomeTraversability: sharedBuffers!.biomeTraversability
       },
       meta: { count: cap },
-      foodMeta
+      foodMeta,
+      biomeMeta
     }
   } as MainMsg);
   
@@ -305,10 +364,84 @@ function initializeAsSubWorker(msg: any) {
     sim.food = new FoodSystem(cols, rows, worldWidth, worldHeight, actualRegen, foodGridUint8);
     
     // Only worker 0 initializes the food grid with distribution config
+    // Check if food is already initialized (has non-zero values) to avoid clearing on unpause
     if (workerId === 0) {
-      sim.food.initialize(seed, actualCapacity, config.world.foodGrid.distribution);
-      // console.log(`[Worker 0] Initialized food with capacity=${actualCapacity}, regen=${actualRegen}, distribution=`, config.world.foodGrid.distribution);
-      // console.log(`[Worker 0] Energy config:`, config.energy);
+      // Check if food buffer already has data (not a fresh start)
+      let hasExistingFood = false;
+      const foodData = new Uint8Array(buffers.foodGrid);
+      let nonZeroCount = 0;
+      let maxValue = 0;
+      let totalValue = 0;
+      
+      for (let i = 0; i < foodData.length; i++) {
+        if (foodData[i] > 0) {
+          hasExistingFood = true;
+          nonZeroCount++;
+          maxValue = Math.max(maxValue, foodData[i]);
+          totalValue += foodData[i];
+        }
+      }
+      
+      console.log(`[Worker 0] Pre-init food buffer state:`, {
+        hasExistingFood,
+        nonZeroCount,
+        maxValue,
+        avgValue: nonZeroCount > 0 ? (totalValue / nonZeroCount).toFixed(2) : 0,
+        totalCells: foodData.length,
+        percentageWithFood: ((nonZeroCount / foodData.length) * 100).toFixed(2) + '%'
+      });
+      
+      if (!hasExistingFood) {
+        // Only initialize if food buffer is empty (fresh start)
+        sim.food.initialize(seed, actualCapacity, config.world.foodGrid.distribution);
+        console.log(`[Worker 0] Initialized fresh food grid with capacity=${actualCapacity}`);
+        
+        // Log post-init state
+        const postData = new Uint8Array(buffers.foodGrid);
+        let postNonZero = 0;
+        let postMax = 0;
+        let postTotal = 0;
+        for (let i = 0; i < postData.length; i++) {
+          if (postData[i] > 0) {
+            postNonZero++;
+            postMax = Math.max(postMax, postData[i]);
+            postTotal += postData[i];
+          }
+        }
+        console.log(`[Worker 0] Post-init food buffer state:`, {
+          nonZeroCount: postNonZero,
+          maxValue: postMax,
+          avgValue: postNonZero > 0 ? (postTotal / postNonZero).toFixed(2) : 0,
+          percentageWithFood: ((postNonZero / postData.length) * 100).toFixed(2) + '%'
+        });
+      } else {
+        // Food already exists, just sync from buffer
+        console.log(`[Worker 0] Food already exists, syncing from buffer`);
+        sim.food.syncFromUint8();
+        
+        // Log current food state after sync
+        const stats = sim.food.getFoodStats();
+        console.log(`[Worker 0] Post-sync food state:`, {
+          currentFood: stats.current,
+          maxCapacity: stats.capacity,
+          percentage: stats.percentage + '%'
+        });
+        
+        // Also check the buffer directly
+        const checkData = new Uint8Array(buffers.foodGrid);
+        let checkNonZero = 0;
+        let checkMax = 0;
+        for (let i = 0; i < Math.min(1000, checkData.length); i++) {
+          if (checkData[i] > 0) {
+            checkNonZero++;
+            checkMax = Math.max(checkMax, checkData[i]);
+          }
+        }
+        console.log(`[Worker 0] Direct buffer check (first 1000):`, {
+          nonZeroCount: checkNonZero,
+          maxUint8Value: checkMax
+        });
+      }
     } else {
       // Other workers sync from the shared buffer
       sim.food.syncFromUint8();
@@ -323,21 +456,60 @@ function initializeAsSubWorker(msg: any) {
     
     config.tribes.forEach((tribe: any, tribeIdx: number) => {
       const count = tribe.count || 100;
-      const spawn = tribe.spawn || { 
+      let spawn = tribe.spawn || { 
         x: worldWidth * (0.2 + 0.6 * (tribeIdx * 0.333 % 1)), 
         y: worldHeight * (0.2 + 0.6 * ((tribeIdx * 0.577) % 1))
       };
+      
+      // Ensure spawn center is traversable
+      const biomeGen = sim?.food.getBiomeGenerator();
+      if (biomeGen && !biomeGen.isTraversable(spawn.x, spawn.y)) {
+        console.log(`[Spawn] Initial spawn position for ${tribe.name} is non-traversable, finding alternative...`);
+        let foundValid = false;
+        
+        // Try nearby positions in expanding circles
+        for (let searchRadius = 100; searchRadius <= worldWidth / 2 && !foundValid; searchRadius += 100) {
+          for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
+            const testX = spawn.x + Math.cos(angle) * searchRadius;
+            const testY = spawn.y + Math.sin(angle) * searchRadius;
+            const x = ((testX % worldWidth) + worldWidth) % worldWidth;
+            const y = ((testY % worldHeight) + worldHeight) % worldHeight;
+            
+            // Flip Y to match texture coordinate system
+            const flippedY = worldHeight - y;
+            if (biomeGen.isTraversable(x, flippedY)) {
+              spawn = { x, y };
+              foundValid = true;
+              console.log(`[Spawn] Found alternative spawn for ${tribe.name} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
+              break;
+            }
+          }
+        }
+        
+        // Last resort: random traversable position
+        if (!foundValid) {
+          for (let attempt = 0; attempt < 1000; attempt++) {
+            const x = rand() * worldWidth;
+            const y = rand() * worldHeight;
+            // Flip Y to match texture coordinate system
+            const flippedY = worldHeight - y;
+            if (biomeGen.isTraversable(x, flippedY)) {
+              spawn = { x, y };
+              console.log(`[Spawn] Using random spawn for ${tribe.name} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
+              break;
+            }
+          }
+        }
+      }
       // Scale radius with population - moderate spacing
       const baseRadius = tribe.spawn?.radius || 250; // Moderate base radius
       const populationScale = Math.sqrt(count / 350); // Balanced scaling
       const radius = Math.max(baseRadius, baseRadius * populationScale); // Standard scaling
-      // Default to adaptive pattern for better emergent behavior
-      const pattern = tribe.spawn?.pattern || 'adaptive';
       const geneSpec = { ...defaultGenes, ...tribe.genes };
       
       // Log spawn details for first tribe to debug
       if (tribeIdx === 0) {
-        // console.log(`[Worker 0] Spawning ${tribe.name}: pattern="${pattern}", radius=${radius}, count=${count}, diet=${geneSpec.diet}`);
+        // console.log(`[Worker 0] Spawning ${tribe.name}: radius=${radius}, count=${count}, diet=${geneSpec.diet}`);
       }
 
       // Natural spawn distribution: start with even distribution, then adjust for traits
@@ -421,14 +593,66 @@ function initializeAsSubWorker(msg: any) {
       };
 
       for (let i = 0; i < count && totalIdx < totalCap; i++) {
-        const pos = getSpawnPosition(i);
-        // Apply world wrapping to ensure entities spawn within bounds
-        const x = ((pos.x % worldWidth) + worldWidth) % worldWidth;
-        const y = ((pos.y % worldHeight) + worldHeight) % worldHeight;
+        let attempts = 0;
+        let validPos = null;
         
-        // Spawn directly to full buffers with wrapped coordinates
-        fullPos[totalIdx * 2] = x;
-        fullPos[totalIdx * 2 + 1] = y;
+        // Try to find a traversable position
+        while (!validPos && attempts < 100) {
+          const pos = getSpawnPosition(i);
+          // Apply world wrapping to ensure entities spawn within bounds
+          const x = ((pos.x % worldWidth) + worldWidth) % worldWidth;
+          const y = ((pos.y % worldHeight) + worldHeight) % worldHeight;
+          
+          // Check if position is traversable (flip Y to match texture coordinate system)
+          const biomeGen = sim?.food.getBiomeGenerator();
+          const flippedY = worldHeight - y;
+          if (!biomeGen || biomeGen.isTraversable(x, flippedY)) {
+            validPos = { x, y };
+          }
+          attempts++;
+        }
+        
+        // If we couldn't find a valid spot, try expanding search area
+        if (!validPos) {
+          for (let searchRadius = radius * 1.5; searchRadius <= radius * 3 && !validPos; searchRadius += radius * 0.5) {
+            for (let angle = 0; angle < Math.PI * 2 && !validPos; angle += Math.PI / 8) {
+              const testX = spawn.x + Math.cos(angle) * searchRadius;
+              const testY = spawn.y + Math.sin(angle) * searchRadius;
+              const x = ((testX % worldWidth) + worldWidth) % worldWidth;
+              const y = ((testY % worldHeight) + worldHeight) % worldHeight;
+              
+              const biomeGen = sim?.food.getBiomeGenerator();
+              const flippedY = worldHeight - y;
+              if (!biomeGen || biomeGen.isTraversable(x, flippedY)) {
+                validPos = { x, y };
+              }
+            }
+          }
+        }
+        
+        // Last resort: find ANY traversable spot on the map
+        if (!validPos) {
+          console.warn(`[Spawn] Tribe ${tribe.name} spawn area is mostly non-traversable, searching entire map...`);
+          for (let attempt = 0; attempt < 1000 && !validPos; attempt++) {
+            const x = rand() * worldWidth;
+            const y = rand() * worldHeight;
+            const biomeGen = sim?.food.getBiomeGenerator();
+            const flippedY = worldHeight - y;
+            if (!biomeGen || biomeGen.isTraversable(x, flippedY)) {
+              validPos = { x, y };
+            }
+          }
+        }
+        
+        // If still no valid position, skip this entity
+        if (!validPos) {
+          console.error(`[Spawn] Could not find traversable position for entity ${i} of tribe ${tribe.name}`);
+          continue;
+        }
+        
+        // Spawn directly to full buffers with validated coordinates
+        fullPos[totalIdx * 2] = validPos.x;
+        fullPos[totalIdx * 2 + 1] = validPos.y;
         fullAlive[totalIdx] = 1;
         fullTribeId[totalIdx] = tribeIdx;
         // Add variance to prevent synchronized deaths

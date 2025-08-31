@@ -41,6 +41,13 @@ export type WorldInit = {
       frequency?: number; // Noise frequency/octaves (1-5, higher = more detail)
     };
   };
+  biomes?: {
+    traversabilityMap: Uint8Array;  // 1 = traversable, 0 = blocked
+    biomeGridArray?: Uint8Array;    // Full biome type data (0-5 for each biome type)
+    gridWidth: number;               // Grid dimensions for the map
+    gridHeight: number;
+    cellSize: number;                // World units per grid cell
+  };
 };
 
 export type SimInit = {

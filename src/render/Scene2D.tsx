@@ -3,6 +3,9 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrthographicCamera, OrbitControls, Stats } from '@react-three/drei';
 import { EntityPoints } from './EntityPoints';
 import { FoodTexture } from './FoodTexture';
+import { BiomeLayer } from './BiomeLayer';
+import { BoundaryOverlay } from './BoundaryOverlay';
+import { BiomeGenerator } from '../sim/biomes';
 import type { SimClient } from '../client/setupSimClientHybrid';
 
 // FPS tracking component
@@ -29,20 +32,23 @@ function FPSTracker({ client }: { client: SimClient }) {
 
 function FoodLayer({ client, world }: { client: SimClient; world: { width: number; height: number } }) {
   const { buffers } = client;
-  const [ready, setReady] = useState(false);
-  const lastValidFoodBuffers = useRef<any>(null);
+  const [ready, setReady] = useState(() => !!buffers?.food); // Initialize based on current buffer state
+  const lastValidFoodBuffers = useRef<any>(buffers?.food ? buffers : null);
   
   useEffect(() => {
-    // Check if food buffer exists immediately
+    // Always update when buffers change
     if (buffers?.food) {
+      console.log('[FoodLayer] Food buffer available, setting ready');
       lastValidFoodBuffers.current = buffers; // Store valid food buffers
       setReady(true);
-      return;
     }
-
+  }, [buffers]);
+  
+  useEffect(() => {
     // Listen for ready message
     const unsubscribe = client.onMessage((msg) => {
       if (msg.type === 'ready' && msg.payload.sab.food) {
+        console.log('[FoodLayer] Received ready message with food buffer');
         const { buffers: currentBuffers } = client;
         lastValidFoodBuffers.current = currentBuffers; // Store valid food buffers
         setReady(true);
@@ -50,7 +56,7 @@ function FoodLayer({ client, world }: { client: SimClient; world: { width: numbe
     });
 
     return unsubscribe;
-  }, [client, buffers]);
+  }, [client]);
   
   // Force re-render on config updates
   useEffect(() => {
@@ -73,6 +79,7 @@ function FoodLayer({ client, world }: { client: SimClient; world: { width: numbe
   const activeFoodBuffers = (buffers?.food) ? buffers : lastValidFoodBuffers.current;
   
   if (!ready || !activeFoodBuffers?.food || !activeFoodBuffers?.foodCols || !activeFoodBuffers?.foodRows) {
+    console.log('[FoodLayer] Not rendering:', { ready, hasFood: !!activeFoodBuffers?.food, hasCols: !!activeFoodBuffers?.foodCols, hasRows: !!activeFoodBuffers?.foodRows });
     return null;
   }
   
@@ -89,24 +96,15 @@ function FoodLayer({ client, world }: { client: SimClient; world: { width: numbe
 function EntitiesLayer({ client, entitySize }: { client: SimClient; entitySize: number }) {
   const { buffers } = client;
   const [ready, setReady] = useState(false);
-  const [updateKey, setUpdateKey] = useState(0);
-  const [renderSize, setRenderSize] = useState(entitySize);
+  const [renderSize, setRenderSize] = useState(() => {
+    console.log('[EntitiesLayer] Initial render size from props:', entitySize);
+    return entitySize;
+  });
   const lastValidBuffers = useRef<any>(null);
-
-  // Force re-render on config updates
-  useEffect(() => {
-    const handleConfigUpdate = () => {
-      setUpdateKey(prev => prev + 1);
-    };
-
-    window.addEventListener('simConfigUpdate', handleConfigUpdate);
-    return () => {
-      window.removeEventListener('simConfigUpdate', handleConfigUpdate);
-    };
-  }, []);
 
   // Update render size when entitySize prop changes
   useEffect(() => {
+    console.log('[EntitiesLayer] Entity size prop changed to:', entitySize);
     setRenderSize(entitySize);
   }, [entitySize]);
   
@@ -170,9 +168,9 @@ function EntitiesLayer({ client, entitySize }: { client: SimClient; entitySize: 
     return null;
   }
 
+  // Don't log on every render - too spammy
   return (
     <EntityPoints
-      key={updateKey}
       pos={activeBuffers.pos}
       color={activeBuffers.color}
       alive={activeBuffers.alive}
@@ -187,12 +185,23 @@ export interface Scene2DProps {
   client: SimClient;
   world: { width: number; height: number };
   entitySize: number;
+  seed?: number;
+  showFood?: boolean;
+  showBoundaries?: boolean;
+  biomeMode?: 'hidden' | 'natural' | 'highlight';
+  simRestartKey?: number;
 }
 
-export function Scene2D({ client, world, entitySize }: Scene2DProps) {
+export function Scene2D({ client, world, entitySize, seed = 1234, showFood = true, showBoundaries = false, biomeMode = 'natural', simRestartKey = 0 }: Scene2DProps) {
   // Calculate camera settings to show the full world centered
   const viewWidth = world.width;
   const viewHeight = world.height;
+  
+  // Create biome generator - use the actual seed that changes with each simulation
+  const biomeGenerator = useMemo(() => {
+    console.log('[Scene2D] Creating biome generator with seed:', seed);
+    return new BiomeGenerator(seed, world.width, world.height);
+  }, [seed, world.width, world.height]);
   
   // Calculate zoom to fit the entire world in the viewport
   // Account for the sidebar taking up space (420px from the grid layout)
@@ -237,6 +246,25 @@ export function Scene2D({ client, world, entitySize }: Scene2DProps) {
         <planeGeometry args={[world.width, world.height]} />
         <meshBasicMaterial color="#0a0a0a" />
       </mesh>
+      
+      {/* Biome layer */}
+      {biomeMode !== 'hidden' && (
+        <BiomeLayer 
+          biomeGenerator={biomeGenerator} 
+          worldWidth={world.width} 
+          worldHeight={world.height} 
+          highlightMode={biomeMode === 'highlight'}
+        />
+      )}
+      
+      {/* Boundary visualization overlay */}
+      {showBoundaries && (
+        <BoundaryOverlay
+          biomeGenerator={biomeGenerator}
+          worldWidth={world.width}
+          worldHeight={world.height}
+        />
+      )}
 
       {/* World boundary - separate lines for different thicknesses */}
       {/* Bottom border */}
@@ -327,8 +355,8 @@ export function Scene2D({ client, world, entitySize }: Scene2DProps) {
         </group>
       ), [world.width, world.height])}
       
-      <FoodLayer client={client} world={world} />
-      <EntitiesLayer client={client} entitySize={entitySize} />
+      {showFood && <FoodLayer client={client} world={world} />}
+      <EntitiesLayer key={`entities-${seed}-${simRestartKey}`} client={client} entitySize={entitySize} />
     </Canvas>
   );
 }
