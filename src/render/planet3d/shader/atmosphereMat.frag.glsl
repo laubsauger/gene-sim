@@ -46,42 +46,28 @@ void main() {
   // Since the atmosphere is centered at Earth's position, we need to subtract Earth's position
   // But we don't have Earth's position in the shader... 
   
-  // Now we have vWorldNormal which is the world-space normal accounting for rotation
-  // L is sunToEarth direction (FROM sun TO earth)
-  // For a point to be lit, its normal should face OPPOSITE to L (toward the sun)
-  float sunDot = dot(normalize(vWorldNormal), -L);
+  // Calculate proper sun angle using world-space normal
+  // L points FROM sun TO earth
+  // We had the sign wrong - for BackSide rendering we need positive L
+  float sunDot = dot(normalize(vWorldNormal), L);
   
-  // Visualize terminator location
-  vec3 debugColor;
-  if (abs(sunDot) < 0.1) {
-    // Terminator - bright green
-    debugColor = vec3(0.0, 1.0, 0.0);
-  } else if (sunDot > 0.0) {
-    // Facing sun - varying red intensity
-    debugColor = vec3(sunDot, 0.1, 0.1);
-  } else {
-    // Facing away - varying blue intensity
-    debugColor = vec3(0.1, 0.1, -sunDot);
-  }
-  
-  gl_FragColor = vec4(debugColor, 0.6);
-  return;
+  // Remove debug visualization - proceed with actual atmosphere rendering
   
   // Atmosphere thickness based on edge proximity
   float viewDot = dot(V, N);
   float limb = 1.0 - abs(viewDot);
   float atmosphereThickness = pow(limb, 0.8) + 0.1; // Add base to reach surface
   
-  // EXACTLY like Scene3D - Use continuous functions for smoother transitions
-  float dayFactor = smoothstep(-0.3, 0.3, sunDot);
-  float sunsetFactor = exp(-10.0 * abs(sunDot)) * 2.0;  // Peak at terminator - EXACT from Scene3D
-  float nightFactor = smoothstep(0.3, -0.3, sunDot);
+  // Use continuous functions for smoother transitions with wider bands
+  float dayFactor = smoothstep(-0.5, 0.5, sunDot);  // Wider transition from -0.5 to 0.5
+  float sunsetFactor = exp(-5.0 * abs(sunDot)) * 2.0;  // Wider terminator band (was -10.0)
+  float nightFactor = smoothstep(0.5, -0.5, sunDot);  // Match wider transition
   
-  // Restore proper colors with orange terminator
-  vec3 dayColor = vec3(0.35, 0.6, 1.0);        // Blue day
-  vec3 sunsetColor = vec3(1.0, 0.5, 0.15);     // Orange sunset - from Scene3D
+  // Define atmosphere colors - from working Scene3D
+  vec3 dayColor = vec3(0.35, 0.6, 1.0);        // Sky blue
+  vec3 sunsetColor = vec3(1.0, 0.5, 0.15);     // Orange terminator glow
   vec3 twilightColor = vec3(0.3, 0.2, 0.4);    // Purple twilight
-  vec3 nightColor = vec3(0.05, 0.08, 0.15);    // Dark night
+  vec3 nightColor = vec3(0.05, 0.08, 0.15);    // Dark blue night
   
   // EXACT blending from Scene3D
   vec3 color = dayColor * dayFactor;
@@ -98,8 +84,16 @@ void main() {
   // Apply atmosphere thickness and intensity - match Scene3D
   float alpha = atmosphereThickness * intensity;
   
-  // Overall atmosphere opacity - boost back up since BackSide needs more
-  alpha *= uDensity * 1.5;  // Reasonable opacity for BackSide rendering
+  // Smooth edge transition from Scene3D
+  // float edgeFade = smoothstep(0.0, 0.1, limb) * smoothstep(1.0, 0.8, limb);
+  // alpha *= (0.4 + edgeFade * 0.6);  // Higher minimum for surface visibility
+  
+  // Enhance atmosphere on day side, reduce on night side
+  // dayFactor is 1 on day side, 0 on night side
+  float dayEnhancement = 0.3 + dayFactor * 0.7;  // Range from 0.3 (night) to 1.0 (day)
+  
+  // Overall atmosphere opacity - match Scene3D
+  alpha *= 0.4 * dayEnhancement;
   
   // Very minimal cutoff to avoid artifacts
   if (alpha < 0.008) discard;  // Match Scene3D cutoff
