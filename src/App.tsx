@@ -37,14 +37,15 @@ export default function App() {
   const [currentSeed, setCurrentSeed] = useState<number>(Date.now());
   const [gameOver, setGameOver] = useState<{ finalTime: number; finalStats: SimStats } | null>(null);
   const [entitySize, setEntitySize] = useState(() => {
-    const defaultSize = 6.0;
+    const defaultSize = 10.0; // Increased from 6.0 for better visibility
     console.log('[App] Initializing default entity size to:', defaultSize);
     return defaultSize;
   }); // Default entity size
   const [renderMode, setRenderMode] = useState<'2D' | '3D' | '3D-Planet'>('2D'); // Toggle between 2D, 3D and 3D-Planet
   const [showFood, setShowFood] = useState(true); // Toggle food display
-  const [showBoundaries, setShowBoundaries] = useState(false); // Toggle boundary visualization
+  const [showBoundaries, setShowBoundaries] = useState(true); // Toggle boundary visualization - enabled by default
   const [biomeMode, setBiomeMode] = useState<'hidden' | 'natural' | 'highlight'>('natural'); // Biome display mode
+  const [biomeLegendCollapsed, setBiomeLegendCollapsed] = useState(false); // Biome legend collapse state
   const [simRestartKey, setSimRestartKey] = useState(0); // Force re-render on simulation restart
 
   const lastConfigRef = useRef<any>(null);
@@ -279,7 +280,7 @@ export default function App() {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: '1fr 420px',
+      gridTemplateColumns: biomeMode !== 'hidden' ? '1fr auto 420px' : '1fr 420px',
       height: '100vh',
       width: '100vw',
       overflow: 'hidden',
@@ -299,7 +300,6 @@ export default function App() {
               biomeMode={biomeMode}
               simRestartKey={simRestartKey}
             />
-            <BiomeLegend biomeMode={biomeMode} />
           </>
         ) : renderMode === '3D' ? (
           <Scene3D
@@ -343,6 +343,15 @@ export default function App() {
           />
         </div>
       </div>
+      
+      {biomeMode !== 'hidden' && (
+        <BiomeLegend 
+          biomeMode={biomeMode} 
+          collapsed={biomeLegendCollapsed}
+          onToggleCollapse={() => setBiomeLegendCollapsed(!biomeLegendCollapsed)}
+          position="right"
+        />
+      )}
       
       <div style={{
         overflowY: 'auto',

@@ -42,6 +42,7 @@ import {
   MOON_ORBITAL_INCLINATION,
   INITIAL_CAMERA_POSITION,
   CAMERA_CONFIG,
+  SUN_RADIUS,
   updateCloudUniforms
 } from './planet3d/planetUtils';
 
@@ -179,13 +180,14 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     sun.position.set(100, 100, 100); // Initial position (will be updated per frame)
     sun.castShadow = true;
     sun.shadow.mapSize.set(4096, 4096); // Higher resolution for better shadows
-    // Expanded shadow camera for orbital mechanics
-    sun.shadow.camera.left = -EARTH_ORBIT_RADIUS * 2;
-    sun.shadow.camera.right = EARTH_ORBIT_RADIUS * 2;
-    sun.shadow.camera.top = EARTH_ORBIT_RADIUS * 2;
-    sun.shadow.camera.bottom = -EARTH_ORBIT_RADIUS * 2;
+    // Expanded shadow camera for orbital mechanics and moon orbit
+    const shadowSize = Math.max(EARTH_ORBIT_RADIUS, MOON_ORBIT_RADIUS) * 2;
+    sun.shadow.camera.left = -shadowSize;
+    sun.shadow.camera.right = shadowSize;
+    sun.shadow.camera.top = shadowSize;
+    sun.shadow.camera.bottom = -shadowSize;
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = EARTH_ORBIT_RADIUS * 4; // Cover full orbital range
+    sun.shadow.camera.far = shadowSize * 4; // Cover full orbital range including moon
     sun.shadow.bias = -0.0001; // Fine-tuned for better shadows
     sun.shadow.normalBias = 0.02; // Additional shadow acne prevention
     // Add target for directional light
@@ -248,7 +250,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     //   return canvas;
     // })());
 
-    // Main sun core
+    // Main sun core - scaled up for visual impact
     const sunCore = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: sunTexture,
@@ -259,21 +261,21 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         depthTest: true,
       })
     );
-    sunCore.scale.set(1.5, 1.5, 1); // Smaller core
+    sunCore.scale.set(SUN_RADIUS * 0.6, SUN_RADIUS * 0.6, 1); // Bright core, smaller than full radius
     sunGroup.add(sunCore);
 
     // Inner glow
     const sunGlow = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: sunTexture,
-        color: 0xffcc00,
-        opacity: 0.5,
+        color: 0xffdd44,
+        opacity: 0.7,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         depthTest: true,
       })
     );
-    sunGlow.scale.set(2.2, 2.2, 1); // Even smaller inner glow
+    sunGlow.scale.set(SUN_RADIUS * 1.0, SUN_RADIUS * 1.0, 1); // Full sun size
     sunGroup.add(sunGlow);
 
     // // Lens flare cross
@@ -307,22 +309,50 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     // lensFlare2.userData.isFlare = true;
     // sunGroup.add(lensFlare2);
 
-    // Outer halo
+    // Middle halo
     const sunHalo = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: sunTexture,
-        color: 0xff9900,
-        opacity: 0.2,
+        color: 0xffaa00,
+        opacity: 0.3,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         depthTest: true,
       })
     );
-    sunHalo.scale.set(3.5, 3.5, 1); // Smaller outer halo
+    sunHalo.scale.set(SUN_RADIUS * 1.5, SUN_RADIUS * 1.5, 1); // Medium halo
     sunGroup.add(sunHalo);
 
+    // Outer corona
+    const sunCorona = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: sunTexture,
+        color: 0xff8800,
+        opacity: 0.15,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true,
+      })
+    );
+    sunCorona.scale.set(SUN_RADIUS * 2.0, SUN_RADIUS * 2.0, 1); // Large corona
+    sunGroup.add(sunCorona);
+
+    // Extra outer halo for more glow
+    const sunOuterHalo = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: sunTexture,
+        color: 0xff6600,
+        opacity: 0.05,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true,
+      })
+    );
+    sunOuterHalo.scale.set(SUN_RADIUS * 3.0, SUN_RADIUS * 3.0, 1); // Very large faint halo
+    sunGroup.add(sunOuterHalo);
+
     // Point light for glow and additional illumination
-    const sunPointLight = new THREE.PointLight(0xffcc66, 0.5, EARTH_ORBIT_RADIUS * 3, 2); // Reduced intensity for better shadows
+    const sunPointLight = new THREE.PointLight(0xffcc66, 1.0, EARTH_ORBIT_RADIUS * 4, 2); // Brighter and further reach
     sunGroup.add(sunPointLight);
 
     // ---------- EARTH STACK (per architecture) ----------

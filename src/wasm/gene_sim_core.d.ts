@@ -1,6 +1,14 @@
 /* tslint:disable */
 /* eslint-disable */
 export function init(): void;
+export class BiomeCollisionMap {
+  free(): void;
+  constructor(traversability_data: Uint8Array, grid_width: number, grid_height: number, cell_size: number, world_width: number, world_height: number);
+  is_traversable(world_x: number, world_y: number): boolean;
+  check_positions(positions: Float32Array): Uint8Array;
+  clear_cache(): void;
+  update_traversability(new_data: Uint8Array): void;
+}
 export class EntityGenes {
   free(): void;
   constructor();
@@ -85,6 +93,12 @@ export interface InitOutput {
   readonly __wbg_get_perfmetrics_entities_processed: (a: number) => number;
   readonly __wbg_set_perfmetrics_entities_processed: (a: number, b: number) => void;
   readonly perfmetrics_new: () => number;
+  readonly __wbg_biomecollisionmap_free: (a: number, b: number) => void;
+  readonly biomecollisionmap_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
+  readonly biomecollisionmap_is_traversable: (a: number, b: number, c: number) => number;
+  readonly biomecollisionmap_check_positions: (a: number, b: number, c: number, d: number) => void;
+  readonly biomecollisionmap_clear_cache: (a: number) => void;
+  readonly biomecollisionmap_update_traversability: (a: number, b: number, c: number) => void;
   readonly __wbg_simcore_free: (a: number, b: number) => void;
   readonly simcore_new: (a: number, b: number, c: number, d: number) => number;
   readonly simcore_set_count: (a: number, b: number) => void;
@@ -112,6 +126,8 @@ export interface InitOutput {
   readonly __wbg_get_perfmetrics_total_ms: (a: number) => number;
   readonly __wbindgen_export_0: (a: number) => void;
   readonly __wbindgen_export_1: (a: number, b: number) => number;
+  readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
+  readonly __wbindgen_export_2: (a: number, b: number, c: number) => void;
   readonly __wbindgen_start: () => void;
 }
 

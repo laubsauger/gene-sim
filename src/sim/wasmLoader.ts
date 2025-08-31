@@ -1,8 +1,9 @@
 // WASM module loader and wrapper
-import type { SimCore } from '../../wasm/pkg/gene_sim_core';
+import type { SimCore, BiomeCollisionMap } from '../../wasm/pkg/gene_sim_core';
 
 export interface WasmModule {
   SimCore: typeof SimCore;
+  BiomeCollisionMap: typeof BiomeCollisionMap;
   memory: WebAssembly.Memory;
 }
 
@@ -53,6 +54,7 @@ async function loadWasmModuleInternal(): Promise<WasmModule> {
     
     wasmModule = {
       SimCore: wasm.SimCore,
+      BiomeCollisionMap: wasm.BiomeCollisionMap,
       memory,
     };
     

@@ -70,6 +70,15 @@ function _assertClass(instance, klass) {
     }
 }
 
+let WASM_VECTOR_LEN = 0;
+
+function passArray8ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 1, 1) >>> 0;
+    getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
 let cachedFloat32ArrayMemory0 = null;
 
 function getFloat32ArrayMemory0() {
@@ -79,8 +88,6 @@ function getFloat32ArrayMemory0() {
     return cachedFloat32ArrayMemory0;
 }
 
-let WASM_VECTOR_LEN = 0;
-
 function passArrayF32ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 4, 4) >>> 0;
     getFloat32ArrayMemory0().set(arg, ptr / 4);
@@ -88,11 +95,13 @@ function passArrayF32ToWasm0(arg, malloc) {
     return ptr;
 }
 
-function passArray8ToWasm0(arg, malloc) {
-    const ptr = malloc(arg.length * 1, 1) >>> 0;
-    getUint8ArrayMemory0().set(arg, ptr / 1);
-    WASM_VECTOR_LEN = arg.length;
-    return ptr;
+let cachedDataViewMemory0 = null;
+
+function getDataViewMemory0() {
+    if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || (cachedDataViewMemory0.buffer.detached === undefined && cachedDataViewMemory0.buffer !== wasm.memory.buffer)) {
+        cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
+    }
+    return cachedDataViewMemory0;
 }
 
 let cachedUint16ArrayMemory0 = null;
@@ -113,6 +122,80 @@ function passArray16ToWasm0(arg, malloc) {
 
 export function init() {
     wasm.init();
+}
+
+const BiomeCollisionMapFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_biomecollisionmap_free(ptr >>> 0, 1));
+
+export class BiomeCollisionMap {
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        BiomeCollisionMapFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_biomecollisionmap_free(ptr, 0);
+    }
+    /**
+     * @param {Uint8Array} traversability_data
+     * @param {number} grid_width
+     * @param {number} grid_height
+     * @param {number} cell_size
+     * @param {number} world_width
+     * @param {number} world_height
+     */
+    constructor(traversability_data, grid_width, grid_height, cell_size, world_width, world_height) {
+        const ptr0 = passArray8ToWasm0(traversability_data, wasm.__wbindgen_export_1);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.biomecollisionmap_new(ptr0, len0, grid_width, grid_height, cell_size, world_width, world_height);
+        this.__wbg_ptr = ret >>> 0;
+        BiomeCollisionMapFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @param {number} world_x
+     * @param {number} world_y
+     * @returns {boolean}
+     */
+    is_traversable(world_x, world_y) {
+        const ret = wasm.biomecollisionmap_is_traversable(this.__wbg_ptr, world_x, world_y);
+        return ret !== 0;
+    }
+    /**
+     * @param {Float32Array} positions
+     * @returns {Uint8Array}
+     */
+    check_positions(positions) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passArrayF32ToWasm0(positions, wasm.__wbindgen_export_1);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.biomecollisionmap_check_positions(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v2 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export_2(r0, r1 * 1, 1);
+            return v2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    clear_cache() {
+        wasm.biomecollisionmap_clear_cache(this.__wbg_ptr);
+    }
+    /**
+     * @param {Uint8Array} new_data
+     */
+    update_traversability(new_data) {
+        const ptr0 = passArray8ToWasm0(new_data, wasm.__wbindgen_export_1);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.biomecollisionmap_update_traversability(this.__wbg_ptr, ptr0, len0);
+    }
 }
 
 const EntityGenesFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -683,6 +766,7 @@ function __wbg_init_memory(imports, memory) {
 function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     __wbg_init.__wbindgen_wasm_module = module;
+    cachedDataViewMemory0 = null;
     cachedFloat32ArrayMemory0 = null;
     cachedUint16ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;

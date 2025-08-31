@@ -1,6 +1,6 @@
 import { createFractalNoise2D } from '../noise';
 import type { Rng as _Rng } from '../random';
-import { BiomeGenerator } from '../biomes';
+import { BiomeGenerator, BIOME_CONFIGS } from '../biomes';
 
 export class FoodSystem {
   private foodGrid: Float32Array;
@@ -9,6 +9,7 @@ export class FoodSystem {
   private foodRegrowTimer: Float32Array;
   private foodAccumulator: Float32Array; // Accumulate small changes
   private foodCooldown: Float32Array; // Cooldown before regrowth starts
+  private foodBiomeRegenRate: Float32Array; // Store biome-specific regen multipliers
   private cols: number;
   private rows: number;
   private worldWidth: number;
@@ -17,6 +18,12 @@ export class FoodSystem {
   private isShared: boolean;
   private capacityParameter: number = 1; // Store the original capacity parameter for rendering
   private biomeGenerator: BiomeGenerator | null = null;
+  private externalBiomeData?: {
+    traversabilityMap: Uint8Array;
+    gridWidth: number;
+    gridHeight: number;
+    cellSize: number;
+  };
   private globalMaxFood: number = 10; // Track the actual max food value for scaling
   private updateCount: number = 0; // Track update count for debugging
   private consumptionCount: number = 0; // Track consumption for debugging
@@ -43,6 +50,7 @@ export class FoodSystem {
     this.foodRegrowTimer = new Float32Array(size);
     this.foodAccumulator = new Float32Array(size);
     this.foodCooldown = new Float32Array(size);
+    this.foodBiomeRegenRate = new Float32Array(size);
     this.foodGridUint8 = sharedBuffer || null;
   }
 
@@ -50,13 +58,53 @@ export class FoodSystem {
     scale?: number;
     threshold?: number;
     frequency?: number;
+  }, existingBiomeData?: {
+    traversabilityMap: Uint8Array;
+    biomeGridArray?: Uint8Array;
+    gridWidth: number;
+    gridHeight: number;
+    cellSize: number;
   }) {
     // Store the capacity parameter for proper rendering normalization
     this.capacityParameter = capacity;
     const noiseFood = createFractalNoise2D(seed + 12345); // Different seed offset for food variance
     
-    // Create biome generator
-    this.biomeGenerator = new BiomeGenerator(seed, this.worldWidth, this.worldHeight);
+    // Create or use existing biome generator
+    if (existingBiomeData) {
+      // Use shared biome data from coordinator - create a minimal generator wrapper
+      this.biomeGenerator = {
+        getFoodMultiplier: (worldX: number, worldY: number) => {
+          const cellX = Math.floor(worldX / existingBiomeData.cellSize);
+          const cellY = Math.floor(worldY / existingBiomeData.cellSize);
+          const idx = cellY * existingBiomeData.gridWidth + cellX;
+          
+          // Use biomeGridArray if available, otherwise use traversability
+          if (existingBiomeData.biomeGridArray && existingBiomeData.biomeGridArray[idx] !== undefined) {
+            const biomeType = existingBiomeData.biomeGridArray[idx];
+            return BIOME_CONFIGS[biomeType]?.foodCapacity || 0;
+          }
+          
+          // Fallback to traversability - traversable areas get default food
+          return existingBiomeData.traversabilityMap[idx] === 1 ? 1.0 : 0;
+        },
+        getBiomeAt: (worldX: number, worldY: number) => {
+          const cellX = Math.floor(worldX / existingBiomeData.cellSize);
+          const cellY = Math.floor(worldY / existingBiomeData.cellSize);
+          const idx = cellY * existingBiomeData.gridWidth + cellX;
+          
+          // Return biome type from array if available
+          if (existingBiomeData.biomeGridArray) {
+            return existingBiomeData.biomeGridArray[idx] || 0;
+          }
+          
+          // Fallback: estimate biome from traversability (grassland for traversable, ocean for not)
+          return existingBiomeData.traversabilityMap[idx] === 1 ? 3 : 0; // 3=Grassland, 0=Ocean
+        }
+      } as any;
+    } else {
+      // Create new biome generator for single-worker mode
+      this.biomeGenerator = new BiomeGenerator(seed, this.worldWidth, this.worldHeight);
+    }
     
     // Use distribution config or defaults - now for variance within biomes
     const varianceScale = distribution?.scale || 3;  // Smaller scale for more visible patches
@@ -155,9 +203,9 @@ export class FoodSystem {
         variance = varianceMin + variance * (varianceMax - varianceMin);
         
         // Calculate base capacity from biome
-        // Scale so that forest (3x multiplier) peaks around 10
-        // This means base capacity should be around 3.3
-        let normalizedCapacity = Math.min(capacity, 3.3);
+        // With scaled capacity (100 instead of 7), forest (1.5x multiplier) should peak around 150
+        // Normalize to reasonable range
+        let normalizedCapacity = capacity;
         let baseCapacity = normalizedCapacity * biomeMultiplier;
         
         // Apply variance to create natural patches
@@ -165,12 +213,23 @@ export class FoodSystem {
         
         // Ensure minimum food in all traversable areas (but very low)
         // This prevents complete dead zones while allowing sparse areas
-        if (biomeMultiplier > 0 && val < 0.05) {
-          val = 0.05; // Very minimal food amount
+        if (biomeMultiplier > 0 && val < 1.0) {
+          val = 1.0; // Very minimal food amount (scaled up from 0.05)
         }
         
-        // Set max capacity
-        this.foodMaxCapacity[idx] = val;
+        // Set max capacity based on biome potential, not initial roll
+        // This allows even initially sparse areas to regrow to full biome capacity
+        // Use the biome's theoretical maximum (baseCapacity at full variance)
+        const biomeMaxCapacity = baseCapacity * varianceMax;
+        
+        // Ensure even poor areas can regrow to something useful
+        this.foodMaxCapacity[idx] = Math.max(val, biomeMaxCapacity * 0.8);
+        
+        // Store biome-specific regen rate multiplier
+        // Get the biome regen multiplier from BIOME_CONFIGS
+        const biomeType = this.biomeGenerator.getBiomeAt(worldX, worldY);
+        const biomeConfig = BIOME_CONFIGS[biomeType];
+        this.foodBiomeRegenRate[idx] = biomeConfig?.foodRegenRate || 1.0;
         
         if (val > 0) {
           // Start food at 50-80% of max capacity for better initial availability
@@ -263,48 +322,84 @@ export class FoodSystem {
     // Formula: totalTime = 1 + 9 * (1 - regen) seconds for regen > 0
     
     for (let i = 0; i < this.foodGrid.length; i++) {
-      // Only regrow where food was originally present (maxCapacity > 0)
-      const initialCapacity = this.foodMaxCapacity[i];
-      if (initialCapacity > 0) {
+      // Only regrow where food can exist (maxCapacity > 0)
+      const maxCapacity = this.foodMaxCapacity[i];
+      if (maxCapacity > 0) {
         // Skip if no regrowth
         if (this.regen === 0) continue;
         
-        // Calculate enhanced capacity for cells with initial capacity
-        // Low-capacity cells can grow to be more useful over time
-        let targetCapacity = initialCapacity;
-        
-        // If initial capacity was below consumable threshold, boost it
-        if (initialCapacity < 0.3) {
-          // Grow to at least consumable (0.3) plus a small bonus based on initial value
-          targetCapacity = 0.3 + initialCapacity * 0.5;
-        } else {
-          // Higher capacity cells can grow 20% beyond their initial value
-          targetCapacity = initialCapacity * 1.2;
-        }
+        // Target capacity is the stored max capacity for this cell
+        // This ensures all areas can regrow to their biome's potential
+        const targetCapacity = maxCapacity;
         
         // Only process if below target capacity
         if (this.foodGrid[i] < targetCapacity) {
-          // Simple cooldown phase (20% of total time)
-          if (this.foodCooldown[i] > 0) {
-            this.foodCooldown[i] -= dt;
-            continue;
+          // Apply biome-specific regen multiplier (moved earlier to fix scope issue)
+          const biomeRegenMultiplier = this.foodBiomeRegenRate[i] || 1.0;
+          const effectiveRegen = this.regen * biomeRegenMultiplier;
+          
+          // Cooldown when completely depleted (helps create recovery delay)
+          // Only apply cooldown if food is below 2% of capacity
+          if (this.foodGrid[i] < targetCapacity * 0.02) {
+            if (this.foodCooldown[i] <= 0) {
+              // Start cooldown when depleted
+              this.foodCooldown[i] = 0.3 / effectiveRegen; // 0.3 second base cooldown (reduced)
+            }
+            if (this.foodCooldown[i] > 0) {
+              this.foodCooldown[i] -= dt;
+              // Allow small growth during cooldown to show recovery starting
+              const tinyGrowth = targetCapacity * 0.005 * effectiveRegen * dt;
+              this.foodGrid[i] = Math.min(targetCapacity * 0.02, this.foodGrid[i] + tinyGrowth);
+              continue;
+            }
           }
           
-          // Calculate total regrowth time based on regen value
-          const totalRegenTime = this.regen > 0 ? 1 + 18 * (1 - this.regen) : Number.MAX_VALUE;
+          // Calculate total regrowth time based on effective regen value
+          // At regen=1.0, biome multiplier=1.0: 1 second to full
+          // At regen=0.5, biome multiplier=1.0: 2 seconds to full
+          // Desert (0.5x) takes 2x longer, Forest (1.2x) is 20% faster
+          const totalRegenTime = effectiveRegen > 0 ? 1 / effectiveRegen : Number.MAX_VALUE;
           
           // Handle very fast regrowth case
-          if (this.regen >= 0.95) {
+          if (effectiveRegen >= 1.0) {
             // Nearly instant regrowth to target capacity
             this.foodGrid[i] = targetCapacity;
             continue;
           }
           
-          // Growth phase - simple linear growth
-          const growthRate = targetCapacity / (totalRegenTime * 0.8); // 80% of time is growth
-          const growth = growthRate * dt;
+          // S-curve (sigmoid) growth for more realistic regeneration
+          // Starts slow when depleted, accelerates in middle, slows near capacity
+          const currentPercent = this.foodGrid[i] / targetCapacity;
           
-          // Apply growth directly for smoother visual updates
+          // Sigmoid function parameters
+          // k controls steepness (higher = sharper transition)
+          // x0 is the midpoint (0.5 = symmetric curve)
+          const k = 4; // Reduced steepness for wider growth band
+          const x0 = 0.35; // Midpoint at 35% for faster initial recovery
+          
+          // Calculate growth modifier using sigmoid derivative
+          // This gives us the instantaneous growth rate at current capacity
+          // Derivative of sigmoid: k * sigmoid(x) * (1 - sigmoid(x))
+          const sigmoid = 1 / (1 + Math.exp(-k * (currentPercent - x0)));
+          const growthModifier = k * sigmoid * (1 - sigmoid);
+          
+          // Apply S-curve modifier to base growth rate
+          // Peak growth happens around 35% capacity (x0)
+          // Moderate below 15%, slowing above 80%
+          const baseGrowthRate = targetCapacity * effectiveRegen;
+          let growth = baseGrowthRate * growthModifier * dt;
+          
+          // Add stronger baseline growth to prevent stagnation
+          // This ensures even depleted areas can recover reasonably
+          const baselineGrowth = baseGrowthRate * 0.15 * dt; // 15% of max rate as baseline
+          growth += baselineGrowth;
+          
+          // Ensure minimum growth for precision (but smaller than before)
+          if (effectiveRegen > 0 && growth < 0.008) {
+            growth = 0.008; // Half the previous minimum
+          }
+          
+          // Apply growth
           this.foodGrid[i] = Math.min(
             targetCapacity,
             this.foodGrid[i] + growth
@@ -428,11 +523,12 @@ export class FoodSystem {
     console.log(`[FoodSystem] syncFromUint8 called, globalMaxFood: ${this.globalMaxFood}`);
     
     // If globalMaxFood hasn't been set properly, estimate it
-    if (this.globalMaxFood <= 10) {
+    if (this.globalMaxFood <= 15) {
       // Estimate based on expected max values
-      // Forest at 3x with 1.5 variance = 4.5 * normalized capacity
-      this.globalMaxFood = 15.0; // Reasonable estimate
-      console.log(`[FoodSystem] Using estimated globalMaxFood: ${this.globalMaxFood}`);
+      // Check if we're using scaled values (capacity ~100) or old values (capacity ~7)
+      // If we have no food cells, use a reasonable default based on expected capacity
+      this.globalMaxFood = this.capacityParameter > 50 ? 200.0 : 15.0;
+      console.log(`[FoodSystem] Using estimated globalMaxFood: ${this.globalMaxFood} (capacity param: ${this.capacityParameter})`);
     }
     
     // Use the same scaling factor as in the update loop
@@ -487,10 +583,10 @@ export class FoodSystem {
     this.capacityParameter = capacity;
     
     // Recalculate global max when capacity changes
-    // Forest biome at 3x multiplier with max variance should be peak
-    const normalizedCapacity = Math.min(capacity, 3.3);
-    const maxBiomeMultiplier = 3.0; // Forest
-    const maxVariance = 1.5; // Maximum variance for forest
+    // Forest biome at 1.5x multiplier with max variance should be peak
+    const normalizedCapacity = capacity;
+    const maxBiomeMultiplier = 1.5; // Forest
+    const maxVariance = 1.3; // Maximum variance for forest
     this.globalMaxFood = normalizedCapacity * maxBiomeMultiplier * maxVariance * 1.1; // 1.1 buffer
     
     // Immediately sync to update the visual representation

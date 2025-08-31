@@ -2,6 +2,9 @@ import { BiomeType, BIOME_CONFIGS, BIOME_HIGHLIGHT_COLORS } from '../sim/biomes'
 
 interface BiomeLegendProps {
   biomeMode: 'hidden' | 'natural' | 'highlight';
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+  position?: 'left' | 'right';
 }
 
 const BIOME_INFO: Record<BiomeType, { icon: string; effect: string }> = {
@@ -31,44 +34,71 @@ const BIOME_INFO: Record<BiomeType, { icon: string; effect: string }> = {
   },
 };
 
-export function BiomeLegend({ biomeMode }: BiomeLegendProps) {
+export function BiomeLegend({ biomeMode, collapsed = false, onToggleCollapse, position = 'left' }: BiomeLegendProps) {
   if (biomeMode === 'hidden') return null;
   
   const biomeTypes = Object.values(BiomeType);
   const colors = biomeMode === 'highlight' ? BIOME_HIGHLIGHT_COLORS : BIOME_CONFIGS;
   
+  const styles = position === 'right' ? {
+    background: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: '8px 0 0 8px',
+    padding: collapsed ? '12px 8px' : '12px',
+    backdropFilter: 'blur(10px)',
+    borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
+    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+    width: collapsed ? 'auto' : '260px',
+    height: '100%',
+    overflowY: 'auto' as const,
+    transition: 'width 0.3s ease',
+  } : {
+    position: 'absolute' as const,
+    bottom: '16px',
+    left: '16px',
+    background: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: '8px',
+    padding: '12px',
+    backdropFilter: 'blur(10px)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    maxWidth: '280px',
+    zIndex: 10,
+  };
+  
   return (
-    <div style={{
-      position: 'absolute',
-      bottom: '16px',
-      left: '16px',
-      background: 'rgba(0, 0, 0, 0.8)',
-      borderRadius: '8px',
-      padding: '12px',
-      backdropFilter: 'blur(10px)',
-      border: '1px solid rgba(255, 255, 255, 0.1)',
-      maxWidth: '280px',
-      zIndex: 10,
-    }}>
+    <div style={styles}>
       <div style={{
         color: 'white',
         fontSize: '13px',
         fontWeight: '600',
-        marginBottom: '8px',
+        marginBottom: collapsed ? '0' : '8px',
         display: 'flex',
         alignItems: 'center',
         gap: '6px',
-      }}>
-        <span>🗺️</span>
-        <span>Biome Types</span>
+        cursor: onToggleCollapse ? 'pointer' : 'default',
+      }}
+      onClick={onToggleCollapse}
+      >
+        {collapsed ? (
+          <span style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>🗺️ Biomes</span>
+        ) : (
+          <>
+            <span>🗺️</span>
+            <span>Biome Types</span>
+            {onToggleCollapse && (
+              <span style={{ marginLeft: 'auto', fontSize: '10px' }}>◀</span>
+            )}
+          </>
+        )}
       </div>
       
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '6px',
-      }}>
-        {biomeTypes.map(type => {
+      {!collapsed && (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px',
+        }}>
+          {biomeTypes.map(type => {
           const info = BIOME_INFO[type];
           const colorConfig = biomeMode === 'highlight' ? 
             colors[type] : 
@@ -119,7 +149,8 @@ export function BiomeLegend({ biomeMode }: BiomeLegendProps) {
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2,7 +2,9 @@
 // Maintains exact same behavior but with better performance
 import { SpatialHash } from './spatialHash';
 import { energyConfig } from './core/constants';
-import { BiomeGenerator } from './biomes';
+interface BiomeChecker {
+  isTraversable: (x: number, y: number) => boolean;
+}
 
 // Pre-allocated neighbor cache to avoid allocations - aggressively reduced for performance
 const MAX_NEIGHBORS = 20;
@@ -61,7 +63,7 @@ export function efficientMovementOptimized(
   fullGenes?: Float32Array,
   fullEnergy?: Float32Array,
   fullVel?: Float32Array,
-  biomeGenerator?: BiomeGenerator
+  biomeChecker?: BiomeChecker
 ): void {
   const G = 9;
   const base = i * G;
@@ -856,42 +858,134 @@ export function efficientMovementOptimized(
     }
   }
   
-  // Check biome traversability before updating velocity
-  if (biomeGenerator) {
-    // Calculate the next position based on current velocity
-    const nextX = px + vx;
-    const nextY = py + vy;
+  // Check biome traversability and apply boundary avoidance
+  if (biomeChecker) {
+    // Look ahead for boundaries and preemptively avoid them
+    const lookAheadDist = vision * 0.5; // Look ahead based on vision range
+    const currentAngle = Math.atan2(vy, vx);
+    const lookX = px + Math.cos(currentAngle) * lookAheadDist;
+    const lookY = py + Math.sin(currentAngle) * lookAheadDist;
+    const lookFlippedY = world.height - lookY;
     
-    // Check if the next position is traversable (flip Y to match texture coordinate system)
-    const flippedNextY = world.height - nextY;
-    if (!biomeGenerator.isTraversable(nextX, flippedNextY)) {
-      // Try to find an alternative direction
-      // First, try to slide along the obstacle
-      const angles = [Math.PI/4, -Math.PI/4, Math.PI/2, -Math.PI/2, Math.PI*3/4, -Math.PI*3/4, Math.PI];
-      const currentAngle = Math.atan2(vy, vx);
-      const currentSpeed = Math.sqrt(vx * vx + vy * vy);
+    // If we're heading toward a boundary, start turning away early
+    if (!biomeChecker.isTraversable(lookX, lookFlippedY)) {
+      // Find the best escape angle
+      const angleSteps = 16;
+      let bestAngle = currentAngle;
+      let bestClearance = 0;
       
-      let foundAlternative = false;
-      for (const angleOffset of angles) {
-        const testAngle = currentAngle + angleOffset;
-        const testVx = Math.cos(testAngle) * currentSpeed * 0.5;
-        const testVy = Math.sin(testAngle) * currentSpeed * 0.5;
-        const testX = px + testVx;
-        const testY = py + testVy;
+      for (let i = 0; i < angleSteps; i++) {
+        const testAngle = (i / angleSteps) * Math.PI * 2;
+        const testLookX = px + Math.cos(testAngle) * lookAheadDist;
+        const testLookY = py + Math.sin(testAngle) * lookAheadDist;
+        const testFlippedY = world.height - testLookY;
         
-        const flippedTestY = world.height - testY;
-        if (biomeGenerator.isTraversable(testX, flippedTestY)) {
-          vx = testVx;
-          vy = testVy;
-          foundAlternative = true;
-          break;
+        if (biomeChecker.isTraversable(testLookX, testFlippedY)) {
+          // Check how much clearance this angle has
+          let clearance = 0;
+          for (let d = 10; d <= lookAheadDist; d += 10) {
+            const clearX = px + Math.cos(testAngle) * d;
+            const clearY = py + Math.sin(testAngle) * d;
+            const clearFlippedY = world.height - clearY;
+            if (biomeChecker.isTraversable(clearX, clearFlippedY)) {
+              clearance += 1;
+            }
+          }
+          
+          if (clearance > bestClearance) {
+            bestClearance = clearance;
+            bestAngle = testAngle;
+          }
         }
       }
       
-      // If no alternative found, stop movement
-      if (!foundAlternative) {
-        vx *= 0.1;
-        vy *= 0.1;
+      // Blend current velocity with escape direction
+      const escapeStrength = 0.7;
+      vx = vx * (1 - escapeStrength) + Math.cos(bestAngle) * speed * escapeStrength;
+      vy = vy * (1 - escapeStrength) + Math.sin(bestAngle) * speed * escapeStrength;
+    }
+    
+    // First check if current position is valid (shouldn't happen but safety check)
+    const currentFlippedY = world.height - py;
+    if (!biomeChecker.isTraversable(px, currentFlippedY)) {
+      // Entity is in invalid position - find nearest valid position
+      const cellSize = 50; // biome cell size
+      for (let r = cellSize; r <= cellSize * 3; r += cellSize) {
+        for (let a = 0; a < 8; a++) {
+          const angle = (a / 8) * Math.PI * 2;
+          const testX = px + Math.cos(angle) * r;
+          const testY = py + Math.sin(angle) * r;
+          const testFlippedY = world.height - testY;
+          if (biomeChecker.isTraversable(testX, testFlippedY)) {
+            // Push strongly toward valid area
+            vx = Math.cos(angle) * speed * 2;
+            vy = Math.sin(angle) * speed * 2;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Check if planned movement would hit boundary
+    // Account for actual movement that will happen (velocity * dt)
+    const expectedDt = 0.016; // Approximate frame time
+    const plannedX = px + vx * expectedDt;
+    const plannedY = py + vy * expectedDt;
+    
+    // Check multiple points along the path
+    const numSteps = 10;
+    let hitBoundary = false;
+    let lastValidX = px;
+    let lastValidY = py;
+    
+    for (let step = 1; step <= numSteps; step++) {
+      const t = step / numSteps;
+      const checkX = px + (plannedX - px) * t;
+      const checkY = py + (plannedY - py) * t;
+      const checkFlippedY = world.height - checkY;
+      
+      if (!biomeChecker.isTraversable(checkX, checkFlippedY)) {
+        hitBoundary = true;
+        break;
+      }
+      lastValidX = checkX;
+      lastValidY = checkY;
+    }
+    
+    if (hitBoundary) {
+      // Movement would hit boundary - try sliding along it
+      const dist = Math.sqrt((lastValidX - px) * (lastValidX - px) + (lastValidY - py) * (lastValidY - py));
+      if (dist > 0.1) {
+        // Can move partway - do that
+        vx = (lastValidX - px) * 10; // Scale up for velocity
+        vy = (lastValidY - py) * 10;
+      } else {
+        // Too close to boundary - find perpendicular direction
+        const perpX = -vy;
+        const perpY = vx;
+        const mag = Math.sqrt(perpX * perpX + perpY * perpY) + 0.001;
+        
+        // Try both perpendicular directions
+        const testDist = 10;
+        const test1X = px + (perpX / mag) * testDist;
+        const test1Y = py + (perpY / mag) * testDist;
+        const test2X = px - (perpX / mag) * testDist;
+        const test2Y = py - (perpY / mag) * testDist;
+        
+        const test1FlippedY = world.height - test1Y;
+        const test2FlippedY = world.height - test2Y;
+        
+        if (biomeChecker.isTraversable(test1X, test1FlippedY)) {
+          vx = (perpX / mag) * speed * 0.7;
+          vy = (perpY / mag) * speed * 0.7;
+        } else if (biomeChecker.isTraversable(test2X, test2FlippedY)) {
+          vx = -(perpX / mag) * speed * 0.7;
+          vy = -(perpY / mag) * speed * 0.7;
+        } else {
+          // Both perpendiculars blocked - reverse
+          vx = -vx * 0.5;
+          vy = -vy * 0.5;
+        }
       }
     }
   }

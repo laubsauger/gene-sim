@@ -6,6 +6,7 @@ import { createRng } from './random';
 import { defaultGenes } from './genes';
 import type { WorkerMsg, MainMsg, PerfStats } from './types';
 import { WORLD_WIDTH, WORLD_HEIGHT } from './core/constants';
+import { loadWasmModule, isWasmSupported } from './wasmLoader';
 
 // Helper function for color conversion
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
@@ -100,7 +101,39 @@ function initializeAsMainWorker(msg: any) {
     sim.biomeGridWidth = init.world.biomes.gridWidth;
     sim.biomeGridHeight = init.world.biomes.gridHeight;
     sim.biomeCellSize = init.world.biomes.cellSize;
-    console.log(`[Worker] Biome collision map loaded: ${sim.biomeGridWidth}x${sim.biomeGridHeight}, cell size: ${sim.biomeCellSize}`);
+    console.log(`[Worker] Biome collision map loaded: ${sim.biomeGridWidth}x${sim.biomeGridHeight}, cell size: ${sim.biomeCellSize}, data length: ${sim.biomeTraversability?.length}`);
+    
+    // Try to use WASM collision detection if available
+    if (isWasmSupported()) {
+      loadWasmModule().then(wasmModule => {
+        if (wasmModule && wasmModule.BiomeCollisionMap && sim && sim.biomeTraversability) {
+          sim!.wasmCollisionMap = new wasmModule.BiomeCollisionMap(
+            sim!.biomeTraversability,
+            sim!.biomeGridWidth,
+            sim!.biomeGridHeight,
+            sim!.biomeCellSize,
+            worldWidth,
+            worldHeight
+          );
+          console.log('[Worker] WASM collision detection enabled for significant performance boost!');
+        }
+      }).catch(err => {
+        console.log('[Worker] WASM collision not available, using JS fallback:', err.message);
+      });
+    }
+    
+    // Debug: Check some samples
+    let traversableCount = 0;
+    let blockedCount = 0;
+    if (sim.biomeTraversability) {
+      for (let i = 0; i < sim.biomeTraversability.length; i++) {
+        if (sim.biomeTraversability[i] === 1) traversableCount++;
+        else blockedCount++;
+      }
+      console.log(`[Worker] Biome map: ${traversableCount} traversable, ${blockedCount} blocked cells`);
+    }
+  } else {
+    console.warn('[Worker] No biome data provided in init message!');
   }
   
   // Spawn initial entities
@@ -191,6 +224,9 @@ function initializeAsMainWorker(msg: any) {
     sharedBuffers!.biomeTraversability = new BufferClass(Uint8Array.BYTES_PER_ELEMENT * bufferSize) as any;
     const biomeTraversabilityView = new Uint8Array(sharedBuffers!.biomeTraversability!);
     biomeTraversabilityView.set(traversabilityMap);
+    
+    // IMPORTANT: Update sim to use the shared buffer view instead of the original array
+    sim.biomeTraversability = biomeTraversabilityView;
     
     if (biomeGridArray) {
       sharedBuffers!.biomeGrid = new BufferClass(Uint8Array.BYTES_PER_ELEMENT * bufferSize) as any;
@@ -315,6 +351,41 @@ function initializeAsSubWorker(msg: any) {
       foodRegen: config.world?.foodGrid?.regen,
       foodCapacity: config.world?.foodGrid?.capacity
     });
+  }
+  
+  // Set up biome collision data if provided (same as main worker)
+  if (config.world?.biomes) {
+    sim.biomeTraversability = config.world.biomes.traversabilityMap;
+    sim.biomeGridWidth = config.world.biomes.gridWidth;
+    sim.biomeGridHeight = config.world.biomes.gridHeight;
+    sim.biomeCellSize = config.world.biomes.cellSize;
+    
+    if (workerId === 0) {
+      console.log(`[Worker 0] Biome collision map loaded: ${sim.biomeGridWidth}x${sim.biomeGridHeight}, cell size: ${sim.biomeCellSize}`);
+    }
+    
+    // Try to use WASM collision detection if available
+    if (isWasmSupported()) {
+      loadWasmModule().then(wasmModule => {
+        if (wasmModule && wasmModule.BiomeCollisionMap && sim && sim.biomeTraversability) {
+          sim!.wasmCollisionMap = new wasmModule.BiomeCollisionMap(
+            sim!.biomeTraversability,
+            sim!.biomeGridWidth,
+            sim!.biomeGridHeight,
+            sim!.biomeCellSize,
+            worldWidth,
+            worldHeight
+          );
+          if (workerId === 0) {
+            console.log('[Worker 0] WASM collision detection enabled for ALL sub-workers!');
+          }
+        }
+      }).catch(err => {
+        if (workerId === 0) {
+          console.log('[Worker 0] WASM collision not available, using JS fallback:', err.message);
+        }
+      });
+    }
   }
 
   // Create FULL views for spatial queries (so we can see all entities)

@@ -15,7 +15,7 @@ export function BoundaryOverlay({ biomeGenerator, worldWidth, worldHeight }: Bou
     const cellSize = biomeGenerator.getCellSize();
     
     // Thickness of the boundary lines
-    const lineThickness = 24; // Extra thick lines for maximum visibility
+    const lineThickness = 8; // Thinner lines for cleaner look
     
     const rectangles: { x: number; y: number; width: number; height: number }[] = [];
     
@@ -28,12 +28,13 @@ export function BoundaryOverlay({ biomeGenerator, worldWidth, worldHeight }: Bou
         if (!isTraversable) continue; // We only care about edges of traversable areas
         
         // Check each neighbor for boundaries
-        // Right edge
+        // Right edge - place line at the boundary between cells
         if (x < gridWidth - 1) {
           const rightIdx = y * gridWidth + (x + 1);
           if (traversabilityMap[rightIdx] === 0) {
-            const worldX = (x + 1) * cellSize;
-            const worldY = worldHeight - (y + 0.5) * cellSize; // Center and flip Y
+            // Line should be at the edge between cell x and x+1
+            const worldX = (x + 1) * cellSize; // Right edge of current cell
+            const worldY = worldHeight - (y + 0.5) * cellSize; // Center vertically in cell
             rectangles.push({
               x: worldX,
               y: worldY,
@@ -43,12 +44,13 @@ export function BoundaryOverlay({ biomeGenerator, worldWidth, worldHeight }: Bou
           }
         }
         
-        // Left edge
+        // Left edge - place line at the boundary between cells
         if (x > 0) {
           const leftIdx = y * gridWidth + (x - 1);
           if (traversabilityMap[leftIdx] === 0) {
-            const worldX = x * cellSize;
-            const worldY = worldHeight - (y + 0.5) * cellSize; // Center and flip Y
+            // Line should be at the edge between cell x-1 and x
+            const worldX = x * cellSize; // Left edge of current cell
+            const worldY = worldHeight - (y + 0.5) * cellSize; // Center vertically in cell
             rectangles.push({
               x: worldX,
               y: worldY,
@@ -62,8 +64,9 @@ export function BoundaryOverlay({ biomeGenerator, worldWidth, worldHeight }: Bou
         if (y < gridHeight - 1) {
           const topIdx = (y + 1) * gridWidth + x;
           if (traversabilityMap[topIdx] === 0) {
-            const worldX = (x + 0.5) * cellSize; // Center
-            const worldY = worldHeight - (y + 1) * cellSize; // Flip Y
+            // Line should be at the edge between cell y and y+1
+            const worldX = (x + 0.5) * cellSize; // Center horizontally in cell
+            const worldY = worldHeight - (y + 1) * cellSize; // Bottom edge of current cell (flipped)
             rectangles.push({
               x: worldX,
               y: worldY,
@@ -77,8 +80,9 @@ export function BoundaryOverlay({ biomeGenerator, worldWidth, worldHeight }: Bou
         if (y > 0) {
           const bottomIdx = (y - 1) * gridWidth + x;
           if (traversabilityMap[bottomIdx] === 0) {
-            const worldX = (x + 0.5) * cellSize; // Center
-            const worldY = worldHeight - y * cellSize; // Flip Y
+            // Line should be at the edge between cell y-1 and y
+            const worldX = (x + 0.5) * cellSize; // Center horizontally in cell
+            const worldY = worldHeight - y * cellSize; // Top edge of current cell (flipped)
             rectangles.push({
               x: worldX,
               y: worldY,
@@ -98,9 +102,9 @@ export function BoundaryOverlay({ biomeGenerator, worldWidth, worldHeight }: Bou
   
   const material = useMemo(() => {
     return new THREE.MeshBasicMaterial({ 
-      color: 0xff0040,  // Bright red-pink for maximum visibility
-      opacity: 0.85,
-      transparent: true,
+      color: 0xff6b35,  // Alert orange for high visibility
+      opacity: 1.0,
+      transparent: false,  // No transparency for cleaner look
       side: THREE.DoubleSide
     });
   }, []);

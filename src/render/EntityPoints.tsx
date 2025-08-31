@@ -158,7 +158,7 @@ export function EntityPoints({
   }, [pointSize, mat]);
 
   // Create buffer attributes from SharedArrayBuffer views
-  useEffect(() => {
+  useEffect(() => {  
     if (!pos || !color || !alive) {
       // console.log('[EntityPoints] Missing buffers:', { hasPos: !!pos, hasColor: !!color, hasAlive: !!alive });
       return;

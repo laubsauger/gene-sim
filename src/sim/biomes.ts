@@ -14,6 +14,8 @@ export interface Biome {
   type: BiomeType;
   traversable: boolean;
   foodMultiplier: number;
+  foodCapacity?: number;    // Capacity multiplier for food system
+  foodRegenRate?: number;   // Regen rate multiplier for food system
   color: THREE.Color;
   elevation: number;
 }
@@ -40,19 +42,21 @@ export const BIOME_CONFIGS: Record<BiomeType, Omit<Biome, 'type'>> = {
   [BiomeType.GRASSLAND]: {
     traversable: true,
     foodMultiplier: 1.5,  // Good grazing land
-    color: new THREE.Color(0x7db85c), // Bright grass green like Link to the Past
+    color: new THREE.Color(0x4a9d3a), // Vibrant green grassland
     elevation: 0
   },
   [BiomeType.DESERT]: {
     traversable: true,
     foodMultiplier: 0.15,  // Very sparse vegetation, minimal food
-    color: new THREE.Color(0xd4a76a), // Sandy beige like classic desert tiles
+    color: new THREE.Color(0xe8c170), // Light sandy yellow
     elevation: 0
   },
   [BiomeType.SAVANNA]: {
     traversable: true,
     foodMultiplier: 0.8,  // Seasonal grassland, moderate food
-    color: new THREE.Color(0x9b8653), // Dry yellow-brown grass
+    foodCapacity: 0.7,    // Moderate capacity
+    foodRegenRate: 0.8,   // 20% slower regeneration
+    color: new THREE.Color(0xa87c4c), // Reddish brown savanna
     elevation: 0
   }
 };
@@ -61,10 +65,10 @@ export const BIOME_CONFIGS: Record<BiomeType, Omit<Biome, 'type'>> = {
 export const BIOME_HIGHLIGHT_COLORS: Record<BiomeType, THREE.Color> = {
   [BiomeType.OCEAN]: new THREE.Color(0x0066cc), // Deep blue - impassable
   [BiomeType.MOUNTAIN]: new THREE.Color(0x333333), // Dark grey - impassable
-  [BiomeType.FOREST]: new THREE.Color(0x00cc00), // Bright green - high food
-  [BiomeType.GRASSLAND]: new THREE.Color(0x88ff88), // Light green - medium food
-  [BiomeType.DESERT]: new THREE.Color(0xffaa00), // Orange - low food
-  [BiomeType.SAVANNA]: new THREE.Color(0xcccc66), // Yellow-tan - moderate food
+  [BiomeType.FOREST]: new THREE.Color(0x00aa00), // Dark green - high food
+  [BiomeType.GRASSLAND]: new THREE.Color(0x44ff44), // Bright green - medium food
+  [BiomeType.DESERT]: new THREE.Color(0xffdd00), // Bright yellow - low food
+  [BiomeType.SAVANNA]: new THREE.Color(0xff8800), // Orange - moderate food
 };
 
 export class BiomeGenerator {
@@ -205,6 +209,32 @@ export class BiomeGenerator {
   isTraversable(worldX: number, worldY: number): boolean {
     const biome = this.getBiomeConfig(worldX, worldY);
     return biome.traversable;
+  }
+
+  // Check traversability with a safety margin to keep entities away from edges
+  isTraversableWithMargin(worldX: number, worldY: number, marginCells: number = 1): boolean {
+    const gridX = Math.floor(worldX / this.cellSize);
+    const gridY = Math.floor(worldY / this.cellSize);
+    
+    // Check the cell and surrounding cells within margin
+    for (let dy = -marginCells; dy <= marginCells; dy++) {
+      for (let dx = -marginCells; dx <= marginCells; dx++) {
+        const checkX = gridX + dx;
+        const checkY = gridY + dy;
+        
+        if (checkX < 0 || checkX >= this.gridWidth || 
+            checkY < 0 || checkY >= this.gridHeight) {
+          return false; // Near edge of world
+        }
+        
+        const biome = this.biomeGrid[checkY][checkX];
+        if (!BIOME_CONFIGS[biome].traversable) {
+          return false; // Near impassable terrain
+        }
+      }
+    }
+    
+    return true;
   }
 
   getFoodMultiplier(worldX: number, worldY: number): number {

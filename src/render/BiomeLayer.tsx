@@ -78,44 +78,44 @@ export function BiomeLayer({ biomeGenerator, worldWidth, worldHeight, highlightM
               break;
               
             case BiomeType.GRASSLAND:
-              // Grass texture with variation
+              // Grass texture with variation - vibrant green
               const grassPattern = (x + y * 2) % 4;
               if (grassPattern === 0 && hash > 0.3) {
-                color = new THREE.Color(0x6daa4c); // Darker grass patches
+                color = new THREE.Color(0x3a8d2a); // Darker grass patches
               } else if (hash > 0.9) {
-                color = new THREE.Color(0x9dcf7c); // Lighter grass/flowers
+                color = new THREE.Color(0x5aad4a); // Lighter grass/flowers
               }
               // Add path-like patterns
               if (hash2 > 0.93) {
-                color = new THREE.Color(0x8ac66a); // Worn paths
+                color = new THREE.Color(0x4a9d3a); // Worn paths (base color)
               }
               break;
               
             case BiomeType.DESERT:
-              // Sand dune pattern
+              // Sand dune pattern - light sandy yellow
               const dunePattern = Math.sin(x * 0.3) * Math.cos(y * 0.3);
               if (dunePattern > 0.3 && hash > 0.4) {
-                color = new THREE.Color(0xe4b77a); // Dune highlights
+                color = new THREE.Color(0xf0d090); // Dune highlights - lighter sand
               } else if (dunePattern < -0.3) {
-                color = new THREE.Color(0xc4975a); // Dune shadows
+                color = new THREE.Color(0xd0a050); // Dune shadows - darker sand
               }
               // Add occasional rocks
               if (hash2 > 0.96) {
-                color = new THREE.Color(0x8a6a3a); // Desert rocks
+                color = new THREE.Color(0x9a7a4a); // Desert rocks
               }
               break;
               
             case BiomeType.SAVANNA:
-              // Dry grass with scattered trees pattern
+              // Dry grass with scattered trees pattern - reddish brown
               const savannaPattern = ((x * 2) % 5) + ((y * 2) % 5);
               if (savannaPattern === 0 && hash > 0.7) {
-                color = new THREE.Color(0x5a6030); // Acacia tree shadows
+                color = new THREE.Color(0x8a5c3c); // Acacia tree shadows
               } else if (hash > 0.85) {
-                color = new THREE.Color(0xab9663); // Dry grass highlights
+                color = new THREE.Color(0xb88c5c); // Dry grass highlights
               }
               // Add bare patches
               if (hash2 > 0.9) {
-                color = new THREE.Color(0x8b7643); // Bare earth
+                color = new THREE.Color(0x986c3c); // Bare earth
               }
               break;
           }

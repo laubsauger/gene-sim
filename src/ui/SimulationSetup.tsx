@@ -307,7 +307,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
     const rng = seededRandom(seed);
     // Modest variation around defaults
     const scale = 110 + (rng() - 0.5) * 44;  // 88-132 (±20%)
-    const threshold = 0.55 + (rng() - 0.5) * 0.2;  // 0.45-0.65 (more scarcity)
+    const threshold = 0.25 + (rng() - 0.5) * 0.1;  // 0.20-0.30 (less scarcity, more abundant)
     // Complexity can now be very low (smooth) to moderate (noisy)
     // Range from 0.25 to 1.25, centered at 0.75
     const frequency = 0.75 + (rng() - 0.5) * 1.0;  // 0.25-1.25 (allows smooth to complex patterns)
@@ -320,10 +320,10 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   const [tribes, setTribes] = useState(() => generateTribesFromSeed(seed, 8000, 8000));
   const [foodCols, setFoodCols] = useState(512);
   const [foodRows, setFoodRows] = useState(512);
-  const [foodRegen, setFoodRegen] = useState(0.0001); // ~7 seconds to fully regrow
-  const [foodCapacity, setFoodCapacity] = useState(7);
+  const [foodRegen, setFoodRegen] = useState(0.89); // ~1.1 seconds to fully regrow (fast default)
+  const [foodCapacity, setFoodCapacity] = useState(100); // Scaled up 10x for better precision
   const [foodDistScale, setFoodDistScale] = useState(initialFoodParams.scale);  // Island size (default ~110)
-  const [foodDistThreshold, setFoodDistThreshold] = useState(initialFoodParams.threshold);  // Scarcity (default ~0.55, higher = more scarce)
+  const [foodDistThreshold, setFoodDistThreshold] = useState(initialFoodParams.threshold);  // Scarcity (default ~0.25, higher = more scarce)
   const [foodDistFrequency, setFoodDistFrequency] = useState(initialFoodParams.frequency);  // Complexity (default ~0.75, lower = smoother)
   const [maxEntities, setMaxEntities] = useState(196000);
   const [startEnergy, setStartEnergy] = useState(50);

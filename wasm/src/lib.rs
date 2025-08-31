@@ -2,9 +2,13 @@ mod spatial_hash;
 mod movement;
 mod physics;
 mod types;
+mod collision;
 
 use wasm_bindgen::prelude::*;
 use web_sys::console;
+
+// Re-export collision detection
+pub use collision::BiomeCollisionMap;
 
 // Performance logging macro
 macro_rules! log {

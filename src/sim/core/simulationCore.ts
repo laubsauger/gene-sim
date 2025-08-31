@@ -54,6 +54,10 @@ export class SimulationCore {
   biomeGridWidth: number = 0;
   biomeGridHeight: number = 0;
   biomeCellSize: number = 0;
+  // Cache for traversability lookups to reduce redundant calculations
+  private traversabilityCache: Map<number, boolean> = new Map();
+  // WASM collision map if available
+  wasmCollisionMap?: any; // BiomeCollisionMap instance
   workerRegion?: { x: number; y: number; width: number; height: number; x2: number; y2: number };
   isMultiWorker: boolean = false;
   startIdx: number = 0;  // Start index for this worker's entities
@@ -287,7 +291,11 @@ export class SimulationCore {
 
     // Food consumption
     const foodStandards = this.fullGenes![base + 6]; // Get pickiness gene
-    const consumed = this.food.consumeAt(this.fullPos![i * 2], this.fullPos![i * 2 + 1], foodStandards);
+    const entityX = this.fullPos![i * 2];
+    const entityY = this.fullPos![i * 2 + 1];
+    // Flip Y coordinate to match food buffer (which matches biome rendering)
+    const flippedY = this.worldHeight - entityY;
+    const consumed = this.food.consumeAt(entityX, flippedY, foodStandards);
     if (consumed > 0) {
       const diet = this.fullGenes![base + 7];
       const plantFoodEfficiency = diet < 0 ? 1.0 : Math.max(0.3, 1.0 - Math.abs(diet));
@@ -462,83 +470,144 @@ export class SimulationCore {
         this.fullGenes || undefined,
         this.fullEnergy || undefined,
         this.fullVel || undefined,
-        this.food.getBiomeGenerator() || undefined
+        this.biomeTraversability ? {
+          isTraversable: (x: number, y: number) => this.isTraversable(x, y)
+        } : undefined
       );
       
-      // Apply velocity with biome collision detection
+      // Apply velocity with strict biome collision detection
       const vx = this.entities.vel[i * 2];
       const vy = this.entities.vel[i * 2 + 1];
       const currentX = this.entities.pos[i * 2];
       const currentY = this.entities.pos[i * 2 + 1];
-      let nextX = currentX + vx * dt;
-      let nextY = currentY + vy * dt;
       
-      // Wrap around world boundaries
-      if (nextX < 0) nextX += this.worldWidth;
-      if (nextX >= this.worldWidth) nextX -= this.worldWidth;
-      if (nextY < 0) nextY += this.worldHeight;
-      if (nextY >= this.worldHeight) nextY -= this.worldHeight;
-      
-      // Check biome collision - flip Y to match texture coordinate system
-      const flippedY = this.worldHeight - nextY;
-      if (this.isTraversable(nextX, flippedY)) {
-        // Move is valid
-        this.entities.pos[i * 2] = nextX;
-        this.entities.pos[i * 2 + 1] = nextY;
-      } else {
-        // Collision detected - apply strong repulsion force
-        // Calculate repulsion direction (away from the obstacle)
-        let repelX = 0;
-        let repelY = 0;
-        
-        // Sample nearby points to determine the gradient away from obstacles
-        const sampleDist = this.biomeCellSize * 0.5;
-        const samples = [
-          { dx: sampleDist, dy: 0 },
-          { dx: -sampleDist, dy: 0 },
-          { dx: 0, dy: sampleDist },
-          { dx: 0, dy: -sampleDist }
-        ];
-        
-        for (const sample of samples) {
-          const testX = ((currentX + sample.dx) % this.worldWidth + this.worldWidth) % this.worldWidth;
-          const testY = ((currentY + sample.dy) % this.worldHeight + this.worldHeight) % this.worldHeight;
-          const testFlippedY = this.worldHeight - testY;
-          if (this.isTraversable(testX, testFlippedY)) {
-            repelX += sample.dx;
-            repelY += sample.dy;
+      // First check if current position is valid (safety check)
+      const currentFlippedY = this.worldHeight - currentY;
+      if (!this.isTraversable(currentX, currentFlippedY)) {
+        // Entity is stuck in impassable terrain - teleport to nearest valid position
+        let foundValid = false;
+        for (let radius = this.biomeCellSize; radius <= this.biomeCellSize * 4 && !foundValid; radius += this.biomeCellSize) {
+          for (let a = 0; a < 16; a++) {
+            const angle = (a / 16) * Math.PI * 2;
+            const testX = currentX + Math.cos(angle) * radius;
+            const testY = currentY + Math.sin(angle) * radius;
+            const wrappedX = ((testX % this.worldWidth) + this.worldWidth) % this.worldWidth;
+            const wrappedY = ((testY % this.worldHeight) + this.worldHeight) % this.worldHeight;
+            const testFlippedY = this.worldHeight - wrappedY;
+            
+            if (this.isTraversable(wrappedX, testFlippedY)) {
+              this.entities.pos[i * 2] = wrappedX;
+              this.entities.pos[i * 2 + 1] = wrappedY;
+              // Set velocity away from boundary
+              this.entities.vel[i * 2] = Math.cos(angle) * 30;
+              this.entities.vel[i * 2 + 1] = Math.sin(angle) * 30;
+              foundValid = true;
+              break;
+            }
           }
         }
-        
-        // Normalize and apply strong repulsion
-        const repelMag = Math.sqrt(repelX * repelX + repelY * repelY);
-        if (repelMag > 0) {
-          repelX /= repelMag;
-          repelY /= repelMag;
-          // Apply strong repulsion force
-          const repelStrength = 50; // Strong push away from boundary
-          this.entities.vel[i * 2] = repelX * repelStrength;
-          this.entities.vel[i * 2 + 1] = repelY * repelStrength;
-        } else {
-          // Complete dead end - reverse with randomization to escape
-          const angle = this.rand() * Math.PI * 2;
-          this.entities.vel[i * 2] = Math.cos(angle) * 30;
-          this.entities.vel[i * 2 + 1] = Math.sin(angle) * 30;
-        }
-        
-        // Also try sliding for smoother movement
-        if (this.isTraversable(nextX, this.worldHeight - currentY)) {
-          this.entities.pos[i * 2] = nextX;
-        } else if (this.isTraversable(currentX, flippedY)) {
-          this.entities.pos[i * 2 + 1] = nextY;
+        if (!foundValid) {
+          // Couldn't find valid position - kill entity
+          this.entities.alive[i] = 0;
         }
       }
       
-      // Food consumption
+      // Only process movement for alive entities
+      if (this.entities.alive[i]) {
+      
+      // Calculate movement with very small steps to prevent any tunneling
+      const moveDistance = Math.sqrt(vx * vx + vy * vy) * dt;
+      const steps = Math.max(1, Math.ceil(moveDistance / 2)); // Step every 2 units for maximum precision
+      const stepDt = dt / steps;
+      
+      let finalX = currentX;
+      let finalY = currentY;
+      let hitBoundary = false;
+      
+      // Check each step of movement
+      for (let step = 0; step < steps && !hitBoundary; step++) {
+        let nextX = finalX + vx * stepDt;
+        let nextY = finalY + vy * stepDt;
+        
+        // Wrap around world boundaries
+        if (nextX < 0) nextX += this.worldWidth;
+        if (nextX >= this.worldWidth) nextX -= this.worldWidth;
+        if (nextY < 0) nextY += this.worldHeight;
+        if (nextY >= this.worldHeight) nextY -= this.worldHeight;
+        
+        // Check if next position is valid with a safety margin
+        const nextFlippedY = this.worldHeight - nextY;
+        
+        // Check the target position only (skip radius check for performance)
+        const positionSafe = this.isTraversable(nextX, nextFlippedY);
+        
+        if (positionSafe) {
+          finalX = nextX;
+          finalY = nextY;
+        } else {
+          hitBoundary = true;
+          
+          // Try sliding along one axis
+          const horizontalOk = this.isTraversable(nextX, this.worldHeight - finalY);
+          const verticalOk = this.isTraversable(finalX, nextFlippedY);
+          
+          if (horizontalOk && !verticalOk) {
+            // Can move horizontally
+            finalX = nextX;
+            this.entities.vel[i * 2 + 1] *= -0.5; // Bounce vertical velocity
+          } else if (!horizontalOk && verticalOk) {
+            // Can move vertically
+            finalY = nextY;
+            this.entities.vel[i * 2] *= -0.5; // Bounce horizontal velocity
+          } else {
+            // Can't move at all - find escape direction
+            let escapeX = 0;
+            let escapeY = 0;
+            const checkDist = 10;
+            
+            // Check 8 directions for escape route
+            for (let dir = 0; dir < 8; dir++) {
+              const angle = (dir / 8) * Math.PI * 2;
+              const checkX = finalX + Math.cos(angle) * checkDist;
+              const checkY = finalY + Math.sin(angle) * checkDist;
+              const wrappedCheckX = ((checkX % this.worldWidth) + this.worldWidth) % this.worldWidth;
+              const wrappedCheckY = ((checkY % this.worldHeight) + this.worldHeight) % this.worldHeight;
+              const checkFlippedY = this.worldHeight - wrappedCheckY;
+              
+              if (this.isTraversable(wrappedCheckX, checkFlippedY)) {
+                escapeX += Math.cos(angle);
+                escapeY += Math.sin(angle);
+              }
+            }
+            
+            // Apply escape velocity
+            const escapeMag = Math.sqrt(escapeX * escapeX + escapeY * escapeY);
+            if (escapeMag > 0.001) {
+              this.entities.vel[i * 2] = (escapeX / escapeMag) * 30;
+              this.entities.vel[i * 2 + 1] = (escapeY / escapeMag) * 30;
+            } else {
+              // Completely surrounded - reverse velocity
+              this.entities.vel[i * 2] *= -0.8;
+              this.entities.vel[i * 2 + 1] *= -0.8;
+            }
+          }
+        }
+      }
+      
+      // Update final position
+      this.entities.pos[i * 2] = finalX;
+      this.entities.pos[i * 2 + 1] = finalY;
+      } // End of alive entity movement block
+      
+      // Food consumption - flip Y to match food grid coordinate system
       const foodStandards = this.entities.genes[base + 6]; // Get pickiness gene
+      const entityX = this.entities.pos[i * 2];
+      const entityY = this.entities.pos[i * 2 + 1];
+      // Flip Y coordinate to match food buffer (which matches biome rendering)
+      const flippedY = this.worldHeight - entityY;
       const consumed = this.food.consumeAt(
-        this.entities.pos[i * 2],
-        this.entities.pos[i * 2 + 1],
+        entityX,
+        flippedY,
         foodStandards
       );
       
@@ -567,24 +636,54 @@ export class SimulationCore {
 
   // Check if a world position is traversable based on biome data
   isTraversable(worldX: number, worldY: number): boolean {
+    // Use WASM collision map if available (much faster)
+    if (this.wasmCollisionMap) {
+      return this.wasmCollisionMap.is_traversable(worldX, worldY);
+    }
+    
+    // Fallback to JS implementation
     // If no biome data, allow all movement
     if (!this.biomeTraversability || this.biomeGridWidth === 0) {
+      // Log warning only once
+      if (this.totalStepCount === 1) {
+        console.log('[SimCore] No biome data available - collision detection disabled');
+      }
       return true;
     }
     
-    // Convert world coordinates to biome grid coordinates
-    const gridX = Math.floor(worldX / this.biomeCellSize);
-    const gridY = Math.floor(worldY / this.biomeCellSize);
+    // Ensure coordinates are within world bounds
+    const wrappedX = ((worldX % this.worldWidth) + this.worldWidth) % this.worldWidth;
+    const wrappedY = ((worldY % this.worldHeight) + this.worldHeight) % this.worldHeight;
     
-    // Check bounds
+    // Convert world coordinates to biome grid coordinates
+    const gridX = Math.floor(wrappedX / this.biomeCellSize);
+    const gridY = Math.floor(wrappedY / this.biomeCellSize);
+    
+    // Check bounds (should not happen with wrapping but safety check)
     if (gridX < 0 || gridX >= this.biomeGridWidth || 
         gridY < 0 || gridY >= this.biomeGridHeight) {
       return false; // Out of bounds = not traversable
     }
     
+    // Create cache key from grid coordinates (not world coordinates for better hit rate)
+    const cacheKey = gridY * this.biomeGridWidth + gridX;
+    
+    // Check cache first
+    const cached = this.traversabilityCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+    
     // Look up traversability in the map
-    const idx = gridY * this.biomeGridWidth + gridX;
-    return this.biomeTraversability[idx] === 1;
+    const isTraversable = this.biomeTraversability[cacheKey] === 1;
+    
+    // Cache the result (limit cache size to prevent memory issues)
+    if (this.traversabilityCache.size > 5000) {
+      this.traversabilityCache.clear();
+    }
+    this.traversabilityCache.set(cacheKey, isTraversable);
+    
+    return isTraversable;
   }
 
   getStats(): SimStats {
