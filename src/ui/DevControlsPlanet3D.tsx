@@ -12,7 +12,22 @@ export function DevControlsPlanet3D({
   onZoomToSystem,
   onCameraTargetChange,
 }: DevControlsPlanet3DProps) {
-  const [isCollapsed, setIsCollapsed] = useState(true); // Collapsed by default
+  const [isCollapsed, setIsCollapsed] = useState(true); // Main panel collapsed by default
+
+  // Individual section collapse states
+  const [sectionsCollapsed, setSectionsCollapsed] = useState({
+    camera: false,
+    view: false,
+    layers: false,
+    visualEffects: false,
+    starfield: false,
+    debug: false,
+    orbitalMechanics: false,
+  });
+
+  const toggleSection = (section: keyof typeof sectionsCollapsed) => {
+    setSectionsCollapsed(prev => ({ ...prev, [section]: !prev[section] }));
+  };
   
   // Get all state and setters from store
   const {
@@ -20,6 +35,8 @@ export function DevControlsPlanet3D({
     setShowEntities,
     showAtmosphere,
     setShowAtmosphere,
+    atmosphereIntensity,
+    setAtmosphereIntensity,
     showClouds,
     setShowClouds,
     showMoon,
@@ -72,6 +89,10 @@ export function DevControlsPlanet3D({
     setShowMilkyWay,
     showNebulae,
     setShowNebulae,
+    showLensFlare,
+    setShowLensFlare,
+    lensFlareIntensity,
+    setLensFlareIntensity,
   } = usePlanet3DStore();
   
   return (
@@ -118,79 +139,93 @@ export function DevControlsPlanet3D({
       
       {onCameraTargetChange && (
         <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
-          <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
-            Camera Controls
+              <div
+                style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa', cursor: 'pointer', userSelect: 'none' }}
+                onClick={() => toggleSection('camera')}
+              >
+                {sectionsCollapsed.camera ? '▶' : '▼'} Camera Controls
           </div>
-          <div style={{ marginBottom: '5px' }}>
-            <div style={{ fontSize: '10px', color: '#888', marginBottom: '2px' }}>Mode:</div>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button
-                onClick={() => setCameraMode('free')}
-                style={{
-                  flex: 1,
-                  padding: '3px 6px',
-                  fontSize: '10px',
-                  background: cameraMode === 'free' ? 'rgba(100, 150, 255, 0.3)' : 'rgba(100, 150, 255, 0.1)',
-                  border: `1px solid ${cameraMode === 'free' ? 'rgba(100, 150, 255, 0.7)' : 'rgba(100, 150, 255, 0.3)'}`,
-                  borderRadius: '3px',
-                  color: '#aaf',
-                  cursor: 'pointer',
-                }}
-                title="Camera moves independently of Earth's rotation"
-              >
-                Free Orbit
-              </button>
-              <button
-                onClick={() => setCameraMode('geostationary')}
-                style={{
-                  flex: 1,
-                  padding: '3px 6px',
-                  fontSize: '10px',
-                  background: cameraMode === 'geostationary' ? 'rgba(100, 150, 255, 0.3)' : 'rgba(100, 150, 255, 0.1)',
-                  border: `1px solid ${cameraMode === 'geostationary' ? 'rgba(100, 150, 255, 0.7)' : 'rgba(100, 150, 255, 0.3)'}`,
-                  borderRadius: '3px',
-                  color: '#aaf',
-                  cursor: 'pointer',
-                }}
-                title="Camera stays above same point on Earth's surface"
-              >
-                Geostationary
-              </button>
+              {!sectionsCollapsed.camera && (
+                <>
+                  <div style={{ marginBottom: '5px' }}>
+                    <div style={{ fontSize: '10px', color: '#888', marginBottom: '2px' }}>Mode:</div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button
+                        onClick={() => setCameraMode('free')}
+                        style={{
+                          flex: 1,
+                          padding: '3px 6px',
+                          fontSize: '10px',
+                          background: cameraMode === 'free' ? 'rgba(100, 150, 255, 0.3)' : 'rgba(100, 150, 255, 0.1)',
+                          border: `1px solid ${cameraMode === 'free' ? 'rgba(100, 150, 255, 0.7)' : 'rgba(100, 150, 255, 0.3)'}`,
+                          borderRadius: '3px',
+                          color: '#aaf',
+                          cursor: 'pointer',
+                        }}
+                        title="Camera moves independently of Earth's rotation"
+                      >
+                        Free Orbit
+                      </button>
+                      <button
+                        onClick={() => setCameraMode('geostationary')}
+                        style={{
+                          flex: 1,
+                          padding: '3px 6px',
+                          fontSize: '10px',
+                          background: cameraMode === 'geostationary' ? 'rgba(100, 150, 255, 0.3)' : 'rgba(100, 150, 255, 0.1)',
+                          border: `1px solid ${cameraMode === 'geostationary' ? 'rgba(100, 150, 255, 0.7)' : 'rgba(100, 150, 255, 0.3)'}`,
+                          borderRadius: '3px',
+                          color: '#aaf',
+                          cursor: 'pointer',
+                        }}
+                        title="Camera stays above same point on Earth's surface"
+                      >
+                        Geostationary
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '10px', color: '#888', marginBottom: '2px' }}>Target:</div>
+                    <select
+                      value={cameraTarget}
+                      onChange={(e) => {
+                        const target = e.target.value as 'sun' | 'venus' | 'earth' | 'mars' | 'moon';
+                        setCameraTarget(target);
+                        onCameraTargetChange(target);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '4px',
+                        fontSize: '11px',
+                        background: 'rgba(100, 150, 255, 0.1)',
+                        border: '1px solid rgba(100, 150, 255, 0.3)',
+                        borderRadius: '3px',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        outline: 'none',
+                      }}
+                    >
+                      <option value="sun" style={{ background: '#000' }}>☀️ Sun</option>
+                      <option value="venus" style={{ background: '#000' }}>🟡 Venus</option>
+                      <option value="earth" style={{ background: '#000' }}>🌍 Earth</option>
+                      <option value="mars" style={{ background: '#000' }}>🔴 Mars</option>
+                      <option value="moon" style={{ background: '#000' }}>🌙 Moon</option>
+                    </select>
+                  </div>
+                </>
+              )}
             </div>
-          </div>
-          <div style={{ fontSize: '10px', color: '#888', marginBottom: '2px' }}>Target:</div>
-          <select
-            value={cameraTarget}
-            onChange={(e) => {
-              const target = e.target.value as 'sun' | 'venus' | 'earth' | 'mars' | 'moon';
-              setCameraTarget(target);
-              onCameraTargetChange(target);
-            }}
-            style={{
-              width: '100%',
-              padding: '4px',
-              fontSize: '11px',
-              background: 'rgba(100, 150, 255, 0.1)',
-              border: '1px solid rgba(100, 150, 255, 0.3)',
-              borderRadius: '3px',
-              color: '#fff',
-              cursor: 'pointer',
-              outline: 'none',
-            }}
-          >
-            <option value="sun" style={{ background: '#000' }}>☀️ Sun</option>
-            <option value="venus" style={{ background: '#000' }}>🟡 Venus</option>
-            <option value="earth" style={{ background: '#000' }}>🌍 Earth</option>
-            <option value="mars" style={{ background: '#000' }}>🔴 Mars</option>
-            <option value="moon" style={{ background: '#000' }}>🌙 Moon</option>
-          </select>
-        </div>
       )}
       
       <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
-        <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
-          Orbital Mechanics
+            <div
+              style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa', cursor: 'pointer', userSelect: 'none' }}
+              onClick={() => toggleSection('orbitalMechanics')}
+            >
+              {sectionsCollapsed.orbitalMechanics ? '▶' : '▼'} Orbital Mechanics
         </div>
+            {!sectionsCollapsed.orbitalMechanics && (
+              <>
         <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
           <input
             type="checkbox"
@@ -247,12 +282,19 @@ export function DevControlsPlanet3D({
             <span style={{ minWidth: '35px', textAlign: 'right' }}>{orbitalSpeed.toFixed(1)}×</span>
           </div>
         </div>
+              </>
+            )}
       </div>
       
       <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
-        <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
-          Scene Elements
+            <div
+              style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa', cursor: 'pointer', userSelect: 'none' }}
+              onClick={() => toggleSection('layers')}
+            >
+              {sectionsCollapsed.layers ? '▶' : '▼'} Scene Elements
         </div>
+            {!sectionsCollapsed.layers && (
+              <>
         <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
           <input
             type="checkbox"
@@ -270,6 +312,20 @@ export function DevControlsPlanet3D({
           />
           Atmosphere
         </label>
+                {showAtmosphere && (
+                  <div style={{ marginLeft: '20px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <label style={{ fontSize: '9px', color: '#888', minWidth: '60px' }}>Glow: {atmosphereIntensity.toFixed(2)}</label>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="2.0"
+                      step="0.05"
+                      value={atmosphereIntensity}
+                      onChange={(e) => setAtmosphereIntensity(parseFloat(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                )}
         
         <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
           <input
@@ -315,12 +371,19 @@ export function DevControlsPlanet3D({
           />
           Mars
         </label>
+              </>
+            )}
       </div>
       
       <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
-        <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
-          Visual Effects
+            <div
+              style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa', cursor: 'pointer', userSelect: 'none' }}
+              onClick={() => toggleSection('visualEffects')}
+            >
+              {sectionsCollapsed.visualEffects ? '▶' : '▼'} Visual Effects
         </div>
+            {!sectionsCollapsed.visualEffects && (
+              <>
         <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
           <input
             type="checkbox"
@@ -355,38 +418,68 @@ export function DevControlsPlanet3D({
         </label>
         {showBloom && (
           <>
-            <div style={{ marginTop: '5px', marginLeft: '20px' }}>
-              <label style={{ fontSize: '9px', color: '#888' }}>Intensity: {bloomIntensity.toFixed(1)}</label>
+                    <div style={{ marginTop: '5px', marginLeft: '20px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <label style={{ fontSize: '9px', color: '#888', minWidth: '60px' }}>Intensity: {bloomIntensity.toFixed(2)}</label>
               <input
                 type="range"
                 min="0.1"
                 max="3"
-                step="0.1"
+                        step="0.05"
                 value={bloomIntensity}
                 onChange={(e) => setBloomIntensity(parseFloat(e.target.value))}
-                style={{ width: '100%' }}
+                        style={{ flex: 1 }}
               />
             </div>
-            <div style={{ marginLeft: '20px' }}>
-              <label style={{ fontSize: '9px', color: '#888' }}>Threshold: {bloomThreshold.toFixed(2)}</label>
+                    <div style={{ marginLeft: '20px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <label style={{ fontSize: '9px', color: '#888', minWidth: '60px' }}>Threshold: {bloomThreshold.toFixed(3)}</label>
               <input
                 type="range"
                 min="0"
                 max="1"
-                step="0.05"
+                        step="0.005"
                 value={bloomThreshold}
                 onChange={(e) => setBloomThreshold(parseFloat(e.target.value))}
-                style={{ width: '100%' }}
+                        style={{ flex: 1 }}
               />
             </div>
           </>
         )}
+        
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', marginTop: '5px' }}>
+          <input
+            type="checkbox"
+            checked={showLensFlare}
+            onChange={(e) => setShowLensFlare(e.target.checked)}
+          />
+          Lens Flare
+        </label>
+        {showLensFlare && (
+          <div style={{ marginTop: '5px', marginLeft: '20px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <label style={{ fontSize: '9px', color: '#888', minWidth: '60px' }}>Intensity: {lensFlareIntensity.toFixed(2)}</label>
+            <input
+              type="range"
+              min="0.1"
+              max="1.0"
+              step="0.05"
+              value={lensFlareIntensity}
+              onChange={(e) => setLensFlareIntensity(parseFloat(e.target.value))}
+              style={{ flex: 1 }}
+            />
+          </div>
+        )}
+              </>
+            )}
       </div>
       
       <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
-        <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
-          Starfield
+            <div
+              style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa', cursor: 'pointer', userSelect: 'none' }}
+              onClick={() => toggleSection('starfield')}
+            >
+              {sectionsCollapsed.starfield ? '▶' : '▼'} Starfield
         </div>
+            {!sectionsCollapsed.starfield && (
+              <>
         <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
           <input
             type="checkbox"
@@ -418,16 +511,16 @@ export function DevControlsPlanet3D({
               Twinkle
             </label>
             {showTwinkle && (
-              <div style={{ marginLeft: '40px' }}>
-                <label style={{ fontSize: '9px', color: '#888' }}>Intensity: {twinkleIntensity.toFixed(1)}</label>
+                      <div style={{ marginLeft: '40px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <label style={{ fontSize: '9px', color: '#888', minWidth: '60px' }}>Intensity: {twinkleIntensity.toFixed(2)}</label>
                 <input
                   type="range"
                   min="0"
                   max="1"
-                  step="0.1"
+                          step="0.05"
                   value={twinkleIntensity}
                   onChange={(e) => setTwinkleIntensity(parseFloat(e.target.value))}
-                  style={{ width: '100%' }}
+                          style={{ flex: 1 }}
                 />
               </div>
             )}
@@ -449,12 +542,19 @@ export function DevControlsPlanet3D({
             </label>
           </>
         )}
+              </>
+            )}
       </div>
       
       <div style={{ paddingBottom: '5px', marginBottom: '5px' }}>
-        <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
-          Debug
+            <div
+              style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa', cursor: 'pointer', userSelect: 'none' }}
+              onClick={() => toggleSection('debug')}
+            >
+              {sectionsCollapsed.debug ? '▶' : '▼'} Debug
         </div>
+            {!sectionsCollapsed.debug && (
+              <>
         <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
           <input
             type="checkbox"
@@ -471,6 +571,8 @@ export function DevControlsPlanet3D({
           />
           Pole Markers
         </label>
+              </>
+            )}
       </div>
       
       {(onZoomToSurface || onZoomToSystem) && (
@@ -534,7 +636,7 @@ export function DevControlsPlanet3D({
           </div>
         </div>
       )}
-        </div>
+      </div>
       )}
     </div>
   );

@@ -77,7 +77,17 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
   const mountRef = useRef<HTMLDivElement>(null);
   const [isPaused, setIsPaused] = useState(true);
   const fpsTracker = FPSTracker({ client });
-  const cinematicAnimationRef = useRef<{ startTime: number; duration: number; from: number; to: number; active: boolean } | null>(null);
+  const cinematicAnimationRef = useRef<{ 
+    startTime: number; 
+    duration: number; 
+    from: number; 
+    to: number; 
+    fromFov: number;
+    toFov: number;
+    startRotation: number;
+    rotationAmount: number;
+    active: boolean 
+  } | null>(null);
   const cameraTransitionRef = useRef<{
     startTime: number;
     duration: number;
@@ -650,43 +660,65 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       const planet3DState = storeRef.current.getState();
 
       // Distance-based culling for performance
+      // Calculate screen size more accurately using FOV
       const cameraDistance = refs.camera.position.distanceTo(refs.earth.group.position);
-      const planetScreenSize = (PLANET_RADIUS / cameraDistance) * Math.min(window.innerHeight, window.innerWidth);
+      const vFOV = (refs.camera.fov * Math.PI) / 180; // Convert to radians
+      const heightAtDistance = 2 * Math.tan(vFOV / 2) * cameraDistance;
+      const pixelsPerUnit = window.innerHeight / heightAtDistance;
+      const planetScreenSize = PLANET_RADIUS * 2 * pixelsPerUnit; // Diameter in pixels
+      
+      // Define LOD thresholds for smooth transitions
+      const LOD_THRESHOLDS = {
+        entities: 100,      // Show entities when planet > 100 pixels
+        clouds: 20,         // Show clouds when planet > 20 pixels  
+        atmosphere: 30,     // Show atmosphere when planet > 30 pixels
+        moonDetail: 15,     // Show moon when > 15 pixels
+        planetDetail: 5,    // Minimum size to show planets
+      };
 
       if (refs.earth?.meshes?.atmosphereMesh) {
         // Cull atmosphere when planet is very small on screen
-        refs.earth.meshes.atmosphereMesh.visible = planet3DState.showAtmosphere && planetScreenSize > 20;
+        refs.earth.meshes.atmosphereMesh.visible = planet3DState.showAtmosphere && planetScreenSize > LOD_THRESHOLDS.atmosphere;
       }
 
       if (refs.atmoDepth) {
-        refs.atmoDepth.visible = planet3DState.showAtmosphere && planetScreenSize > 20;
+        refs.atmoDepth.visible = planet3DState.showAtmosphere && planetScreenSize > LOD_THRESHOLDS.atmosphere;
       }
 
+      // Calculate moon screen size for culling
       if (refs.moon) {
-        refs.moon.visible = planet3DState.showMoon;
+        const moonDistance = refs.camera.position.distanceTo(refs.moon.position);
+        const moonScreenSize = (PLANET_RADIUS * MOON_RADIUS * 2) * (window.innerHeight / (2 * Math.tan(vFOV / 2) * moonDistance));
+        refs.moon.visible = planet3DState.showMoon && moonScreenSize > LOD_THRESHOLDS.moonDetail;
       }
       
+      // Calculate Venus screen size
       if (refs.venus) {
-        refs.venus.group.visible = planet3DState.showVenus;
+        const venusDistance = refs.camera.position.distanceTo(refs.venus.group.position);
+        const venusScreenSize = (PLANET_RADIUS * VENUS_RADIUS * 2) * (window.innerHeight / (2 * Math.tan(vFOV / 2) * venusDistance));
+        refs.venus.group.visible = planet3DState.showVenus && venusScreenSize > LOD_THRESHOLDS.planetDetail;
       }
       
+      // Calculate Mars screen size
       if (refs.mars) {
-        refs.mars.group.visible = planet3DState.showMars;
+        const marsDistance = refs.camera.position.distanceTo(refs.mars.group.position);
+        const marsScreenSize = (PLANET_RADIUS * MARS_RADIUS * 2) * (window.innerHeight / (2 * Math.tan(vFOV / 2) * marsDistance));
+        refs.mars.group.visible = planet3DState.showMars && marsScreenSize > LOD_THRESHOLDS.planetDetail;
       }
 
       if (refs.cloudSystem) {
         // Cull clouds when planet is small on screen
-        refs.cloudSystem.group.visible = planet3DState.showClouds && planetScreenSize > 10;
+        refs.cloudSystem.group.visible = planet3DState.showClouds && planetScreenSize > LOD_THRESHOLDS.clouds;
       }
       
       if (refs.clouds) {
         // Backward compatibility
-        refs.clouds.visible = planet3DState.showClouds && planetScreenSize > 10;
+        refs.clouds.visible = planet3DState.showClouds && planetScreenSize > LOD_THRESHOLDS.clouds;
       }
 
       if (refs.entities) {
         // Cull entities when they would be smaller than 0.5 pixels
-        refs.entities.visible = planet3DState.showEntities && planetScreenSize > 50;
+        refs.entities.visible = planet3DState.showEntities && planetScreenSize > LOD_THRESHOLDS.entities;
       }
 
       if (refs.axisHelper) {
@@ -721,6 +753,11 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         refs.bloomPass.enabled = planet3DState.showBloom;
         refs.bloomPass.strength = planet3DState.bloomIntensity;
         refs.bloomPass.threshold = planet3DState.bloomThreshold;
+      }
+      
+      // Update atmosphere intensity
+      if (refs.earth && refs.earth.uniforms && refs.earth.uniforms.atmUniforms) {
+        refs.earth.uniforms.atmUniforms.uExposure.value = planet3DState.atmosphereIntensity;
       }
 
       // Handle camera planet transition animation
@@ -758,9 +795,23 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         // Calculate new distance
         const newDistance = anim.from + (anim.to - anim.from) * eased;
 
-        // Apply zoom - maintain current direction from target
-        const direction = refs.camera.position.clone().sub(refs.controls.target).normalize();
+        // Apply zoom with rotation for cinematic effect
+        const currentRotation = anim.startRotation + (anim.rotationAmount * eased);
+        const direction = new THREE.Vector3(
+          Math.sin(currentRotation) * Math.cos(0.3), // Slight vertical angle
+          Math.sin(0.3),
+          Math.cos(currentRotation) * Math.cos(0.3)
+        ).normalize();
+        
         refs.camera.position.copy(refs.controls.target).addScaledVector(direction, newDistance);
+        refs.camera.lookAt(refs.controls.target);
+        
+        // Smoothly adjust FOV for dramatic effect
+        if (anim.fromFov && anim.toFov) {
+          const newFov = anim.fromFov + (anim.toFov - anim.fromFov) * eased;
+          refs.camera.fov = newFov;
+          refs.camera.updateProjectionMatrix();
+        }
         
         // Disable user controls during animation
         refs.controls.enabled = progress >= 1;
@@ -769,6 +820,9 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         if (progress >= 1) {
           anim.active = false;
           refs.controls.enabled = true; // Re-enable controls
+          // Reset FOV to default
+          refs.camera.fov = CAMERA_CONFIG.fov;
+          refs.camera.updateProjectionMatrix();
         }
       }
 
@@ -1178,12 +1232,19 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     // Disable controls during animation
     controls.enabled = false;
 
-    // Start animation
+    // Calculate current rotation angle
+    const currentAngle = Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z);
+    
+    // Start animation with FOV change and rotation for dramatic effect
     cinematicAnimationRef.current = {
       startTime: performance.now(),
       duration: 2500, // 2.5 seconds
       from: currentDistance,
       to: targetDistance,
+      fromFov: camera.fov,
+      toFov: 35, // Narrower FOV for more dramatic close-up
+      startRotation: currentAngle,
+      rotationAmount: Math.PI * 0.25, // Quarter rotation during zoom in
       active: true
     };
   }, []);
@@ -1199,12 +1260,19 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     // Disable controls during animation
     controls.enabled = false;
 
-    // Start animation
+    // Calculate current rotation angle
+    const currentAngle = Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z);
+    
+    // Start animation with FOV change and rotation for wide view
     cinematicAnimationRef.current = {
       startTime: performance.now(),
       duration: 3000, // 3 seconds for zoom out
       from: currentDistance,
       to: targetDistance,
+      fromFov: camera.fov,
+      toFov: 60, // Wider FOV for system overview
+      startRotation: currentAngle,
+      rotationAmount: -Math.PI * 0.15, // Slight reverse rotation during zoom out
       active: true
     };
   }, []);

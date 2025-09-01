@@ -1,22 +1,17 @@
 # UI & 3D Scene Improvements Todo List
 
-## Scene3DPlanetCanvas Enhancements
-
-- [x] Geostationary
-  - [x] Geostationary works for earth but needs to work with other planets when jumping between them
-
 ### 4c. Cinematic Zoom Animation Controls / Planet Target resp Camera target change animation
 
 - [x] Visual polish:
   - [x] Disable user controls during animation
-  - [ ] Smooth FOV adjustment for dramatic effect
+  - [x] Smooth FOV adjustment for dramatic effect
   - [ ] Consider adding motion blur post-process (optional)
-  - [ ] Add slight rotation during zoom for extra drama (cinematic in / out zoom only)
+  - [x] Add slight rotation during zoom for extra drama (cinematic in / out zoom only)
 
 ### Misc
 
-- [ ] Sound effects support
-- [ ] Music support (we will supply our own music)
+- [x] Sound effects support
+- [x] Music support (we will supply our own music)
 
 ### 5. Moon Visual Improvements
 
@@ -25,44 +20,29 @@
 ### 7. Lighting & Atmosphere Improvements
 
 - [x] Increase day/night terminator band width
-  - [x] Adjust atmosphere scattering parameters
-  - [x] Widen the twilight zone for more gradual transition (from 0.5 to 0.7 range)
   - [x] Fine-tune sunset/sunrise colors in terminator region
-  - [ ] Add atmospheric glow intensity control
+  - [x] Add atmospheric glow intensity control
 
 ### 8. Bloom & Post-processing Effects
 
 - [x] Add optional bloom effect for orbit mode
   - [x] Toggle in planet 3d controls
-  - [x] Adjustable bloom intensity slider
-  - [x] Bloom threshold control
-  - [ ] Performance-aware (disable on low-end devices)
+  - [x] Adjustable bloom intensity slider (with fine-grained control)
+  - [x] Bloom threshold control (with 0.005 step precision)
+  - [x] Performance-aware (disable on low-end devices)
 - [ ] Additional lighting effects:
-  - [ ] Lens flare options for sun
+  - [x] Lens flare options for sun
   - [ ] God rays/volumetric lighting (optional)
   - [ ] HDR tone mapping adjustments
   - [ ] Exposure control for different viewing angles
 
 ### 9. Starfield/Skybox System
 
-- [x] Expand / update hyper-efficient configurable star skybox
-  - [x] Configurable star density (sparse to dense)
-  - [x] Variable star sizes and brightness
-  - [x] Subtle color variation (white, blue, yellow, red stars)
-- [x] Performance optimizations:
-  - [x] Use point sprites or instanced geometry
-  - [x] Frustum culling for off-screen stars
-  - [x] Static batching for distant stars
-  - [ ] Optional: Use texture atlas for star varieties
-- [x] Configuration options:
-  - [x] Star count slider (1k to 100k stars)
-  - [x] Twinkle effect toggle
-  - [x] Milky way band toggle
-  - [x] Nebula clouds (subtle, optional)
 - [ ] Consider using:
   - [ ] BufferGeometry with custom shaders
   - [ ] GPU-based star positioning
   - [ ] Perlin noise for natural clustering
+  - [x] improve milky way clustering (currently a very straight band) all around
 
 ### 10. Volumetric Lighting & Space Dust Effects
 
@@ -119,7 +99,7 @@
 
 ### 14. Distance-Based Culling System
 
-- [ ] Implement efficient LOD/culling for distant objects - IF WERE NOT ALREADY DOING THAt. i cam see some saort of LOD happening lready so planet atmosphere is already disappearing at a certain zoom. not sure if thats the coorrect way so investigae bevfore duplicating / getting anything n3q
+- [x] Implement efficient LOD/culling for distant objects - IF WERE NOT ALREADY DOING THAt. i cam see some saort of LOD happening lready so planet atmosphere is already disappearing at a certain zoom. not sure if thats the coorrect way so investigae bevfore duplicating / getting anything n3q
   - [ ] Core principle: Cull objects that would be < 1 pixel on screen
   - [ ] Calculate screen-space size based on:
     - [ ] Object world size
@@ -225,9 +205,14 @@
 
 ### Collapsible Components
 
-- Use React state for collapsed/expanded
-- CSS transitions for smooth animations
-- Consider using a shared hook for collapsible behavior
+- [x] Use React state for collapsed/expanded
+- [ ] CSS transitions for smooth animations
+- [ ] Consider using a shared hook for collapsible behavior
+- [x] All 3D control sections now individually collapsible:
+  - Camera Controls, Orbital Mechanics, Scene Elements
+  - Visual Effects, Starfield, Debug sections
+  - Arrow indicators show collapse state (▶/▼)
+  - Single-line sliders for bloom and twinkle intensity
 
 ### Texture Resources
 

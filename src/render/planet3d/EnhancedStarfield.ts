@@ -12,16 +12,25 @@ const starVertexShader = `
   
   varying vec3 vColor;
   varying float vBrightness;
+  varying float vSize;
   
   void main() {
     vColor = starColor;
     
-    // Twinkle effect
+    // Twinkle effect with smoother transition
     float twinkle = sin(uTime * twinkleSpeed + twinklePhase) * 0.5 + 0.5;
-    vBrightness = mix(0.5, 1.0, twinkle * uTwinkleIntensity);
+    vBrightness = mix(0.7, 1.0, twinkle * uTwinkleIntensity);
     
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = size * (300.0 / -mvPosition.z);
+    
+    // Fixed size with subtle depth-based scaling to reduce flickering
+    float depth = -mvPosition.z;
+    float baseSize = size * 2.0;
+    
+    // Clamp size to prevent sub-pixel flickering
+    gl_PointSize = max(baseSize, 1.0);
+    vSize = gl_PointSize;
+    
     gl_Position = projectionMatrix * mvPosition;
   }
 `;
@@ -29,28 +38,30 @@ const starVertexShader = `
 const starFragmentShader = `
   varying vec3 vColor;
   varying float vBrightness;
+  varying float vSize;
   
   void main() {
-    // Circular star shape
+    // Circular star shape with anti-aliasing
     vec2 center = gl_PointCoord - vec2(0.5);
     float dist = length(center);
     
-    // Create star pattern with glow
-    float star = 1.0 - smoothstep(0.0, 0.5, dist);
-    star *= star; // Enhance brightness at center
+    // Anti-aliased circle with smooth edge
+    float radius = 0.4;
+    float edgeWidth = 1.0 / vSize; // Anti-aliasing width based on star size
+    float star = 1.0 - smoothstep(radius - edgeWidth, radius + edgeWidth, dist);
     
-    // Add spike effect for bright stars
-    float spike = 0.0;
-    if (vBrightness > 0.7) {
-      float angle = atan(center.y, center.x);
-      spike = (1.0 - abs(sin(angle * 2.0))) * 0.3;
-      spike *= (1.0 - smoothstep(0.0, 0.3, dist));
-    }
+    // Softer glow falloff
+    float glow = exp(-dist * 4.0);
     
-    float alpha = star + spike;
-    if (alpha < 0.01) discard;
+    // Combine star and glow
+    float alpha = max(star, glow * 0.3) * vBrightness;
     
-    gl_FragColor = vec4(vColor * vBrightness, alpha);
+    // Discard very faint pixels to improve performance
+    if (alpha < 0.02) discard;
+    
+    // Apply color with pre-multiplied alpha for better blending
+    vec3 finalColor = vColor * vBrightness;
+    gl_FragColor = vec4(finalColor * alpha, alpha);
   }
 `;
 
@@ -115,12 +126,43 @@ export function createEnhancedStarfield(config: Partial<StarfieldConfig> = {}) {
       let phi = Math.acos(Math.random() * 2 - 1);
       
       if (settings.milkyWayBand && Math.random() < 0.4) {
-        // Concentrate 40% of stars near galactic plane
-        phi = Math.PI / 2 + (Math.random() - 0.5) * 0.3;
+        // Concentrate 40% of stars near galactic plane with smooth falloff
+        const galacticOffset = (Math.random() - 0.5) * 2; // -1 to 1
+        // Use gaussian-like distribution for smoother band
+        const gaussianFalloff = Math.exp(-galacticOffset * galacticOffset * 2);
+        const bandWidth = 0.6 + (1 - gaussianFalloff) * 0.4; // Variable width based on distance from center
         
-        // Add clustering for spiral arms
+        // Add wave-like distortion to the galactic plane for more natural appearance
+        const waveAmplitude = 0.15; // How much the band waves up and down
+        const waveFrequency = 3.5; // Number of waves around the band
+        const wavePhase = Math.random() * Math.PI * 2; // Random phase offset
+        const waveDistortion = Math.sin(theta * waveFrequency + wavePhase) * waveAmplitude;
+        
+        // Add secondary wave for more complexity
+        const secondaryWave = Math.sin(theta * 7 + wavePhase * 2) * waveAmplitude * 0.3;
+        
+        // Apply both galactic plane offset and wave distortions
+        phi = Math.PI / 2 + galacticOffset * bandWidth + waveDistortion + secondaryWave;
+        
+        // Add clustering for spiral arms with more variation
         if (settings.densityVariation) {
-          theta += Math.sin(theta * 3) * 0.2;
+          // Create spiral arm structure
+          const armCount = 4; // Number of spiral arms
+          const armSpread = 0.4; // How spread out the arms are
+          const spiralFactor = theta * 0.2; // How much the arms spiral
+          
+          // Find nearest spiral arm
+          const nearestArm = Math.round((theta + spiralFactor) / (Math.PI * 2 / armCount)) * (Math.PI * 2 / armCount);
+          const armDistance = Math.abs(theta + spiralFactor - nearestArm);
+          
+          // Concentrate stars near spiral arms
+          if (armDistance < armSpread) {
+            const armDensity = Math.exp(-armDistance * armDistance / (armSpread * armSpread) * 10);
+            theta += (nearestArm - theta) * armDensity * 0.5;
+            
+            // Add some turbulence to the arms
+            theta += (Math.random() - 0.5) * 0.2 * armDensity;
+          }
         }
       }
       
@@ -225,12 +267,13 @@ export function createEnhancedStarfield(config: Partial<StarfieldConfig> = {}) {
       // Use standard material for better performance
       material = new THREE.PointsMaterial({
         size: 2,
-        sizeAttenuation: true,
+        sizeAttenuation: false, // Disable size attenuation to reduce flickering
         vertexColors: true,
         transparent: true,
         opacity: 0.9,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
+        depthTest: true,
       });
     }
     

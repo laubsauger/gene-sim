@@ -63,11 +63,11 @@ void main() {
   float sunsetFactor = exp(-3.5 * abs(sunDot)) * 2.2;  // Moderate terminator band (middle ground)
   float nightFactor = smoothstep(0.6, -0.6, sunDot);  // Match moderate transition
   
-  // Define atmosphere colors - more saturated and vibrant
-  vec3 dayColor = vec3(0.15, 0.4, 1.0);        // Deeper, more saturated blue
-  vec3 sunsetColor = vec3(1.0, 0.3, 0.05);     // Richer orange-red sunset
-  vec3 twilightColor = vec3(0.25, 0.15, 0.5);  // Deeper purple twilight
-  vec3 nightColor = vec3(0.02, 0.05, 0.12);    // Darker night with slight blue tint
+  // Define atmosphere colors - reduced brightness for less washout
+  vec3 dayColor = vec3(0.08, 0.25, 0.7);       // Much less bright blue, more subtle
+  vec3 sunsetColor = vec3(0.9, 0.25, 0.05);    // Slightly dimmer orange-red sunset
+  vec3 twilightColor = vec3(0.2, 0.12, 0.35);  // Softer purple twilight
+  vec3 nightColor = vec3(0.02, 0.04, 0.1);     // Darker night with subtle blue tint
   
   // Blending with less mixing to preserve color saturation
   vec3 color = dayColor * dayFactor;

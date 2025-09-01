@@ -18,6 +18,9 @@ interface Planet3DState {
   showBloom: boolean;
   bloomIntensity: number;
   bloomThreshold: number;
+  atmosphereIntensity: number; // 0-2 for atmosphere glow strength
+  showLensFlare: boolean;
+  lensFlareIntensity: number; // 0-1 for lens flare brightness
   
   // Starfield configuration
   showStarfield: boolean;
@@ -42,6 +45,12 @@ interface Planet3DState {
   cameraTarget: 'sun' | 'venus' | 'earth' | 'mars' | 'moon';
   cameraMode: 'free' | 'geostationary'; // Free orbit or locked to Earth rotation
   
+  // Audio settings
+  soundEnabled: boolean;
+  musicEnabled: boolean;
+  soundVolume: number; // 0-1
+  musicVolume: number; // 0-1
+
   // Actions
   toggleShowEntities: () => void;
   toggleShowAtmosphere: () => void;
@@ -54,6 +63,7 @@ interface Planet3DState {
   toggleShowSpaceDust: () => void;
   toggleShowVolumetricDust: () => void;
   toggleShowBloom: () => void;
+  toggleShowLensFlare: () => void;
   toggleShowDebug: () => void;
   toggleShowPoleMarkers: () => void;
   toggleOrbitalMode: () => void;
@@ -75,6 +85,9 @@ interface Planet3DState {
   setShowBloom: (value: boolean) => void;
   setBloomIntensity: (value: number) => void;
   setBloomThreshold: (value: number) => void;
+  setAtmosphereIntensity: (value: number) => void;
+  setShowLensFlare: (value: boolean) => void;
+  setLensFlareIntensity: (value: number) => void;
   setShowDebug: (value: boolean) => void;
   setShowPoleMarkers: (value: boolean) => void;
   setOrbitalMode: (value: boolean) => void;
@@ -92,6 +105,12 @@ interface Planet3DState {
   setTwinkleIntensity: (intensity: number) => void;
   setShowMilkyWay: (value: boolean) => void;
   setShowNebulae: (value: boolean) => void;
+
+  // Audio setters
+  setSoundEnabled: (value: boolean) => void;
+  setMusicEnabled: (value: boolean) => void;
+  setSoundVolume: (volume: number) => void;
+  setMusicVolume: (volume: number) => void;
 }
 
 export const usePlanet3DStore = create<Planet3DState>()(
@@ -108,8 +127,11 @@ export const usePlanet3DStore = create<Planet3DState>()(
     showSpaceDust: true,
     showVolumetricDust: true,
     showBloom: true, // On by default with reduced intensity
-    bloomIntensity: 0.45,
-    bloomThreshold: 0.175,
+    bloomIntensity: 0.32,
+    bloomThreshold: 0.25,
+    atmosphereIntensity: 1.0, // Default atmosphere glow
+    showLensFlare: true, // Off by default for performance
+    lensFlareIntensity: 0.5, // Moderate intensity
     showStarfield: true,
     starCount: 20000, // Default 20k stars
     showTwinkle: true,
@@ -125,6 +147,10 @@ export const usePlanet3DStore = create<Planet3DState>()(
     orbitalSpeed: 1, // Default to 1x speed
     cameraTarget: 'earth',
     cameraMode: 'free', // Default to free orbit (already correct)
+    soundEnabled: false, // Off by default
+    musicEnabled: false, // Off by default
+    soundVolume: 0.7,
+    musicVolume: 0.5,
     
     // Toggle actions
     toggleShowEntities: () => set((state) => ({ showEntities: !state.showEntities })),
@@ -138,6 +164,7 @@ export const usePlanet3DStore = create<Planet3DState>()(
     toggleShowSpaceDust: () => set((state) => ({ showSpaceDust: !state.showSpaceDust })),
     toggleShowVolumetricDust: () => set((state) => ({ showVolumetricDust: !state.showVolumetricDust })),
     toggleShowBloom: () => set((state) => ({ showBloom: !state.showBloom })),
+    toggleShowLensFlare: () => set((state) => ({ showLensFlare: !state.showLensFlare })),
     toggleShowDebug: () => set((state) => ({ showDebug: !state.showDebug })),
     toggleShowPoleMarkers: () => set((state) => ({ showPoleMarkers: !state.showPoleMarkers })),
     toggleOrbitalMode: () => set((state) => ({ orbitalMode: !state.orbitalMode })),
@@ -159,6 +186,9 @@ export const usePlanet3DStore = create<Planet3DState>()(
     setShowBloom: (value) => set({ showBloom: value }),
     setBloomIntensity: (value) => set({ bloomIntensity: value }),
     setBloomThreshold: (value) => set({ bloomThreshold: value }),
+    setAtmosphereIntensity: (value) => set({ atmosphereIntensity: value }),
+    setShowLensFlare: (value) => set({ showLensFlare: value }),
+    setLensFlareIntensity: (value) => set({ lensFlareIntensity: value }),
     setShowDebug: (value) => set({ showDebug: value }),
     setShowPoleMarkers: (value) => set({ showPoleMarkers: value }),
     setOrbitalMode: (value) => set({ orbitalMode: value }),
@@ -176,6 +206,12 @@ export const usePlanet3DStore = create<Planet3DState>()(
     setTwinkleIntensity: (intensity) => set({ twinkleIntensity: intensity }),
     setShowMilkyWay: (value) => set({ showMilkyWay: value }),
     setShowNebulae: (value) => set({ showNebulae: value }),
+
+    // Audio setters
+    setSoundEnabled: (value) => set({ soundEnabled: value }),
+    setMusicEnabled: (value) => set({ musicEnabled: value }),
+    setSoundVolume: (volume) => set({ soundVolume: volume }),
+    setMusicVolume: (volume) => set({ musicVolume: volume }),
   }))
 );
 
