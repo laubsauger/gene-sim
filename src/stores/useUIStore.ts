@@ -35,12 +35,24 @@ export const useUIStore = create<UIState>()(
       renderMode: '3D-Planet', // Default to orbit mode
       
       // Actions
-      toggleSetupSidebar: () => set((state) => ({ 
-        setupSidebarCollapsed: !state.setupSidebarCollapsed 
-      })),
-      toggleStatsSidebar: () => set((state) => ({ 
-        statsSidebarCollapsed: !state.statsSidebarCollapsed 
-      })),
+      toggleSetupSidebar: () => {
+        set((state) => ({ 
+          setupSidebarCollapsed: !state.setupSidebarCollapsed 
+        }));
+        // Trigger resize event to update canvas dimensions
+        setTimeout(() => {
+          window.dispatchEvent(new Event('resize'));
+        }, 50);
+      },
+      toggleStatsSidebar: () => {
+        set((state) => ({ 
+          statsSidebarCollapsed: !state.statsSidebarCollapsed 
+        }));
+        // Trigger resize event to update canvas dimensions
+        setTimeout(() => {
+          window.dispatchEvent(new Event('resize'));
+        }, 50);
+      },
       setSetupSidebar: (collapsed) => set({ setupSidebarCollapsed: collapsed }),
       setStatsSidebar: (collapsed) => set({ statsSidebarCollapsed: collapsed }),
       setRenderMode: (mode) => set({ renderMode: mode }),

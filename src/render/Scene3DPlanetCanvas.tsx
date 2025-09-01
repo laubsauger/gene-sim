@@ -669,9 +669,9 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         const elapsed = performance.now() - anim.startTime;
         const progress = Math.min(elapsed / anim.duration, 1);
 
-        // Easing function (ease-in-out-cubic)
+        // Easing function (ease-in-out-power3 for more dramatic effect)
         const eased = progress < 0.5
-          ? 4 * progress * progress * progress
+          ? 8 * progress * progress * progress
           : 1 - Math.pow(-2 * progress + 2, 3) / 2;
 
         // Calculate new distance
@@ -680,10 +680,14 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         // Apply zoom - maintain current direction from target
         const direction = refs.camera.position.clone().sub(refs.controls.target).normalize();
         refs.camera.position.copy(refs.controls.target).addScaledVector(direction, newDistance);
+        
+        // Disable user controls during animation
+        refs.controls.enabled = progress >= 1;
 
         // End animation
         if (progress >= 1) {
           anim.active = false;
+          refs.controls.enabled = true; // Re-enable controls
         }
       }
 
@@ -697,7 +701,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       
       if (planet3DState.orbitalMode) {
         if (!planet3DState.pauseOrbits) {
-          const orbitTime = refs.clock.elapsedTime;  // Use elapsed time for continuous motion
+          const orbitTime = refs.clock.elapsedTime * planet3DState.orbitalSpeed;  // Apply speed multiplier
           
           // Venus orbit (closer, faster)
           if (refs.venus) {
@@ -807,12 +811,12 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       }
       // Rotate Earth on its tilted axis (pause if orbital mechanics are paused)
       if (!planet3DState.pauseOrbits) {
-        refs.earth.group.rotation.y = refs.clock.elapsedTime * EARTH_ROTATION_SPEED;
+        refs.earth.group.rotation.y = refs.clock.elapsedTime * EARTH_ROTATION_SPEED * planet3DState.orbitalSpeed;
       }
 
       // Moon orbit around Earth with 5.14° inclination from ecliptic
       if (!planet3DState.pauseOrbits) {
-        const moonTime = refs.clock.elapsedTime;  // Use elapsed time for continuous motion
+        const moonTime = refs.clock.elapsedTime * planet3DState.orbitalSpeed;  // Apply speed multiplier
         // Moon's orbit is tilted 5.14° from the ecliptic plane
         const moonAngle = moonTime * MOON_ORBIT_SPEED;
         const mx = Math.cos(moonAngle) * MOON_ORBIT_RADIUS;
@@ -963,6 +967,9 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     const currentDistance = camera.position.distanceTo(controls.target);
     const targetDistance = PLANET_RADIUS * 1.5; // Safe distance above surface
 
+    // Disable controls during animation
+    controls.enabled = false;
+
     // Start animation
     cinematicAnimationRef.current = {
       startTime: performance.now(),
@@ -981,6 +988,9 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     const currentDistance = camera.position.distanceTo(controls.target);
     const targetDistance = CAMERA_CONFIG.maxDistance * 3; // Near maximum
 
+    // Disable controls during animation
+    controls.enabled = false;
+
     // Start animation
     cinematicAnimationRef.current = {
       startTime: performance.now(),
@@ -990,6 +1000,26 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       active: true
     };
   }, []);
+
+  // Add keyboard shortcuts for cinematic zoom
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      switch (e.key.toLowerCase()) {
+        case 'i':
+          handleZoomToSurface();
+          break;
+        case 'o':
+          handleZoomToSystem();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [handleZoomToSurface, handleZoomToSystem]);
 
   const handleCameraTargetChange = useCallback((target: 'sun' | 'venus' | 'earth' | 'mars' | 'moon') => {
     if (!sceneRef.current) return;

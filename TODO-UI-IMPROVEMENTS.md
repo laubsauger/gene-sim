@@ -4,16 +4,16 @@
 
 ### 3. Sidebar Improvement
 
-- [ ] sidebar when expanded opens to the right. it needs to claim space to the left, resize the gamecanvas to make space aetc
+- [x] sidebar when expanded opens to the right. it needs to claim space to the left, resize the gamecanvas to make space aetc
 
 ## Scene3DPlanetCanvas Enhancements
 
 ### 4. Orbital Mechanics Controls
 
-- [ ] Add orbital speed slider (in addition to pause)
-  - [ ] Range: 0.1x to 10x normal speed
-  - [ ] Default: 1x
-  - [ ] Show current multiplier value
+- [x] Add orbital speed slider (in addition to pause)
+  - [x] Range: 0.1x to 10x normal speed
+  - [x] Default: 1x
+  - [x] Show current multiplier value
 - [ ] Add camera mode toggle:
   - [ ] Geostationary (locked to Earth rotation)
   - [ ] Free orbit (current behavior)
@@ -21,21 +21,21 @@
 
 ### 4c. Cinematic Zoom Controls
 
-- [ ] Add dramatic zoom buttons for 3D planet view
-  - [ ] "Zoom to Surface" button - smooth punch-in to max zoom
-  - [ ] "View System" button - smooth punch-out to min zoom
-  - [ ] Dramatic easing curves for cinematic feel
-  - [ ] Could be used as intro sequence
-- [ ] Implementation details:
-  - [ ] Use GSAP or custom easing for smooth animation
-  - [ ] Duration: 2-3 seconds for full transition
-  - [ ] Ease-in-out-power3 or similar dramatic curve
-  - [ ] Camera looks at Earth center during transition
+- [x] Add dramatic zoom buttons for 3D planet view
+  - [x] "Zoom to Surface" button - smooth punch-in to max zoom
+  - [x] "View System" button - smooth punch-out to min zoom
+  - [x] Dramatic easing curves for cinematic feel
+  - [x] Could be used as intro sequence
+- [x] Implementation details:
+  - [x] Use GSAP or custom easing for smooth animation
+  - [x] Duration: 2-3 seconds for full transition
+  - [x] Ease-in-out-power3 or similar dramatic curve
+  - [x] Camera looks at Earth center during transition
   - [ ] Optional: Add slight rotation during zoom for extra drama
-  - [ ] Buttons positioned in orbit controls panel
-  - [ ] Keyboard shortcuts: 'I' for zoom in, 'O' for zoom out
-- [ ] Visual polish:
-  - [ ] Disable user controls during animation
+  - [x] Buttons positioned in orbit controls panel
+  - [x] Keyboard shortcuts: 'I' for zoom in, 'O' for zoom out
+- [x] Visual polish:
+  - [x] Disable user controls during animation
   - [ ] Smooth FOV adjustment for dramatic effect
   - [ ] Consider adding motion blur post-process (optional)
   - [ ] Sound effects support

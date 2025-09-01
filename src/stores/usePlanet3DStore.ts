@@ -25,6 +25,7 @@ interface Planet3DState {
   followEarth: boolean; // Now follows any selected target, not just Earth
   pauseOrbits: boolean;
   pauseClouds: boolean;
+  orbitalSpeed: number; // Multiplier for orbital speed (0.1 to 10)
   
   // Camera controls
   cameraTarget: 'sun' | 'venus' | 'earth' | 'mars' | 'moon';
@@ -65,6 +66,7 @@ interface Planet3DState {
   setPauseOrbits: (value: boolean) => void;
   setPauseClouds: (value: boolean) => void;
   setCameraTarget: (target: 'sun' | 'venus' | 'earth' | 'mars' | 'moon') => void;
+  setOrbitalSpeed: (speed: number) => void;
 }
 
 export const usePlanet3DStore = create<Planet3DState>()(
@@ -86,6 +88,7 @@ export const usePlanet3DStore = create<Planet3DState>()(
     followEarth: true,
     pauseOrbits: false,
     pauseClouds: false,
+    orbitalSpeed: 1, // Default to 1x speed
     cameraTarget: 'earth',
     
     // Toggle actions
@@ -124,6 +127,7 @@ export const usePlanet3DStore = create<Planet3DState>()(
     setPauseOrbits: (value) => set({ pauseOrbits: value }),
     setPauseClouds: (value) => set({ pauseClouds: value }),
     setCameraTarget: (target) => set({ cameraTarget: target }),
+    setOrbitalSpeed: (speed) => set({ orbitalSpeed: speed }),
   }))
 );
 

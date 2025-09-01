@@ -568,7 +568,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
       fontSize: '13px',
       color: '#fff',
       overflow: 'hidden',
-      width: setupSidebarCollapsed ? '50px' : 'auto',
+      width: '100%', // Always fill parent container width
       transition: 'width 0.3s ease',
     }}>
       {/* Fixed Header */}

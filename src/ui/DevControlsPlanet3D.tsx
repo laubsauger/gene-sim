@@ -48,6 +48,8 @@ export function DevControlsPlanet3D({
     setPauseOrbits,
     pauseClouds,
     setPauseClouds,
+    orbitalSpeed,
+    setOrbitalSpeed,
     cameraTarget,
     setCameraTarget,
   } = usePlanet3DStore();
@@ -164,6 +166,29 @@ export function DevControlsPlanet3D({
           />
           Pause Clouds
         </label>
+        <div style={{ marginTop: '5px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px' }}>
+            <span style={{ minWidth: '50px' }}>Speed:</span>
+            <input
+              type="range"
+              min="0.1"
+              max="10"
+              step="0.1"
+              value={orbitalSpeed}
+              onChange={(e) => setOrbitalSpeed(parseFloat(e.target.value))}
+              disabled={pauseOrbits}
+              style={{
+                flex: 1,
+                height: '4px',
+                background: pauseOrbits ? '#333' : `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(orbitalSpeed - 0.1) / 9.9 * 100}%, #333 ${(orbitalSpeed - 0.1) / 9.9 * 100}%, #333 100%)`,
+                borderRadius: '2px',
+                outline: 'none',
+                opacity: pauseOrbits ? 0.5 : 1,
+              }}
+            />
+            <span style={{ minWidth: '35px', textAlign: 'right' }}>{orbitalSpeed.toFixed(1)}×</span>
+          </div>
+        </div>
       </div>
       
       <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
@@ -315,7 +340,7 @@ export function DevControlsPlanet3D({
                   e.currentTarget.style.borderColor = 'rgba(100, 150, 255, 0.5)';
                 }}
               >
-                Zoom In
+                In [I]
               </button>
             )}
             {onZoomToSystem && (
@@ -341,7 +366,7 @@ export function DevControlsPlanet3D({
                   e.currentTarget.style.borderColor = 'rgba(255, 150, 100, 0.5)';
                 }}
               >
-                Zoom Out
+                Out [O]
               </button>
             )}
           </div>
