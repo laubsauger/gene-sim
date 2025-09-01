@@ -72,8 +72,9 @@ void main(){
   float equatorBias = 1.0 - smoothstep(0.0, 0.8, latitude); // More clouds near equator
   float globalCoverage = 0.2; // Lower minimum for clear sky areas
   
-  // Add time-based evolution to the noise - MUCH faster for visible animation
-  float evolutionTime = uTime * 0.003 * timeMultiplier;  // Even faster evolution for clearly visible changes
+  // Add time-based evolution with cyclic behavior to prevent accumulation
+  // Use modulo to create repeating cycles instead of endless accumulation
+  float evolutionTime = mod(uTime * 0.003 * timeMultiplier, 628.318);  // Cycles every ~3.5 minutes at normal speed
   
   // Final sampling position - use rotated object space position with time offset
   // Add non-repeating distortion to break up patterns
@@ -91,10 +92,23 @@ void main(){
   float k2 = 2.31;   // Medium cloud formations
   float k3 = 4.73;   // Small cloud details
   
-  // Layer multiple noise scales with very different evolution speeds for visible animation
-  vec3 flow1 = vec3(evolutionTime * 1.2, evolutionTime * 0.8, evolutionTime * 1.0);
-  vec3 flow2 = vec3(evolutionTime * 2.3, evolutionTime * 1.9, evolutionTime * 1.5);
-  vec3 flow3 = vec3(evolutionTime * 3.7, evolutionTime * 3.1, evolutionTime * 3.3);
+  // Layer multiple noise scales with bounded flow to prevent accumulation
+  // Use sin/cos to create cyclic flow instead of linear accumulation
+  vec3 flow1 = vec3(
+    sin(evolutionTime * 1.2) * 2.0, 
+    cos(evolutionTime * 0.8) * 2.0, 
+    sin(evolutionTime * 1.0) * 2.0
+  );
+  vec3 flow2 = vec3(
+    cos(evolutionTime * 2.3) * 1.5, 
+    sin(evolutionTime * 1.9) * 1.5, 
+    cos(evolutionTime * 1.5) * 1.5
+  );
+  vec3 flow3 = vec3(
+    sin(evolutionTime * 3.7) * 1.0, 
+    cos(evolutionTime * 3.1) * 1.0, 
+    sin(evolutionTime * 3.3) * 1.0
+  );
   
   float base = fbm(p*k1 + flow1); 
   float medium = fbm(p*k2 + flow2);
@@ -105,6 +119,11 @@ void main(){
   
   // Add larger weather systems with moderate evolution for visible change
   float weatherPattern = fbm(p * 0.15 + vec3(evolutionTime * 0.2, evolutionTime * 0.15, evolutionTime * 0.18));
+  
+  // Add slow weather cycles to prevent eternal accumulation
+  float weatherCycle = sin(evolutionTime * 0.01) * 0.2 + 0.8; // Oscillates between 0.6 and 1.0
+  weatherPattern *= weatherCycle;
+  
   float clearSkyMask = smoothstep(0.3, 0.7, weatherPattern);
   cloudNoise = mix(cloudNoise * 0.2, cloudNoise, clearSkyMask); // More contrast between clear and cloudy
   

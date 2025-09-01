@@ -457,15 +457,15 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     
     // ---------- ASTEROID BELT ----------
     // Create asteroid belt between Mars and where Jupiter would be
-    const ASTEROID_BELT_INNER = MARS_ORBIT_RADIUS * 1.3;  // Start after Mars
-    const ASTEROID_BELT_OUTER = MARS_ORBIT_RADIUS * 2.0;  // End before where Jupiter would be
+    const ASTEROID_BELT_INNER = MARS_ORBIT_RADIUS * 1.6;  // Start further from Mars
+    const ASTEROID_BELT_OUTER = MARS_ORBIT_RADIUS * 2.5;  // Extend further out
     
     const spaceDust = createSpaceDust({
-      count: 15000,  // More particles for asteroid belt
+      count: 30000,  // Much denser asteroid field
       radius: ASTEROID_BELT_OUTER,  
       innerRadius: ASTEROID_BELT_INNER,
-      intensity: 0.4,  // Dimmer, more realistic
-      heightRange: 6,  // Thin disk with slight thickness
+      intensity: 0.6,  // Brighter for better visibility
+      heightRange: 8,  // Slightly thicker disk
       isRing: true,  // Make it a ring in the orbital plane
       sizeRange: [0.8, 3.0]  // Slightly larger particles for asteroids
     });

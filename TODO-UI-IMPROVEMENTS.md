@@ -2,47 +2,22 @@
 
 ### 4c. Cinematic Zoom Animation Controls / Planet Target resp Camera target change animation
 
-- [x] Visual polish:
-  - [x] Disable user controls during animation
-  - [x] Smooth FOV adjustment for dramatic effect
+- [ ] Visual polish:
   - [ ] Consider adding motion blur post-process (optional)
-  - [x] Add slight rotation during zoom for extra drama (cinematic in / out zoom only)
-
-### Misc
-
-- [x] Sound effects support
-- [x] Music support (we will supply our own music)
 
 ### 5. Moon Visual Improvements
 
 - [ ] Moon: Add normal map for surface detail (optional enhancement)
 
-### 7. Lighting & Atmosphere Improvements
-
-- [x] Increase day/night terminator band width
-  - [x] Fine-tune sunset/sunrise colors in terminator region
-  - [x] Add atmospheric glow intensity control
-
 ### 8. Bloom & Post-processing Effects
 
-- [x] Add optional bloom effect for orbit mode
-  - [x] Toggle in planet 3d controls
-  - [x] Adjustable bloom intensity slider (with fine-grained control)
-  - [x] Bloom threshold control (with 0.005 step precision)
-  - [x] Performance-aware (disable on low-end devices)
 - [ ] Additional lighting effects:
-  - [x] Lens flare options for sun
-  - [ ] God rays/volumetric lighting (optional)
   - [ ] HDR tone mapping adjustments
   - [ ] Exposure control for different viewing angles
 
 ### 9. Starfield/Skybox System
 
-- [ ] Consider using:
-  - [ ] BufferGeometry with custom shaders
-  - [ ] GPU-based star positioning
-  - [ ] Perlin noise for natural clustering
-  - [x] improve milky way clustering (currently a very straight band) all around
+- [ ] improve milky way clustering (currently a not really visible). dont make it a too sharp edge though
 
 ### 10. Volumetric Lighting & Space Dust Effects
 
@@ -55,11 +30,6 @@
     - [ ] Post-process effect using depth buffer
     - [ ] Radial blur from sun position
     - [ ] Mask by planet depth/shadow
-  - [ ] **Particle-based dust simulation**
-    - [ ] Sparse particle field (1k-10k particles)
-    - [ ] Only visible when lit by sun
-    - [ ] Fade in planet shadows
-    - [ ] Use additive blending for glow
   - [ ] **Billboard quad technique**
     - [ ] Large transparent quads with gradient textures
     - [ ] Position between sun and camera
@@ -179,40 +149,13 @@
 
 ### 18. Nebula Background
 
-- [ ] Create colorful nebula clouds in deep space
-  - [ ] Multi-layer parallax effect
-  - [ ] Color gradients (purple, blue, pink, orange)
-  - [ ] Subtle animation/movement
-  - [ ] Different nebula types (emission, reflection, dark)
-- [ ] Implementation:
-  - [ ] Large billboard quads with gradient textures
-  - [ ] Multiple layers at different distances
-  - [ ] Very subtle rotation for movement
-  - [ ] Additive blending for glow effect
+- [ ] Different nebula types (emission, reflection, dark)
 
 ### 19. Atmospheric Scattering Enhancement
 
-- [ ] Improve atmospheric rendering for sunsets/sunrises
-  - [ ] Rayleigh scattering for blue sky
-  - [ ] Mie scattering for sun glow (should already be present to a degree)
-  - [ ] Orange/red colors at terminator (already present but could be slightly more intense)
-  - [ ] Atmospheric fog at horizon
+- [ ] Atmospheric fog at horizon
 - [ ] Advanced features:
-  - [ ] Multiple scattering for realistic sky
   - [ ] Height-based density falloff
-
-## Technical Notes
-
-### Collapsible Components
-
-- [x] Use React state for collapsed/expanded
-- [ ] CSS transitions for smooth animations
-- [ ] Consider using a shared hook for collapsible behavior
-- [x] All 3D control sections now individually collapsible:
-  - Camera Controls, Orbital Mechanics, Scene Elements
-  - Visual Effects, Starfield, Debug sections
-  - Arrow indicators show collapse state (▶/▼)
-  - Single-line sliders for bloom and twinkle intensity
 
 ### Texture Resources
 
@@ -226,9 +169,7 @@
 
 ### Lighting Implementation Notes
 
-- Terminator band: Modify atmosphere shader's scattering calculation
-- Bloom: Use THREE.UnrealBloomPass from postprocessing examples
-- Consider EffectComposer for managing multiple post-processing passes
+- [ ] Consider EffectComposer for managing multiple post-processing passes
 
 ## Testing Checklist
 
