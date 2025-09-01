@@ -21,25 +21,26 @@ const auroraFragmentShader = `
   uniform vec3 uLightDir;
   uniform float uIntensity;
   uniform vec3 uCameraPos;
+  uniform float uActivityLevel; // 0-1 for aurora activity
   
   varying vec3 vPosition;
   varying vec3 vNormal;
   varying vec3 vLocalPosition;
   varying vec2 vUv;
   
-  // Noise function for aurora movement
+  // Smoother noise function for aurora movement
   float noise(vec3 p) {
-    return sin(p.x * 2.1) * cos(p.y * 1.7) * sin(p.z * 2.3) +
-           sin(p.x * 3.7) * cos(p.y * 2.9) * sin(p.z * 1.8) * 0.5;
+    return sin(p.x * 1.5) * cos(p.y * 1.3) * sin(p.z * 1.7) +
+           sin(p.x * 2.7) * cos(p.y * 2.3) * sin(p.z * 1.4) * 0.3;
   }
   
   float fbm(vec3 p) {
     float value = 0.0;
     float amplitude = 0.5;
-    for(int i = 0; i < 4; i++) {
+    for(int i = 0; i < 3; i++) { // Reduced iterations for smoother appearance
       value += amplitude * noise(p);
-      p *= 2.03;
-      amplitude *= 0.5;
+      p *= 1.87; // Less aggressive frequency increase
+      amplitude *= 0.55;
     }
     return value;
   }
@@ -50,7 +51,7 @@ const auroraFragmentShader = `
     
     // Use local Y position for pole detection (planet's actual poles)
     float latitude = abs(localNormal.y);
-    float polarMask = smoothstep(0.65, 0.9, latitude); // Aurora zone at high latitudes
+    float polarMask = smoothstep(0.72, 0.92, latitude); // Narrower aurora zone at higher latitudes
     
     // Calculate view angle
     vec3 viewDir = normalize(uCameraPos - vPosition);
@@ -83,26 +84,35 @@ const auroraFragmentShader = `
     // Ensure some minimum visibility at poles when front-facing
     viewVisibility = max(viewVisibility, polarMask * 0.3 * frontFacing);
     
-    // Animated aurora curtains - slower animation
-    float timeOffset = uTime * 0.0002; // Slower animation
+    // Activity-based intensity modulation
+    // Creates periods of high and low aurora activity
+    float activityCycle = sin(uTime * 0.00008) * 0.5 + 0.5; // Very slow cycle
+    float burstActivity = sin(uTime * 0.0003) * sin(uTime * 0.00017) * 0.5 + 0.5; // Occasional bursts
+    float currentActivity = mix(activityCycle, burstActivity, 0.3) * uActivityLevel;
+    
+    // Early exit if activity is too low
+    if (currentActivity < 0.1) discard;
+    
+    // Animated aurora curtains - much slower and smoother
+    float timeOffset = uTime * 0.00015; // Even slower animation
     // Use local position for stable aurora patterns
-    vec3 auroraPos = vLocalPosition * 0.5 + vec3(timeOffset, timeOffset * 0.7, timeOffset * 0.3);
+    vec3 auroraPos = vLocalPosition * 0.3 + vec3(timeOffset, timeOffset * 0.5, timeOffset * 0.2);
     
-    // Create vertical curtain patterns using local position
-    float curtains = fbm(auroraPos + vec3(0.0, vLocalPosition.y * 2.0, 0.0));
-    curtains = smoothstep(-0.5, 0.5, curtains);
+    // Create smoother vertical curtain patterns
+    float curtains = fbm(auroraPos + vec3(0.0, vLocalPosition.y * 1.5, 0.0));
+    curtains = smoothstep(-0.3, 0.3, curtains) * currentActivity;
     
-    // Add horizontal bands - slower movement
-    float bands = sin(latitude * 30.0 + uTime * 0.0004) * 0.5 + 0.5;
-    bands *= sin(latitude * 50.0 - uTime * 0.0006) * 0.5 + 0.5;
+    // Add subtle horizontal bands - much slower movement
+    float bands = sin(latitude * 20.0 + uTime * 0.0002) * 0.4 + 0.6;
+    bands *= sin(latitude * 35.0 - uTime * 0.0003) * 0.3 + 0.7;
     
     // Combine patterns - ensure aurora is visible at poles
     float aurora = curtains * bands * polarMask * nightSide;
     
-    // Add a base glow at poles that's always visible
-    float baseGlow = polarMask * nightSide * 0.3;
+    // Add a very subtle base glow at poles during high activity
+    float baseGlow = polarMask * nightSide * 0.15 * currentActivity;
     aurora = max(aurora * viewVisibility, baseGlow);
-    aurora *= uIntensity;
+    aurora *= uIntensity * currentActivity;
     
     // Aurora colors - green to purple gradient
     vec3 color1 = vec3(0.0, 1.0, 0.4); // Green
@@ -114,13 +124,13 @@ const auroraFragmentShader = `
     vec3 auroraColor = mix(color1, color2, colorMix);
     auroraColor = mix(auroraColor, color3, bands * 0.5);
     
-    // Add shimmer - slower
-    float shimmer = sin(uTime * 0.004 + curtains * 10.0) * 0.2 + 0.8;
+    // Add subtle shimmer - much slower
+    float shimmer = sin(uTime * 0.002 + curtains * 6.0) * 0.15 + 0.85;
     aurora *= shimmer;
     
-    // Increase overall intensity and ensure minimum alpha at poles
-    float finalAlpha = max(aurora * 1.2, polarMask * nightSide * 0.2);
-    gl_FragColor = vec4(auroraColor * aurora * 3.0, finalAlpha);
+    // More subtle final appearance
+    float finalAlpha = aurora * 0.8 * currentActivity;
+    gl_FragColor = vec4(auroraColor * aurora * 2.0, finalAlpha);
   }
 `;
 
@@ -135,8 +145,9 @@ export function createAuroraEffect(planetRadius: number) {
     uniforms: {
       uTime: { value: 0 },
       uLightDir: { value: new THREE.Vector3(1, 0, 0) },
-      uIntensity: { value: 1.2 }, // Increased intensity
-      uCameraPos: { value: new THREE.Vector3(0, 0, 0) }
+      uIntensity: { value: 0.8 }, // Reduced base intensity
+      uCameraPos: { value: new THREE.Vector3(0, 0, 0) },
+      uActivityLevel: { value: 1.0 } // Default full activity, can be modulated
     },
     vertexShader: auroraVertexShader,
     fragmentShader: auroraFragmentShader,

@@ -455,12 +455,12 @@ export function DevControlsPlanet3D({
         </label>
         {showLensFlare && (
           <div style={{ marginTop: '5px', marginLeft: '20px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <label style={{ fontSize: '9px', color: '#888', minWidth: '60px' }}>Intensity: {lensFlareIntensity.toFixed(2)}</label>
+            <label style={{ fontSize: '9px', color: '#888', minWidth: '60px' }}>Intensity: {lensFlareIntensity.toFixed(3)}</label>
             <input
               type="range"
-              min="0.1"
+              min="0.0"
               max="1.0"
-              step="0.05"
+              step="0.01"
               value={lensFlareIntensity}
               onChange={(e) => setLensFlareIntensity(parseFloat(e.target.value))}
               style={{ flex: 1 }}
