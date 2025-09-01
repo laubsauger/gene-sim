@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { usePlanet3DStore } from '../stores/usePlanet3DStore';
 
 interface DevControlsPlanet3DProps {
@@ -9,6 +10,8 @@ export function DevControlsPlanet3D({
   onZoomToSurface,
   onZoomToSystem,
 }: DevControlsPlanet3DProps) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  
   // Get all state and setters from store
   const {
     showEntities,
@@ -55,22 +58,33 @@ export function DevControlsPlanet3D({
       display: 'flex',
       flexDirection: 'column',
       minWidth: '200px',
-      maxHeight: '400px'
+      maxHeight: isCollapsed ? 'auto' : '400px',
+      transition: 'all 0.3s ease'
     }}>
       <div style={{ 
         fontWeight: 'bold', 
         padding: '10px 10px 5px 10px',
-        borderBottom: '1px solid #444'
-      }}>
-        Planet 3D Controls
-      </div>
-      <div style={{
-        padding: '10px',
-        overflowY: 'auto',
+        borderBottom: '1px solid #444',
         display: 'flex',
-        flexDirection: 'column',
-        gap: '5px'
-      }}>
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        cursor: 'pointer'
+      }}
+      onClick={() => setIsCollapsed(!isCollapsed)}
+      >
+        <span>Planet 3D Controls</span>
+        <span style={{ fontSize: '14px', marginLeft: '10px' }}>
+          {isCollapsed ? '▲' : '▼'}
+        </span>
+      </div>
+      {!isCollapsed && (
+        <div style={{
+          padding: '10px',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '5px'
+        }}>
       
       <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
         <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
@@ -274,7 +288,8 @@ export function DevControlsPlanet3D({
           </div>
         </div>
       )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

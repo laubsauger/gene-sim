@@ -2,70 +2,8 @@ import { useState, useEffect } from 'react';
 import type { SimClient } from '../client/setupSimClientHybrid';
 import { CompactSlider } from './CompactSlider';
 import { StyledButton, ButtonGroup } from './ButtonStyles';
+import { useUIStore } from '../stores/useUIStore';
 
-// Reuse the StyledSlider from SimulationSetup
-interface StyledSliderProps {
-  min: number;
-  max: number;
-  value: number;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  step?: number;
-  style?: React.CSSProperties;
-  steps?: number[];
-  stepLabels?: (string | number)[];
-}
-
-const StyledSlider = ({ min, max, value, onChange, step = 1, style = {}, steps, stepLabels }: StyledSliderProps) => {
-  const percentage = ((value - min) / (max - min)) * 100;
-  return (
-    <div style={{ position: 'relative', width: '100%' }}>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={onChange}
-        style={{
-          width: '100%',
-          height: '12px',
-          background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${percentage}%, #2d3748 ${percentage}%, #2d3748 100%)`,
-          borderRadius: '3px',
-          outline: 'none',
-          ...style
-        }}
-        className="custom-slider"
-      />
-      {steps && stepLabels && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          position: 'absolute',
-          width: '100%',
-          top: '20px',
-          pointerEvents: 'none',
-        }}>
-          {stepLabels.map((label, index) => {
-            const showLabel = steps && (index === 0 || index === 3 || index === 6 || index === 8); // Show key speeds: 0.1×, 1×, 8×, 16×
-            return showLabel ? (
-              <span
-                key={index}
-                style={{
-                  fontSize: '11px',
-                  color: value === index ? '#60a5fa' : '#64748b',
-                  fontWeight: value === index ? '600' : '400',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {label}×
-              </span>
-            ) : null;
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
 
 export interface ControlsProps {
   client: SimClient;
@@ -81,17 +19,14 @@ export interface ControlsProps {
   onShowBoundariesChange?: (show: boolean) => void;
   biomeMode?: 'hidden' | 'natural' | 'highlight';
   onBiomeModeChange?: (mode: 'hidden' | 'natural' | 'highlight') => void;
-  controlsHidden?: boolean;
-  onToggleControls?: () => void;
-  isFullscreen?: boolean;
-  onToggleFullscreen?: () => void;
 }
 
-export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeChange, renderMode = '2D', onRenderModeChange, showFood = true, onShowFoodChange, showBoundaries = false, onShowBoundariesChange, biomeMode = 'natural', onBiomeModeChange, controlsHidden = false, onToggleControls, isFullscreen = false, onToggleFullscreen }: ControlsProps) {
+export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeChange, renderMode = '2D', onRenderModeChange, showFood = true, onShowFoodChange, showBoundaries = false, onShowBoundariesChange, biomeMode = 'natural', onBiomeModeChange }: ControlsProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [speed, setSpeed] = useState(1);
   const speedValues = [0.1, 0.25, 0.5, 1, 2, 4, 8, 12, 16];
   const [sliderValue, setSliderValue] = useState(3); // Start at index 3 (1×)
+  const { toggleFullscreen, isFullscreen, controlsHidden, toggleControlsVisibility } = useUIStore();
 
   const handlePause = () => {
     const newPaused = !isPaused;
@@ -112,17 +47,13 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
     }
   };
   
-  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const index = parseInt(e.target.value);
-    setSliderValue(index);
-    const speedMul = speedValues[index];
-    handleSpeed(speedMul);
-  };
-  
-  // Add spacebar pause/play or start
+  // Add keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && e.target === document.body) {
+      // Don't trigger if user is typing in an input field
+      if (e.target !== document.body) return;
+      
+      if (e.code === 'Space') {
         e.preventDefault();
         if (!isRunning) {
           onStart();
@@ -131,12 +62,18 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
           setIsPaused(newPaused);
           client.pause(newPaused);
         }
+      } else if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (e.code === 'KeyH') {
+        e.preventDefault();
+        toggleControlsVisibility();
       }
     };
     
     document.addEventListener('keydown', handleKeyPress);
     return () => document.removeEventListener('keydown', handleKeyPress);
-  }, [isPaused, isRunning, onStart, client]);
+  }, [isPaused, isRunning, onStart, client, toggleFullscreen, toggleControlsVisibility]);
 
   // Compact mode when controls hidden
   if (controlsHidden) {
@@ -150,23 +87,21 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
         backdropFilter: 'blur(10px)',
         alignItems: 'center',
       }}>
-        {/* Play/Pause Button */}
+        {/* Start/Play/Pause Button */}
         <button
-          onClick={handlePause}
-          disabled={!isRunning}
+          onClick={!isRunning ? onStart : handlePause}
           style={{
             padding: '6px 10px',
             fontSize: '14px',
-            background: !isRunning ? '#4b5563' : (isPaused ? '#22c55e' : '#ef4444'),
+            background: !isRunning ? '#22c55e' : (isPaused ? '#22c55e' : '#ef4444'),
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            cursor: isRunning ? 'pointer' : 'not-allowed',
-            opacity: isRunning ? 1 : 0.5,
+            cursor: 'pointer',
             minWidth: '40px',
           }}
         >
-          {isPaused ? '▶' : '⏸'}
+          {!isRunning ? '▶' : (isPaused ? '▶' : '⏸')}
         </button>
         
         {/* Render Mode Toggle */}
@@ -188,21 +123,6 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
               2D
             </button>
             <button
-              onClick={() => onRenderModeChange('3D')}
-              style={{
-                padding: '6px 8px',
-                fontSize: '12px',
-                background: renderMode === '3D' ? '#3b82f6' : '#4b5563',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              title="3D view"
-            >
-              3D
-            </button>
-            <button
               onClick={() => onRenderModeChange('3D-Planet')}
               style={{
                 padding: '6px 8px',
@@ -213,31 +133,29 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
                 borderRadius: '4px',
                 cursor: 'pointer',
               }}
-              title="Orbital view"
+              title="3D Orbital view"
             >
-              🪐
+              3D 🌍
             </button>
           </div>
         )}
         
         {/* Show UI Button */}
-        {onToggleControls && (
-          <button
-            onClick={onToggleControls}
-            style={{
-              marginLeft: 'auto',
-              padding: '6px 10px',
-              fontSize: '12px',
-              background: 'rgba(59, 130, 246, 0.8)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-            }}
-          >
-            Show UI
-          </button>
-        )}
+        <button
+          onClick={toggleControlsVisibility}
+          style={{
+            marginLeft: 'auto',
+            padding: '6px 10px',
+            fontSize: '12px',
+            background: 'rgba(59, 130, 246, 0.8)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+          }}
+        >
+          Show UI
+        </button>
       </div>
     );
   }
@@ -245,10 +163,10 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
   return (
     <div style={{
       display: 'flex',
-      gap: '8px',
-      padding: '8px',
+      gap: '6px',
+      padding: '4px 6px',
       background: 'rgba(0, 0, 0, 0.7)',
-      borderRadius: '8px',
+      borderRadius: '6px',
       backdropFilter: 'blur(10px)',
       alignItems: 'center',
       flexWrap: 'nowrap',
@@ -272,9 +190,9 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
       <div style={{ 
         display: 'flex', 
         flexDirection: 'column',
-        gap: '4px',
-        minWidth: '140px',
-        padding: '4px 8px',
+        gap: '2px',
+        minWidth: '120px',
+        padding: '2px 4px',
         background: 'rgba(255, 255, 255, 0.03)',
         borderRadius: '4px',
       }}>
@@ -303,14 +221,14 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
           max={25}
           step={0.1}
           color="#10b981"
-          displayValue={entitySize.toFixed(1)}
+          displayValue={entitySize.toFixed(0)}
         />
       </div>
       
       {/* View Mode */}
       {onRenderModeChange && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <span style={{ fontSize: '9px', color: '#64748b', fontWeight: '500', marginBottom: '2px' }}>VIEW</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+          <span style={{ fontSize: '9px', color: '#64748b', fontWeight: '500' }}>VIEW</span>
           <ButtonGroup>
             <StyledButton
               onClick={() => onRenderModeChange('2D')}
@@ -323,16 +241,6 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
               2D
             </StyledButton>
             <StyledButton
-              onClick={() => onRenderModeChange('3D')}
-              active={renderMode === '3D'}
-              color="blue"
-              size="small"
-              variant="toggle"
-              title="3D Planet view"
-            >
-              3D
-            </StyledButton>
-            <StyledButton
               onClick={() => onRenderModeChange('3D-Planet')}
               active={renderMode === '3D-Planet'}
               color="blue"
@@ -340,16 +248,16 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
               variant="toggle"
               title="3D Orbital view"
             >
-              Orbit
+              3D
             </StyledButton>
           </ButtonGroup>
         </div>
       )}
       
       {/* Layers Section */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <span style={{ fontSize: '9px', color: '#64748b', fontWeight: '500', marginBottom: '2px' }}>LAYERS</span>
-        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+        <span style={{ fontSize: '9px', color: '#64748b', fontWeight: '500' }}>LAYERS</span>
+        <div style={{ display: 'flex', gap: '2px' }}>
           {/* Food Display Toggle */}
           {onShowFoodChange && (
             <StyledButton
@@ -360,7 +268,6 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
               variant="toggle"
               title={showFood ? 'Hide food layer' : 'Show food layer'}
             >
-              <span style={{ fontSize: '13px' }}>🌾</span>
               Food
             </StyledButton>
           )}
@@ -420,31 +327,27 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
       {/* UI Visibility and Fullscreen Controls */}
       <div style={{
         display: 'flex',
-        gap: '4px',
+        gap: '2px',
         marginLeft: 'auto', // Push to the right
       }}>
-        {onToggleControls && (
-          <StyledButton
-            onClick={onToggleControls}
-            color="gray"
-            size="small"
-            title="Hide UI (F key)"
-          >
-            Hide UI
-          </StyledButton>
-        )}
-        {onToggleFullscreen && (
-          <StyledButton
-            onClick={onToggleFullscreen}
-            active={isFullscreen}
-            color="gray"
-            size="small"
-            variant="toggle"
-            title="Toggle fullscreen (F11)"
-          >
-            {isFullscreen ? 'Exit' : 'Full'}
-          </StyledButton>
-        )}
+        <StyledButton
+          onClick={toggleControlsVisibility}
+          color="gray"
+          size="small"
+          title="Hide UI (H key)"
+        >
+          Hide
+        </StyledButton>
+        <StyledButton
+          onClick={toggleFullscreen}
+          active={isFullscreen}
+          color="gray"
+          size="small"
+          variant="toggle"
+          title="Toggle fullscreen (F key)"
+        >
+          {isFullscreen ? 'Exit' : 'FS'}
+        </StyledButton>
       </div>
       
     </div>

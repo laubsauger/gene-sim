@@ -7,31 +7,20 @@
 - [ ] Make Planet3D controls collapsible
 - [ ] Consolidate all render mode controls into single panel
 
-### 2. Biome Controls Enhancement
-- [ ] Move biome types (hidden/natural/highlight) into biome controls section
-- [ ] Add boundaries toggle with options:
-  - [ ] Off
-  - [ ] Natural 
-  - [ ] Highlight
-- [ ] Separate boundaries from biome controls visually
-- [ ] Add compact labels for all biome-related controls
+### 3. Sidebar Improvement
 
-- [ ] Labels for all top levekl control groups
-- [ ] button for fullscreen of game canvas that toggles all controls visibilty off and lets us toggle them back in and out to get a true clean cinematic full screen option on demand.
-
-### 3. Sidebar Improvements
-- [ ] Make "Simulation Setup" sidebar collapsible
-  - [ ] Add collapse/expand button
-  - [ ] Persist collapsed state in local storage
-  - [ ] Smooth animation transition
-- [ ] Make "Simulation Stats" sidebar collapsible
-  - [ ] Add collapse/expand button
-  - [ ] Show key metrics when collapsed
-  - [ ] Full stats when expanded
+- [ ] Collapse biome types by default
+- [ ] make sure that sidebar does free up space and triggers resize for the ganme area to redraw
+- [ ]  make sure that biomeselection does free up space and triggers resize for the ganme area to redraw
+- sidebar in setup mode becomes hidden on hide ui enabled and then never comes back when we show ui
+- oh and when collapsing the sidebar theres still space occupied instead of collapsing
+  to the right screen edge. likely due to the grid stling on the parent? and then we need to
+  trigger resize event  to redraw canvas? if were in setup mode we need to show start simulate button without label in collapsed sidebar mode. just with the play icon.
 
 ## Scene3DPlanetCanvas Enhancements
 
 ### 4. Orbital Mechanics Controls
+
 - [ ] Add orbital speed slider (in addition to pause)
   - [ ] Range: 0.1x to 10x normal speed
   - [ ] Default: 1x
@@ -42,6 +31,7 @@
   - [ ] Smooth transition between modes
 
 ### 4c. Cinematic Zoom Controls
+
 - [ ] Add dramatic zoom buttons for 3D planet view
   - [ ] "Zoom to Surface" button - smooth punch-in to max zoom
   - [ ] "View System" button - smooth punch-out to min zoom
@@ -59,15 +49,12 @@
   - [ ] Disable user controls during animation
   - [ ] Smooth FOV adjustment for dramatic effect
   - [ ] Consider adding motion blur post-process (optional)
-  - [ ] Sound effects support (future enhancement)
-- [ ] Extend zoom distance limits
-  - [ ] Maximum zoom out:
-    - [ ] Current: 150x planet radius
-    - [ ] Target: 300x planet radius (double current)
-  - [ ] Update CAMERA_CONFIG in planetUtils.ts
-  - [ ] Ensure controls.minDistance and maxDistance follow suit
+  - [ ] Sound effects support
+  - [ ] Music support (we will supply our own music)
+
 
 ### 5. Moon Visual Improvements
+
 - [ ] Add crater texture to moon
   - [ ] Source realistic moon texture map
   - [ ] Implement bump mapping for 3D crater depth
@@ -79,38 +66,20 @@
   - [ ] Proper shadow receiving
 
 ### 6. Cloud Rendering Fixes
-- [ ] Fix UV mapping issues causing seams
-  - [ ] Review sphere geometry UV coordinates
-  - [ ] Ensure proper texture wrapping
-  - [ ] Fix stretching at poles
-- [ ] Improve cloud shader:
-  - [ ] Seamless tiling
-  - [ ] Better blending at edges
-  - [ ] Fix any visible seams in texture mapping
-- [ ] Fix cloud meridian mirroring issue
-  - [ ] Investigate coordinate system in ProceduralCloudShell shader
-  - [ ] Clouds appearing mirrored from meridian line
-  - [ ] Stretched on one side, compressed on other
-  - [ ] Likely UV projection or coordinate transform issue
-  - [ ] Check spherical coordinate calculations
+
 - [ ] Adjust cloud rotation speed
-  - [ ] Currently too fast (CLOUD_ROTATION_SPEED = 0.005)
-  - [ ] Reduce to more realistic speed
-  - [ ] Consider making it configurable
+- [ ] too slow currently. constant for cloud speed does not seem to work
 
 ## Implementation Priority
 
-### Phase 1 (UI Organization)
-1. Collapsible sidebars
-2. Unified render mode controls
-3. Reorganized biome/boundary controls
-
 ### Phase 2 (Visual Polish)
+
 1. Moon textures and materials
 2. Cloud UV fixing
 3. Orbital mechanics controls
 
 ### Phase 3 (Fine-tuning)
+
 1. Camera modes
 2. Control labels and layout
 3. Performance optimizations
@@ -120,6 +89,7 @@
 ## Additional Visual Enhancements
 
 ### 7. Lighting & Atmosphere Improvements
+
 - [ ] Increase day/night terminator band width
   - [ ] Adjust atmosphere scattering parameters
   - [ ] Widen the twilight zone for more gradual transition
@@ -127,6 +97,7 @@
   - [ ] Add atmospheric glow intensity control
 
 ### 8. Bloom & Post-processing Effects
+
 - [ ] Add optional bloom effect for orbit mode
   - [ ] Toggle in orbit controls
   - [ ] Adjustable bloom intensity slider
@@ -139,6 +110,7 @@
   - [ ] Exposure control for different viewing angles
 
 ### 9. Starfield/Skybox System
+
 - [ ] Create hyper-efficient configurable star skybox
   - [ ] Procedural star generation with LOD system
   - [ ] Configurable star density (sparse to dense)
@@ -212,23 +184,6 @@
 - [ ] Verify biome multipliers affect capacity but not regrowth prevention
 - [ ] Add debug visualization to confirm regrowth in all areas
 
-### 12. Aurora Borealis Effect (COMPLETED)
-- [x] Implemented dynamic aurora at poles
-  - [x] Shader-based aurora curtains
-  - [x] Color variations (green, purple, cyan)
-  - [x] Only visible on night side
-  - [x] Animated movement patterns
-  - [x] Latitude-based intensity
-
-### 13. Lens Flare System (COMPLETED)
-- [x] Added lens flare when looking at sun
-  - [x] Multiple flare elements
-  - [x] Hexagonal aperture shapes
-  - [x] Star burst pattern
-  - [x] Occlusion detection for planet
-  - [x] Screen-space positioning
-  - [x] Intensity based on view angle
-
 ### 14. Distance-Based Culling System
 
 - [ ] Implement efficient LOD/culling for distant objects
@@ -259,7 +214,7 @@
   - [ ] Atmosphere: Cull when planet < 20 pixels
   - [ ] Fine details: Switch to low-res when planet < 100 pixels
 
-## Advanced Visual Effects (Future Enhancements)
+## Advanced Visual Effects
 
 ### 13. Weather Systems and Storm Patterns
 - [ ] Create dynamic weather systems that move across the planet
@@ -269,19 +224,7 @@
   - [ ] Seasonal weather variations
 - [ ] Implementation approach:
   - [ ] Use noise-based movement patterns
-  - [ ] Particle effects for rain/snow
   - [ ] Shader-based storm cloud rendering
-
-### 14. City Lights on Night Side
-- [ ] Add glowing city lights on the dark side of the planet
-  - [ ] Cluster lights along coastlines and rivers
-  - [ ] Vary intensity based on "population density"
-  - [ ] Subtle flickering for realism
-  - [ ] Different colors for different regions
-- [ ] Technical approach:
-  - [ ] Emissive texture map for night side
-  - [ ] Mask by sun angle to only show in darkness
-  - [ ] Optional: Link to actual entity population density
 
 ### 15. Ocean Effects and Water Rendering
 - [ ] Implement realistic ocean rendering
@@ -334,13 +277,11 @@
 ### 19. Atmospheric Scattering Enhancement
 - [ ] Improve atmospheric rendering for sunsets/sunrises
   - [ ] Rayleigh scattering for blue sky
-  - [ ] Mie scattering for sun glow
-  - [ ] Orange/red colors at terminator
+  - [ ] Mie scattering for sun glow (should already be present to a degree)
+  - [ ] Orange/red colors at terminator (already present but could be slightly more intense)
   - [ ] Atmospheric fog at horizon
 - [ ] Advanced features:
   - [ ] Multiple scattering for realistic sky
-  - [ ] Aerial perspective for distant objects
-  - [ ] Ozone layer absorption
   - [ ] Height-based density falloff
 
 ## Technical Notes

@@ -48,7 +48,7 @@ export function BiomeLegend({ biomeMode, collapsed = false, onToggleCollapse, po
     borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
     borderTop: '1px solid rgba(255, 255, 255, 0.1)',
     borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-    width: collapsed ? 'auto' : '260px',
+    width: collapsed ? '40px' : '260px',
     height: '100%',
     overflowY: 'auto' as const,
     transition: 'width 0.3s ease',

@@ -5,6 +5,7 @@ import { throttle } from '../utils/throttle';
 import { ModeSelector } from './ModeSelector';
 import { BiomeGenerator } from '../sim/biomes';
 import { CompactSlider } from './CompactSlider';
+import { useUIStore } from '../stores/useUIStore';
 
 interface SimulationSetupProps {
   client: SimClient;
@@ -555,6 +556,8 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
     }
   };
 
+  const { setupSidebarCollapsed, toggleSetupSidebar } = useUIStore();
+
   return (
     <div style={{
       display: 'flex',
@@ -565,19 +568,41 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
       fontSize: '13px',
       color: '#fff',
       overflow: 'hidden',
+      width: setupSidebarCollapsed ? '50px' : 'auto',
+      transition: 'width 0.3s ease',
     }}>
       {/* Fixed Header */}
       <div style={{
         padding: '12px 16px',
         borderBottom: '1px solid #2d3748',
         background: 'rgba(0, 0, 0, 0.95)',
-      }}>
-        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold' }}>
+        cursor: 'pointer',
+        userSelect: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}
+      onClick={toggleSetupSidebar}>
+        <h3 style={{ 
+          margin: 0, 
+          fontSize: '16px', 
+          fontWeight: 'bold',
+          display: setupSidebarCollapsed ? 'none' : 'block'
+        }}>
           Simulation Setup
         </h3>
+        <span style={{
+          fontSize: setupSidebarCollapsed ? '20px' : '12px',
+          transform: setupSidebarCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+          transition: 'transform 0.3s ease',
+          opacity: 0.7,
+        }}>
+          {setupSidebarCollapsed ? '⚙️' : '▼'}
+        </span>
       </div>
 
       {/* Scrollable Content */}
+      {!setupSidebarCollapsed && (
       <div style={{
         flex: 1,
         overflowY: 'auto',
@@ -1226,6 +1251,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
           </div>
         )}
       </div>
+      )}
 
       {/* Fixed Footer with Start Button */}
       {!isRunning && (

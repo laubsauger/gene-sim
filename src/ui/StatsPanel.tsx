@@ -9,6 +9,7 @@ import { CollapsibleSection } from './CollapsibleSection';
 import { PerformancePanel } from './PerformancePanel';
 import { TribeRow } from './TribeRow';
 import { PerformanceGraph } from './PerformanceGraph';
+import { useUIStore } from '../stores/useUIStore';
 
 export interface StatsPanelProps {
   client: SimClient;
@@ -19,7 +20,7 @@ export const StatsPanel = memo(function StatsPanel({ client, currentSeed }: Stat
   const [stats, setStats] = useState<SimStats | null>(null);
   const [viewMode, setViewMode] = useState<'dominance' | 'compare' | 'details'>('dominance');
   const [simPerf, setSimPerf] = useState({ fps: 0, simSpeed: 0, speedMul: 1 });
-  const [collapsed, setCollapsed] = useState(false);
+  const { statsSidebarCollapsed: collapsed, toggleStatsSidebar } = useUIStore();
   const tribeOrderRef = useRef<string[]>([]);
   const lastKnownDataRef = useRef<Record<string, TribeStats>>({});
 
@@ -80,7 +81,7 @@ export const StatsPanel = memo(function StatsPanel({ client, currentSeed }: Stat
         borderBottom: collapsed ? 'none' : '1px solid #333',
         cursor: 'pointer',
       }}
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={toggleStatsSidebar}
       >
         <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>
           Simulation Stats
