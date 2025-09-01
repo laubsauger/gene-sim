@@ -55,6 +55,7 @@
 ### 11. Food Regrowth System Fix
 
 - [ ] Fix food regrowth to work in all areas (not just high-capacity zones)
+  - [ ] BUG: Some sort of feedback effect happening where if set regen to below 1 everything starts to fade out. set to 1 we see high capaity grow stronger then stop, low capacity areas still dont regrow ever
   - [ ] Investigate current regrowth logic in foodSystem.ts
   - [ ] Ensure regrowth rate is based on rolled maximum capacity per cell
   - [ ] Each cell should regrow toward its own max capacity

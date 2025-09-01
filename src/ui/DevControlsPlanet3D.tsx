@@ -19,6 +19,7 @@ export function DevControlsPlanet3D({
     camera: false,
     view: false,
     layers: false,
+    biomes: false,
     visualEffects: false,
     starfield: false,
     debug: false,
@@ -48,6 +49,10 @@ export function DevControlsPlanet3D({
     showMars,
     setShowMars,
     showDebug,
+    biomeMode,
+    setBiomeMode,
+    showBiomeBoundaries,
+    setShowBiomeBoundaries,
     setShowDebug,
     showAurora,
     setShowAurora,
@@ -373,6 +378,56 @@ export function DevControlsPlanet3D({
         </label>
               </>
             )}
+      </div>
+      
+      <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
+        <div
+          style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa', cursor: 'pointer', userSelect: 'none' }}
+          onClick={() => toggleSection('biomes')}
+        >
+          {sectionsCollapsed.biomes ? '▶' : '▼'} Biomes
+        </div>
+        {!sectionsCollapsed.biomes && (
+          <>
+            <div style={{ marginBottom: '5px', fontSize: '10px', color: '#888' }}>Display Mode:</div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '10px' }}>
+              <input
+                type="radio"
+                name="biomeMode"
+                checked={biomeMode === 'hidden'}
+                onChange={() => setBiomeMode('hidden')}
+              />
+              Hidden
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '10px' }}>
+              <input
+                type="radio"
+                name="biomeMode"
+                checked={biomeMode === 'natural'}
+                onChange={() => setBiomeMode('natural')}
+              />
+              Natural
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '10px' }}>
+              <input
+                type="radio"
+                name="biomeMode"
+                checked={biomeMode === 'highlight'}
+                onChange={() => setBiomeMode('highlight')}
+              />
+              Highlight
+            </label>
+            
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', marginTop: '5px' }}>
+              <input
+                type="checkbox"
+                checked={showBiomeBoundaries}
+                onChange={(e) => setShowBiomeBoundaries(e.target.checked)}
+              />
+              Show Boundaries
+            </label>
+          </>
+        )}
       </div>
       
       <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>

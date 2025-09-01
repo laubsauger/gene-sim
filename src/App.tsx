@@ -327,8 +327,8 @@ export default function App() {
             world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
             entitySize={entitySize}
             seed={currentSeed}
-            showFood={showFood}
             biomeMode={biomeMode}
+            showBoundaries={showBoundaries}
           />
         ) : (
           <Scene3DPlanetCanvas

@@ -1,3 +1,7 @@
+/**
+ * @deprecated Use makePlanetWithBiomes instead for biome support, or refactor to use composition
+ * This file contains duplicate code that should be consolidated
+ */
 import * as THREE from 'three';
 import atmosphereMatVertexShader from './shader/atmosphereMat.vertex.glsl'
 import atmosphereMatFragmentShader from './shader/atmosphereMat.frag.glsl'

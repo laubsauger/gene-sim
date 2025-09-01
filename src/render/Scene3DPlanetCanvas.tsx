@@ -32,7 +32,8 @@ function FPSTracker({ client }: { client: SimClient }) {
 
   return { trackFrame };
 }
-import { makePlanetWithAtmosphere } from './planet3d/PlanetWithAtmosphere';
+import { makePlanet } from './planet3d/PlanetFactory';
+import { BiomeGenerator } from '../sim/biomes';
 import { createMultiLayerClouds } from './planet3d/MultiLayerClouds';
 import { updateEntitiesFromBuffers, makeGroundEntities } from './planet3d/EntityRenderer';
 import { makeMoon } from './planet3d/MoonComponent';
@@ -72,11 +73,26 @@ export interface Scene3DPlanetCanvasProps {
   client: SimClient;
   world: { width: number; height: number };
   entitySize: number;
+  seed?: number;
+  showFood?: boolean;
+  biomeMode?: 'hidden' | 'natural' | 'highlight';
+  showBoundaries?: boolean;
 }
 
-export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps) {
+export function Scene3DPlanetCanvas({ 
+  client, 
+  world,
+  entitySize,
+  seed = 1234,
+  showFood = true,
+  biomeMode = 'natural',
+  showBoundaries = false
+}: Scene3DPlanetCanvasProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [isPaused, setIsPaused] = useState(true);
+  const biomeGeneratorRef = useRef<BiomeGenerator | null>(null);
+  const earthRef = useRef<any>(null); // Store earth object reference
+  const prevBiomeModeRef = useRef<string | null>(null);
   const fpsTracker = FPSTracker({ client });
   const cinematicAnimationRef = useRef<{ 
     startTime: number; 
@@ -107,6 +123,8 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
   const storeRef = useRef(usePlanet3DStore);
   const sceneRef = useRef<{
     renderer: THREE.WebGLRenderer;
+    composer: any; // EffectComposer type
+    bloomPass: any; // UnrealBloomPass type
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
     controls: OrbitControls;
@@ -392,15 +410,28 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     scene.add(lensFlareSystem.getGroup());
 
     // ---------- EARTH STACK (per architecture) ----------
-
-    const earth = makePlanetWithAtmosphere({
+    
+    // Get initial biome settings from store
+    const initialBiomeMode = storeRef.current.getState().biomeMode;
+    prevBiomeModeRef.current = initialBiomeMode;
+    
+    // Create biome generator if seed provided
+    if (seed) {
+      biomeGeneratorRef.current = new BiomeGenerator(seed, world.width, world.height);
+    }
+    
+    // Create planet with unified factory
+    const earth = makePlanet({
       radius: PLANET_RADIUS,
       atmosphereThickness: ATMOSPHERE_THICKNESS,
       anisotropy: 0.7,
       exposure: 1.2,
       atmosphereColor: new THREE.Color(0x78a6ff),
       mieColor: new THREE.Color(0xfff2d1),
+      biomeGenerator: biomeGeneratorRef.current || undefined,
+      biomeMode: initialBiomeMode === 'highlight' ? 'highlight' : 'natural',
     });
+    earthRef.current = earth; // Store reference for later updates
 
     // Add the earth group - will be positioned at orbit radius
     scene.add(earth.group);
@@ -1270,6 +1301,32 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       cancelAnimationFrame(animationId);
     };
   }, [client, world, isPaused]); // Don't add controls to deps to avoid recreating animation loop
+  
+  // Handle biome mode changes
+  useEffect(() => {
+    const unsubscribe = usePlanet3DStore.subscribe(
+      (state) => state.biomeMode,
+      (currentBiomeMode) => {
+        if (!sceneRef.current || !earthRef.current || !seed) return;
+        
+        // Only recreate if mode actually changed
+        if (prevBiomeModeRef.current === currentBiomeMode) return;
+        prevBiomeModeRef.current = currentBiomeMode;
+        
+        const { scene } = sceneRef.current;
+        
+        // Simply update the biome mode on existing earth - no need to recreate!
+        if (earthRef.current?.updateBiomeMode) {
+          earthRef.current.updateBiomeMode(
+            currentBiomeMode === 'highlight' ? 'highlight' : 'natural',
+            biomeGeneratorRef.current || undefined
+          );
+        }
+      }
+    );
+    
+    return unsubscribe;
+  }, [seed, world]);
 
   // Cinematic zoom functions
   const handleZoomToSurface = useCallback(() => {

@@ -25,6 +25,7 @@ const vertexShader = `
   uniform float size;
   
   void main() {
+    // Pass color through - it's already normalized to 0-1
     vColor = color;
     vAlive = alive;
     
@@ -146,14 +147,15 @@ export function EntityPoints3D({
     posAttr.array = positions3DRef.current;
     posAttr.needsUpdate = true;
     
-    // Update colors (convert from 0-255 to 0-1)
+    // Update colors - already in 0-255 range, shader expects 0-1
     const colorAttr = geometry.getAttribute('color') as THREE.BufferAttribute;
     const colorArray = colorAttr.array as Float32Array;
     for (let i = 0; i < count; i++) {
-      const colorIndex = i * 3;
-      colorArray[colorIndex] = color[colorIndex] / 255;
-      colorArray[colorIndex + 1] = color[colorIndex + 1] / 255;
-      colorArray[colorIndex + 2] = color[colorIndex + 2] / 255;
+      const idx = i * 3;
+      // Color data is in Uint8Array (0-255), convert to 0-1 for shader
+      colorArray[idx] = color[idx] / 255.0;
+      colorArray[idx + 1] = color[idx + 1] / 255.0;
+      colorArray[idx + 2] = color[idx + 2] / 255.0;
     }
     colorAttr.needsUpdate = true;
     

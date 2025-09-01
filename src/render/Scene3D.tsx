@@ -1,3 +1,9 @@
+/**
+ * @deprecated This is the old 3D renderer. Use Scene3DPlanetCanvas.tsx instead.
+ * This file is kept for reference but should not be used for new features.
+ * All new 3D rendering features should be implemented in Scene3DPlanetCanvas.tsx
+ */
+
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Stats } from '@react-three/drei';
@@ -10,7 +16,6 @@ import { CloudSystemProcedural } from './CloudLayerProcedural';
 import { DebugArrows } from './DebugArrows';
 import { DevControls3D } from '../ui/DevControls3D';
 import type { SimClient } from '../client/setupSimClientHybrid';
-import type { MainMsg } from '../sim/types';
 
 const PLANET_RADIUS = 500;
 const AXIAL_TILT = 23.5 * Math.PI / 180; // Earth's axial tilt
@@ -154,14 +159,12 @@ function EntitiesLayer3D({
   client, 
   entitySize,
   worldWidth,
-  worldHeight,
-  staticSunPosition
+  worldHeight
 }: { 
   client: SimClient; 
   entitySize: number;
   worldWidth: number;
-  worldHeight: number;
-  staticSunPosition: THREE.Vector3;
+    worldHeight: number;
 }) {
   const { buffers } = client;
   const [ready, setReady] = useState(false);
@@ -210,9 +213,8 @@ function EntitiesLayer3D({
 }
 
 // Planet and moon system - rotates together
-function PlanetSystem({ planetRadius, isPaused, autoRotate, showMoon, children }: { 
+function PlanetSystem({ planetRadius, autoRotate, showMoon, children }: { 
   planetRadius: number;
-  isPaused: boolean;
   autoRotate: boolean;
   showMoon: boolean;
   children: React.ReactNode;
@@ -222,7 +224,7 @@ function PlanetSystem({ planetRadius, isPaused, autoRotate, showMoon, children }
   const rotationRef = useRef(0);
   const moonOrbitRadius = planetRadius * 2;
   
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     if (tiltedGroupRef.current && autoRotate) {
       // Rotate planet around its tilted axis
       rotationRef.current += delta * 0.1; // Day/night cycle speed
@@ -277,16 +279,7 @@ export function Scene3D({ client, world, entitySize }: Scene3DProps) {
     const sunDistance = PLANET_RADIUS * 8;
     return new THREE.Vector3(sunDistance, PLANET_RADIUS * 2, sunDistance * 0.5);
   }, []);
-  
-  // Listen for pause state from simulation
-  useEffect(() => {
-    const unsubscribe = client.onMessage((msg: MainMsg) => {
-      if (msg.type === 'pauseState') {
-        setIsPaused(msg.payload.paused);
-      }
-    });
-    return unsubscribe;
-  }, [client]);
+
   
   // Set up initial camera position
   const initialCameraPosition: [number, number, number] = [

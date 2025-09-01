@@ -11,6 +11,10 @@ interface Planet3DState {
   showVenus: boolean;
   showMars: boolean;
   
+  // Biome settings
+  biomeMode: 'hidden' | 'natural' | 'highlight';
+  showBiomeBoundaries: boolean;
+  
   // Visual effects
   showAurora: boolean;
   showSpaceDust: boolean;
@@ -50,6 +54,10 @@ interface Planet3DState {
   musicEnabled: boolean;
   soundVolume: number; // 0-1
   musicVolume: number; // 0-1
+
+  // Biome setters
+  setBiomeMode: (mode: 'hidden' | 'natural' | 'highlight') => void;
+  setShowBiomeBoundaries: (value: boolean) => void;
 
   // Actions
   toggleShowEntities: () => void;
@@ -123,6 +131,10 @@ export const usePlanet3DStore = create<Planet3DState>()(
     showSun: true,
     showVenus: true,
     showMars: true,
+  
+  // Biome settings
+  biomeMode: 'natural',
+  showBiomeBoundaries: false,
     showAurora: true,
     showSpaceDust: true,
     showVolumetricDust: true,
@@ -151,6 +163,10 @@ export const usePlanet3DStore = create<Planet3DState>()(
     musicEnabled: false, // Off by default
     soundVolume: 0.7,
     musicVolume: 0.5,
+  
+  // Biome setters
+  setBiomeMode: (mode) => set({ biomeMode: mode }),
+  setShowBiomeBoundaries: (value) => set({ showBiomeBoundaries: value }),
     
     // Toggle actions
     toggleShowEntities: () => set((state) => ({ showEntities: !state.showEntities })),
