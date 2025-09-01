@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import Stats from 'three/addons/libs/stats.module.js';
 import type { SimClient } from '../client/setupSimClientHybrid';
 import type { MainMsg } from '../sim/types';
 import { DevControlsPlanet3D } from '../ui/DevControlsPlanet3D';
 
 // FPS tracking component (reused from Scene3D)
-function FPSTracker({ client, onFpsUpdate }: { client: SimClient; onFpsUpdate?: (fps: number) => void }) {
+function FPSTracker({ client }: { client: SimClient }) {
   const frameCount = useRef(0);
   const lastTime = useRef(performance.now());
 
@@ -18,7 +19,6 @@ function FPSTracker({ client, onFpsUpdate }: { client: SimClient; onFpsUpdate?: 
     if (delta >= 250) { // Update 4 times per second
       const fps = Math.round((frameCount.current * 1000) / delta);
       client.sendRenderFps(fps);
-      if (onFpsUpdate) onFpsUpdate(fps);
       frameCount.current = 0;
       lastTime.current = now;
     }
@@ -32,6 +32,7 @@ import { createMultiLayerClouds } from './planet3d/MultiLayerClouds';
 import { updateEntitiesFromBuffers, makeGroundEntities } from './planet3d/EntityRenderer';
 import { makeMoon } from './planet3d/MoonComponent';
 import { createSpaceDust, createPlanetaryDustRing } from './planet3d/SpaceDust';
+import { createStarfield, createVolumetricDust } from './planet3d/VolumetricLight';
 import {
   PLANET_RADIUS,
   ATMOSPHERE_THICKNESS,
@@ -40,13 +41,13 @@ import {
   EARTH_ROTATION_SPEED,
   MOON_ORBIT_RADIUS,
   MOON_ORBIT_SPEED,
+  MOON_RADIUS,
   CLOUD_ROTATION_SPEED,
   AXIAL_TILT,
   MOON_ORBITAL_INCLINATION,
   INITIAL_CAMERA_POSITION,
   CAMERA_CONFIG,
-  SUN_RADIUS,
-  updateCloudUniforms
+  SUN_RADIUS
 } from './planet3d/planetUtils';
 
 export interface Scene3DPlanetCanvasProps {
@@ -58,9 +59,9 @@ export interface Scene3DPlanetCanvasProps {
 export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [isPaused, setIsPaused] = useState(true);
-  const [displayFps, setDisplayFps] = useState(0);
-  const fpsTracker = FPSTracker({ client, onFpsUpdate: setDisplayFps });
+  const fpsTracker = FPSTracker({ client });
   const cinematicAnimationRef = useRef<{ startTime: number; duration: number; from: number; to: number; active: boolean } | null>(null);
+  const statsRef = useRef<Stats | null>(null);
 
   // Dev control states (like Scene3D)
   const [showEntities, setShowEntities] = useState(true);
@@ -96,6 +97,8 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     atmoDepth?: THREE.Mesh;
     spaceDust?: ReturnType<typeof createSpaceDust>;
     dustRing?: ReturnType<typeof createPlanetaryDustRing>;
+    starfield?: THREE.Group;
+    volumetricDust?: ReturnType<typeof createVolumetricDust>;
   } | null>(null);
 
   // Listen for pause state from simulation
@@ -134,6 +137,15 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(renderer.domElement);
+    
+    // Add Stats panel
+    const stats = new Stats();
+    stats.showPanel(0); // 0: fps, 1: ms, 2: mb
+    stats.dom.style.position = 'absolute';
+    stats.dom.style.top = '16px';
+    stats.dom.style.right = '16px';
+    mount.appendChild(stats.dom);
+    statsRef.current = stats;
 
     // Verify renderer settings
     console.log('[Renderer Setup] Settings:', {
@@ -412,22 +424,37 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     // Add moon directly to scene, not to earth group
     scene.add(moon);
     
+    // ---------- STARFIELD BACKGROUND ----------
+    const starfield = createStarfield(8000, 25000); // Far away starfield with multiple layers
+    scene.add(starfield);
+    
     // ---------- SPACE DUST for volumetric lighting ----------
     const spaceDust = createSpaceDust({
-      count: 3000,
-      radius: EARTH_ORBIT_RADIUS * 1.5,
-      innerRadius: PLANET_RADIUS * 3,
-      intensity: 0.4
+      count: 8000,  // More particles for better coverage
+      radius: EARTH_ORBIT_RADIUS * 2,  // Extend further out
+      innerRadius: PLANET_RADIUS * 2,  // Start closer to sun
+      intensity: 0.6  // Slightly brighter
     });
     scene.add(spaceDust.mesh);
     
-    // ---------- PLANETARY DUST RING for shadow shafts ----------
-    const dustRing = createPlanetaryDustRing(PLANET_RADIUS, {
-      count: 1500,
-      intensity: 0.25
+    // ---------- VOLUMETRIC DUST (god rays) ----------
+    const volumetricDust = createVolumetricDust({
+      count: 10000,
+      sunRadius: 100,
+      spread: EARTH_ORBIT_RADIUS * 2.5,
+      intensity: 0.4
     });
-    // Add dust ring to earth group so it follows the planet
-    earth.group.add(dustRing.mesh);
+    scene.add(volumetricDust.mesh);
+    
+    // ---------- PLANETARY DUST RING for shadow shafts ----------
+    // Disabled - was creating unwanted ring appearance around Earth
+    // const dustRing = createPlanetaryDustRing(PLANET_RADIUS, {
+    //   count: 2500,  // More particles
+    //   intensity: 0.35  // Slightly brighter
+    // });
+    // // Add dust ring to earth group so it follows the planet
+    // earth.group.add(dustRing.mesh);
+    const dustRing = undefined;
 
     // No need for sanity checks - materials are configured correctly in their components
 
@@ -451,7 +478,9 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       axisHelper,
       atmoDepth,
       spaceDust,
-      dustRing
+      dustRing,
+      starfield,
+      volumetricDust
     };
 
     // ---------- RESIZE ----------
@@ -716,14 +745,27 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         );
       }
       
-      // Update planetary dust ring
-      if (refs.dustRing) {
-        refs.dustRing.update(
-          refs.clock.elapsedTime * 1000,
-          sunToEarth,
-          refs.camera.position
-        );
+      // Update volumetric dust for god rays effect
+      if (refs.volumetricDust) {
+        refs.volumetricDust.update({
+          time: refs.clock.elapsedTime * 1000,
+          sunPos: new THREE.Vector3(0, 0, 0), // Sun at origin
+          cameraPos: refs.camera.position,
+          planetPos: earthPos,
+          planetRadius: PLANET_RADIUS,
+          moonPos: refs.moon.position,
+          moonRadius: PLANET_RADIUS * MOON_RADIUS  // Scale moon radius relative to planet
+        });
       }
+      
+      // Update planetary dust ring (disabled)
+      // if (refs.dustRing) {
+      //   refs.dustRing.update(
+      //     refs.clock.elapsedTime * 1000,
+      //     sunToEarth,
+      //     refs.camera.position
+      //   );
+      // }
 
       // Update entities if they exist
       if (refs.entities && client.buffers) {
@@ -748,6 +790,11 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
 
       // Track FPS
       fpsTracker.trackFrame();
+      
+      // Update stats panel
+      if (statsRef.current) {
+        statsRef.current.update();
+      }
 
       refs.renderer.render(refs.scene, refs.camera);
     };
@@ -833,24 +880,6 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
           backgroundColor: '#000'
         }}
       />
-      {/* FPS Display Overlay */}
-      <div style={{
-        position: 'absolute',
-        top: '16px',
-        right: '16px',
-        padding: '4px 8px',
-        background: 'rgba(0, 0, 0, 0.7)',
-        border: '1px solid rgba(59, 130, 246, 0.5)',
-        borderRadius: '4px',
-        fontSize: '12px',
-        fontFamily: 'monospace',
-        color: displayFps > 50 ? '#10b981' : displayFps > 30 ? '#f59e0b' : '#ef4444',
-        backdropFilter: 'blur(10px)',
-        pointerEvents: 'none',
-        zIndex: 100
-      }}>
-        {displayFps} FPS
-      </div>
     </>
   );
 }

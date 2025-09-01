@@ -55,37 +55,62 @@ void main(){
   // Direct 3D noise sampling in object space
   float timeMultiplier = 1.0 - uPaused;  // 0 when paused, 1 when moving
   
-  // Faster cloud movement (increased from 0.00005 to 0.00015)
-  float slowTime = uTime * 0.00015 * timeMultiplier;  // Faster rotation
+  // Faster cloud movement with latitude-dependent speed (Coriolis effect)
+  float latitude = abs(spherePos.y);
+  float coriolisSpeed = mix(0.0015, 0.0004, latitude); // Much faster at equator, slower at poles
+  float slowTime = uTime * coriolisSpeed * timeMultiplier;
   
-  // Simple rotation around Y axis in object space
-  float angle = slowTime;
+  // Rotation with slight tilt to avoid perfect alignment with poles
+  float angle = slowTime + latitude * 0.1; // Add latitude-based offset
   vec3 rotatedPos = vec3(
     spherePos.x * cos(angle) - spherePos.z * sin(angle),
-    spherePos.y,
+    spherePos.y * 0.98 + 0.02 * sin(angle * 3.0), // Slight vertical wave
     spherePos.x * sin(angle) + spherePos.z * cos(angle)
   );
   
   // Add latitude-based bias for more clouds near equator, but ensure global coverage
-  float latitude = abs(spherePos.y);
   float equatorBias = 1.0 - smoothstep(0.0, 0.8, latitude); // More clouds near equator
-  float globalCoverage = 0.3; // Minimum cloud chance everywhere
+  float globalCoverage = 0.2; // Lower minimum for clear sky areas
   
-  // Add time-based evolution to the noise (clouds change shape over time)
-  float evolutionTime = uTime * 0.00008 * timeMultiplier;  // Noise structure evolution
+  // Add time-based evolution to the noise - MUCH faster for visible animation
+  float evolutionTime = uTime * 0.003 * timeMultiplier;  // Even faster evolution for clearly visible changes
   
   // Final sampling position - use rotated object space position with time offset
-  vec3 p = rotatedPos * 4.0;  // Scale for appropriate cloud size
-  float k=1.5;  // Lower frequency for larger cloud formations
+  // Add non-repeating distortion to break up patterns
+  vec3 distortion = vec3(
+    sin(spherePos.y * 3.14159 + spherePos.x * 2.718 + evolutionTime) * 0.15,
+    cos(spherePos.x * 2.236 + spherePos.z * 1.618 + evolutionTime * 0.7) * 0.1,
+    sin(spherePos.z * 1.414 - spherePos.y * 3.732 - evolutionTime * 0.5) * 0.15
+  );
   
-  // Add time component to noise sampling for evolving cloud shapes
-  float base=fbm(p*k + vec3(evolutionTime * 0.5, evolutionTime * 0.3, evolutionTime * 0.4)); 
-  float detail=fbm(p*k*3.0 + vec3(evolutionTime * 0.7, evolutionTime * 0.5, evolutionTime * 0.6));  // More detailed overlay
+  // Use non-uniform scaling to avoid tiling
+  vec3 p = (rotatedPos + distortion) * vec3(3.7, 4.3, 3.9);  // Non-uniform scale
   
-  // Combine noise with latitude bias
-  float cloudNoise = mix(base, detail, 0.7);
+  // Multi-scale noise with prime number frequencies to avoid repetition
+  float k1 = 0.97;   // Large cloud systems
+  float k2 = 2.31;   // Medium cloud formations
+  float k3 = 4.73;   // Small cloud details
+  
+  // Layer multiple noise scales with very different evolution speeds for visible animation
+  vec3 flow1 = vec3(evolutionTime * 1.2, evolutionTime * 0.8, evolutionTime * 1.0);
+  vec3 flow2 = vec3(evolutionTime * 2.3, evolutionTime * 1.9, evolutionTime * 1.5);
+  vec3 flow3 = vec3(evolutionTime * 3.7, evolutionTime * 3.1, evolutionTime * 3.3);
+  
+  float base = fbm(p*k1 + flow1); 
+  float medium = fbm(p*k2 + flow2);
+  float detail = fbm(p*k3 + flow3);
+  
+  // Combine with more weight on animated layers
+  float cloudNoise = base * 0.4 + medium * 0.4 + detail * 0.2;
+  
+  // Add larger weather systems with moderate evolution for visible change
+  float weatherPattern = fbm(p * 0.15 + vec3(evolutionTime * 0.2, evolutionTime * 0.15, evolutionTime * 0.18));
+  float clearSkyMask = smoothstep(0.3, 0.7, weatherPattern);
+  cloudNoise = mix(cloudNoise * 0.2, cloudNoise, clearSkyMask); // More contrast between clear and cloudy
+  
+  // Apply latitude bias and coverage with more variation
   float biasedNoise = mix(cloudNoise, cloudNoise + 0.2, mix(globalCoverage, equatorBias, 0.7));
-  float mask=smoothstep(uCoverage, 1.0, biasedNoise);  // Apply coverage threshold
+  float mask = smoothstep(uCoverage, uCoverage + 0.4, biasedNoise);  // Sharper cloud edges
   float thickness = mask; 
   
   // Lighting calculation aligned with atmosphere shader

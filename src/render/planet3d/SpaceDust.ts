@@ -37,30 +37,37 @@ const spaceDustFragmentShader = `
     // Soft edges
     float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
     
-    // Light interaction - dust is more visible when lit
+    // Light interaction - dust is visible from all angles
     vec3 toCamera = normalize(uCameraPos - vWorldPos);
     vec3 lightDir = normalize(uLightDir);
     
     // Forward scattering - dust glows when between camera and light
     float forwardScatter = max(0.0, dot(toCamera, -lightDir));
-    forwardScatter = pow(forwardScatter, 2.0);
+    forwardScatter = pow(forwardScatter, 3.0); // Sharper falloff
     
-    // Side scattering for ambient visibility
-    float sideScatter = 0.2;
+    // Back scattering - dust also visible when lit from behind
+    float backScatter = max(0.0, dot(toCamera, lightDir)) * 0.3;
     
-    // Combine scattering
-    float scatter = mix(sideScatter, 1.0, forwardScatter);
+    // Side scattering for ambient visibility - increased for better overall visibility
+    float sideScatter = 0.4;
+    
+    // Combine all scattering types
+    float scatter = sideScatter + forwardScatter * 0.6 + backScatter;
+    
+    // Distance from sun affects brightness
+    float distFromOrigin = length(vWorldPos);
+    float distanceFade = 1.0 / (1.0 + distFromOrigin * 0.001);
     
     // Twinkling effect
     float twinkle = 0.8 + 0.2 * sin(uTime * 0.001 + vBrightness * 10.0);
     
     // Final brightness
-    float finalBrightness = vBrightness * scatter * twinkle * uIntensity;
+    float finalBrightness = vBrightness * scatter * twinkle * distanceFade * uIntensity;
     
     // Warm color for dust (slightly golden)
     vec3 color = vec3(1.0, 0.95, 0.85);
     
-    gl_FragColor = vec4(color * finalBrightness, alpha * finalBrightness * 0.3);
+    gl_FragColor = vec4(color * finalBrightness, alpha * finalBrightness * 0.5);
   }
 `;
 
@@ -87,19 +94,37 @@ export function createSpaceDust(options: SpaceDustOptions = {}) {
   const sizes = new Float32Array(count);
   const brightness = new Float32Array(count);
   
-  // Generate dust particles in a spherical shell
+  // Generate dust particles in a full spherical volume with higher density near orbital plane
   for (let i = 0; i < count; i++) {
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(Math.random() * 2 - 1);
-    const r = innerRadius + Math.random() * (radius - innerRadius);
+    // Use a combination of uniform and concentrated distribution
+    const useOrbitalPlane = Math.random() < 0.6; // 60% near orbital plane
     
-    // Position
-    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-    positions[i * 3 + 2] = r * Math.cos(phi);
+    if (useOrbitalPlane) {
+      // Concentrated near the orbital plane (ecliptic)
+      const angle = Math.random() * Math.PI * 2;
+      const r = innerRadius + Math.pow(Math.random(), 0.7) * (radius - innerRadius); // More dense closer to sun
+      const yOffset = (Math.random() - 0.5) * radius * 0.3; // Flattened distribution
+      
+      positions[i * 3] = r * Math.cos(angle);
+      positions[i * 3 + 1] = yOffset;
+      positions[i * 3 + 2] = r * Math.sin(angle);
+    } else {
+      // Uniform spherical distribution for ambient dust
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(Math.random() * 2 - 1);
+      const r = innerRadius + Math.random() * (radius - innerRadius);
+      
+      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      positions[i * 3 + 2] = r * Math.cos(phi);
+    }
     
-    // Size variation
-    sizes[i] = sizeRange[0] + Math.random() * (sizeRange[1] - sizeRange[0]);
+    // Size variation - smaller particles further out
+    const dist = Math.sqrt(positions[i * 3] * positions[i * 3] + 
+                          positions[i * 3 + 1] * positions[i * 3 + 1] + 
+                          positions[i * 3 + 2] * positions[i * 3 + 2]);
+    const sizeFactor = Math.max(0.3, 1.0 - dist / radius);
+    sizes[i] = (sizeRange[0] + Math.random() * (sizeRange[1] - sizeRange[0])) * sizeFactor;
     
     // Brightness variation
     brightness[i] = 0.3 + Math.random() * 0.7;
