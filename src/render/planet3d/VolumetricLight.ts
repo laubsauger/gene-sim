@@ -145,7 +145,7 @@ export function createStarfield(radius: number = 5000, count: number = 10000) {
       brightColors[i * 3 + 2] = 0.7;
     }
     
-    brightSizes[i] = Math.random() * 2 + 2; // Larger sizes
+    brightSizes[i] = Math.random() * 1.5 + 1; // Reduced size range
   }
   
   brightStars.setAttribute('position', new THREE.BufferAttribute(brightPositions, 3));
@@ -153,11 +153,11 @@ export function createStarfield(radius: number = 5000, count: number = 10000) {
   brightStars.setAttribute('size', new THREE.BufferAttribute(brightSizes, 1));
   
   const brightMaterial = new THREE.PointsMaterial({
-    size: 3,
+    size: 2,  // Reduced from 3
     sizeAttenuation: false,
     vertexColors: true,
     transparent: true,
-    opacity: 1.0,
+    opacity: 0.85,  // Reduced from 1.0
     blending: THREE.AdditiveBlending
   });
   
@@ -185,7 +185,7 @@ export function createStarfield(radius: number = 5000, count: number = 10000) {
     mediumColors[i * 3 + 1] = 0.9 + Math.random() * 0.1;
     mediumColors[i * 3 + 2] = 0.9 + Math.random() * 0.1;
     
-    mediumSizes[i] = Math.random() * 1.5 + 0.5;
+    mediumSizes[i] = Math.random() * 1.2 + 0.4;
   }
   
   mediumStars.setAttribute('position', new THREE.BufferAttribute(mediumPositions, 3));
@@ -193,11 +193,11 @@ export function createStarfield(radius: number = 5000, count: number = 10000) {
   mediumStars.setAttribute('size', new THREE.BufferAttribute(mediumSizes, 1));
   
   const mediumMaterial = new THREE.PointsMaterial({
-    size: 1.5,
+    size: 1.2,  // Reduced from 1.5
     sizeAttenuation: false,
     vertexColors: true,
     transparent: true,
-    opacity: 0.7
+    opacity: 0.6  // Reduced from 0.7
   });
   
   const mediumStarsPoints = new THREE.Points(mediumStars, mediumMaterial);

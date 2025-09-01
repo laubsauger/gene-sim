@@ -118,9 +118,12 @@ function createShadowCloudLayer(config: CloudLayerConfig & { baseRadius: number 
 
 // Create procedural cloud layer (existing shader-based approach)
 function createProceduralCloudLayer(config: CloudLayerConfig & { baseRadius: number }) {
+  // Start with random time offset for immediate cloud variety
+  const initialTimeOffset = Math.random() * 1000;
+  
   const cloudUniforms = {
     uLightDir: { value: new THREE.Vector3(1, 0, 0) },
-    uTime: { value: 0 },
+    uTime: { value: initialTimeOffset },  // Start with offset for immediate clouds
     uPaused: { value: 0 },
     uCoverage: { value: config.coverage },
     uDensity: { value: config.density },
@@ -154,7 +157,7 @@ function createProceduralCloudLayer(config: CloudLayerConfig & { baseRadius: num
     uniforms: cloudUniforms, 
     material: cloudMat,
     update: (time: number, lightDir: THREE.Vector3, paused: boolean) => {
-      cloudUniforms.uTime.value = time;
+      cloudUniforms.uTime.value = initialTimeOffset + time;  // Keep offset
       cloudUniforms.uLightDir.value.copy(lightDir);
       cloudUniforms.uPaused.value = paused ? 1 : 0;
     }
@@ -178,13 +181,15 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
   // Removed shadow-casting texture layer due to tiling issues
   const cumulusLayer = createProceduralCloudLayer({
     baseRadius: planetRadius,
-    radius: 1.012,  // Low altitude
-    coverage: 0.35,  // Denser for low clouds
-    density: 1.2,
+    radius: 1.01,  // Very low altitude
+    coverage: 0.3,  // Denser for low clouds
+    density: 0.9,   // Slightly lower density for visibility
     scale: 3.5,
     speed: 0.0003,  // Faster movement
-    color: new THREE.Color(0.98, 0.98, 0.98)
+    color: new THREE.Color(0.95, 0.95, 0.95)  // Slightly darker for contrast
   });
+  // Start with some initial rotation for immediate coverage
+  cumulusLayer.mesh.rotation.y = Math.random() * Math.PI * 2;
   group.add(cumulusLayer.mesh);
   layers.push({
     mesh: cumulusLayer.mesh,
@@ -195,13 +200,16 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
   // Layer 2: Mid altitude stratus (main procedural layer) 
   const stratusLayer = createProceduralCloudLayer({
     baseRadius: planetRadius,
-    radius: 1.018,  // Mid altitude
-    coverage: 0.25,  // Balanced threshold
-    density: 1.0,   // Standard density
-    scale: 4,
+    radius: 1.02,  // Mid altitude - more separation from layer 1
+    coverage: 0.2,  // Lower threshold for more coverage
+    density: 0.8,   // Slightly transparent
+    scale: 5,       // Different scale for variety
     speed: 0.00035,  // Faster movement
     color: new THREE.Color(1, 1, 1)
   });
+  // Different initial rotation for variety
+  stratusLayer.mesh.rotation.y = Math.random() * Math.PI * 2;
+  stratusLayer.mesh.rotation.x = Math.PI * 0.05; // Slight tilt
   group.add(stratusLayer.mesh);
   layers.push({
     mesh: stratusLayer.mesh,
@@ -212,15 +220,17 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
   // Layer 3: Jet stream layer (fast moving, streaky)
   const jetStreamLayer = createProceduralCloudLayer({
     baseRadius: planetRadius,
-    radius: 1.025,  // Between mid and high altitude
-    coverage: 0.55,  // High threshold for streaky appearance
-    density: 0.5,   // Low density for wispy streaks
-    scale: 1.8,     // Large scale for long streaks
+    radius: 1.03,  // Higher altitude - more separation
+    coverage: 0.5,  // High threshold for streaky appearance
+    density: 0.4,   // Low density for wispy streaks
+    scale: 2.2,     // Different scale
     speed: 0.0008,  // Very fast movement for jet stream
     color: new THREE.Color(0.98, 0.98, 1.0)
   });
-  // Rotate jet stream layer to different angle
+  // Rotate jet stream layer to different angle with initial position
   jetStreamLayer.mesh.rotation.x = Math.PI * 0.1; // Slight tilt
+  jetStreamLayer.mesh.rotation.y = Math.random() * Math.PI * 2; // Random start
+  jetStreamLayer.mesh.rotation.z = Math.PI * 0.03; // Additional tilt for variety
   group.add(jetStreamLayer.mesh);
   layers.push({
     mesh: jetStreamLayer.mesh,
@@ -235,13 +245,16 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
   // Layer 4: High altitude cirrus (wispy, ice crystals)
   const cirrusLayer = createProceduralCloudLayer({
     baseRadius: planetRadius,
-    radius: 1.035,  // High altitude
-    coverage: 0.6,  // Higher coverage threshold for wispier clouds
-    density: 0.25,    // Very low density
-    scale: 2.5,
+    radius: 1.045,  // Highest altitude - more separation
+    coverage: 0.55,  // Higher coverage threshold for wispier clouds
+    density: 0.2,    // Very low density
+    scale: 3.0,      // Different scale again
     speed: 0.0005,  // Faster movement
-    color: new THREE.Color(0.95, 0.95, 1.0)  // Slight bluish tint
+    color: new THREE.Color(0.92, 0.92, 1.0)  // More bluish tint for altitude
   });
+  // Initial rotation for immediate coverage
+  cirrusLayer.mesh.rotation.y = Math.random() * Math.PI * 2;
+  cirrusLayer.mesh.rotation.x = -Math.PI * 0.08; // Opposite tilt from jet stream
   group.add(cirrusLayer.mesh);
   layers.push({
     mesh: cirrusLayer.mesh,
