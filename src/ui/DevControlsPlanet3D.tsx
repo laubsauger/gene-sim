@@ -52,6 +52,8 @@ export function DevControlsPlanet3D({
     setOrbitalSpeed,
     cameraTarget,
     setCameraTarget,
+    cameraMode,
+    setCameraMode,
   } = usePlanet3DStore();
   
   return (
@@ -99,8 +101,46 @@ export function DevControlsPlanet3D({
       {onCameraTargetChange && (
         <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
           <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
-            Camera Target
+            Camera Controls
           </div>
+          <div style={{ marginBottom: '5px' }}>
+            <div style={{ fontSize: '10px', color: '#888', marginBottom: '2px' }}>Mode:</div>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button
+                onClick={() => setCameraMode('free')}
+                style={{
+                  flex: 1,
+                  padding: '3px 6px',
+                  fontSize: '10px',
+                  background: cameraMode === 'free' ? 'rgba(100, 150, 255, 0.3)' : 'rgba(100, 150, 255, 0.1)',
+                  border: `1px solid ${cameraMode === 'free' ? 'rgba(100, 150, 255, 0.7)' : 'rgba(100, 150, 255, 0.3)'}`,
+                  borderRadius: '3px',
+                  color: '#aaf',
+                  cursor: 'pointer',
+                }}
+                title="Camera moves independently of Earth's rotation"
+              >
+                Free Orbit
+              </button>
+              <button
+                onClick={() => setCameraMode('geostationary')}
+                style={{
+                  flex: 1,
+                  padding: '3px 6px',
+                  fontSize: '10px',
+                  background: cameraMode === 'geostationary' ? 'rgba(100, 150, 255, 0.3)' : 'rgba(100, 150, 255, 0.1)',
+                  border: `1px solid ${cameraMode === 'geostationary' ? 'rgba(100, 150, 255, 0.7)' : 'rgba(100, 150, 255, 0.3)'}`,
+                  borderRadius: '3px',
+                  color: '#aaf',
+                  cursor: 'pointer',
+                }}
+                title="Camera stays above same point on Earth's surface"
+              >
+                Geostationary
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: '10px', color: '#888', marginBottom: '2px' }}>Target:</div>
           <select
             value={cameraTarget}
             onChange={(e) => {

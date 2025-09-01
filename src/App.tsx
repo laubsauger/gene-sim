@@ -276,7 +276,7 @@ export default function App() {
     // Dispatch resize event to update canvas dimensions
     setTimeout(() => {
       window.dispatchEvent(new Event('resize'));
-    }, 50); // Small delay to ensure DOM has updated
+    }, 200); // Increased delay to ensure DOM and grid layout have updated
   }, [controlsHidden, statsSidebarCollapsed, setupSidebarCollapsed]);
   
   useEffect(() => {

@@ -1,46 +1,24 @@
 # UI & 3D Scene Improvements Todo List
 
-## Control Panel Reorganization
-
-### 3. Sidebar Improvement
-
-- [x] sidebar when expanded opens to the right. it needs to claim space to the left, resize the gamecanvas to make space aetc
-
 ## Scene3DPlanetCanvas Enhancements
 
-### 4. Orbital Mechanics Controls
+- [x] Add camera mode toggle:
+  - [x] Geostationary (locked to Earth rotation)
+  - [x] Free orbit (current behavior)
+  - [x] Smooth transition between modes
 
-- [x] Add orbital speed slider (in addition to pause)
-  - [x] Range: 0.1x to 10x normal speed
-  - [x] Default: 1x
-  - [x] Show current multiplier value
-- [ ] Add camera mode toggle:
-  - [ ] Geostationary (locked to Earth rotation)
-  - [ ] Free orbit (current behavior)
-  - [ ] Smooth transition between modes
+### 4c. Cinematic Zoom Animation Controls / Planet Target resp Camera target change animation
 
-### 4c. Cinematic Zoom Controls
-
-- [x] Add dramatic zoom buttons for 3D planet view
-  - [x] "Zoom to Surface" button - smooth punch-in to max zoom
-  - [x] "View System" button - smooth punch-out to min zoom
-  - [x] Dramatic easing curves for cinematic feel
-  - [x] Could be used as intro sequence
-- [x] Implementation details:
-  - [x] Use GSAP or custom easing for smooth animation
-  - [x] Duration: 2-3 seconds for full transition
-  - [x] Ease-in-out-power3 or similar dramatic curve
-  - [x] Camera looks at Earth center during transition
-  - [ ] Optional: Add slight rotation during zoom for extra drama
-  - [x] Buttons positioned in orbit controls panel
-  - [x] Keyboard shortcuts: 'I' for zoom in, 'O' for zoom out
 - [x] Visual polish:
   - [x] Disable user controls during animation
   - [ ] Smooth FOV adjustment for dramatic effect
   - [ ] Consider adding motion blur post-process (optional)
-  - [ ] Sound effects support
-  - [ ] Music support (we will supply our own music)
+  - [ ] Add slight rotation during zoom for extra drama (cinematic in / out zoom only)
 
+### Misc
+
+- [ ] Sound effects support
+- [ ] Music support (we will supply our own music)
 
 ### 5. Moon Visual Improvements
 
@@ -56,24 +34,20 @@
 
 ### 6. Cloud Rendering Fixes
 
-- [ ] Adjust cloud rotation speed
-- [ ] too slow currently. constant for cloud speed does not seem to work
+- [x] Adjust cloud rotation speed
+- [x] too slow currently. constant for cloud speed does not seem to work
 
 ## Implementation Priority
 
 ### Phase 2 (Visual Polish)
 
 1. Moon textures and materials
-2. Cloud UV fixing
-3. Orbital mechanics controls
 
 ### Phase 3 (Fine-tuning)
 
 1. Camera modes
-2. Control labels and layout
-3. Performance optimizations
-4. Lighting enhancements
-5. Starfield implementation
+2. Performance optimizations
+3. Lighting enhancements
 
 ## Additional Visual Enhancements
 
@@ -88,7 +62,7 @@
 ### 8. Bloom & Post-processing Effects
 
 - [ ] Add optional bloom effect for orbit mode
-  - [ ] Toggle in orbit controls
+  - [ ] Toggle in planet 3d controls
   - [ ] Adjustable bloom intensity slider
   - [ ] Bloom threshold control
   - [ ] Performance-aware (disable on low-end devices)
@@ -100,8 +74,7 @@
 
 ### 9. Starfield/Skybox System
 
-- [ ] Create hyper-efficient configurable star skybox
-  - [ ] Procedural star generation with LOD system
+- [ ] Expand / update hyper-efficient configurable star skybox
   - [ ] Configurable star density (sparse to dense)
   - [ ] Variable star sizes and brightness
   - [ ] Subtle color variation (white, blue, yellow, red stars)

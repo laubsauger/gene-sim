@@ -29,6 +29,7 @@ interface Planet3DState {
   
   // Camera controls
   cameraTarget: 'sun' | 'venus' | 'earth' | 'mars' | 'moon';
+  cameraMode: 'free' | 'geostationary'; // Free orbit or locked to Earth rotation
   
   // Actions
   toggleShowEntities: () => void;
@@ -67,6 +68,7 @@ interface Planet3DState {
   setPauseClouds: (value: boolean) => void;
   setCameraTarget: (target: 'sun' | 'venus' | 'earth' | 'mars' | 'moon') => void;
   setOrbitalSpeed: (speed: number) => void;
+  setCameraMode: (mode: 'free' | 'geostationary') => void;
 }
 
 export const usePlanet3DStore = create<Planet3DState>()(
@@ -90,6 +92,7 @@ export const usePlanet3DStore = create<Planet3DState>()(
     pauseClouds: false,
     orbitalSpeed: 1, // Default to 1x speed
     cameraTarget: 'earth',
+    cameraMode: 'free', // Default to free orbit (already correct)
     
     // Toggle actions
     toggleShowEntities: () => set((state) => ({ showEntities: !state.showEntities })),
@@ -128,6 +131,7 @@ export const usePlanet3DStore = create<Planet3DState>()(
     setPauseClouds: (value) => set({ pauseClouds: value }),
     setCameraTarget: (target) => set({ cameraTarget: target }),
     setOrbitalSpeed: (speed) => set({ orbitalSpeed: speed }),
+    setCameraMode: (mode) => set({ cameraMode: mode }),
   }))
 );
 

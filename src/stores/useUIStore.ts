@@ -39,19 +39,31 @@ export const useUIStore = create<UIState>()(
         set((state) => ({ 
           setupSidebarCollapsed: !state.setupSidebarCollapsed 
         }));
-        // Trigger resize event to update canvas dimensions
-        setTimeout(() => {
+        // Trigger multiple resize events to ensure canvas updates
+        requestAnimationFrame(() => {
           window.dispatchEvent(new Event('resize'));
-        }, 50);
+          setTimeout(() => {
+            window.dispatchEvent(new Event('resize'));
+          }, 100);
+          setTimeout(() => {
+            window.dispatchEvent(new Event('resize'));
+          }, 300);
+        });
       },
       toggleStatsSidebar: () => {
         set((state) => ({ 
           statsSidebarCollapsed: !state.statsSidebarCollapsed 
         }));
-        // Trigger resize event to update canvas dimensions
-        setTimeout(() => {
+        // Trigger multiple resize events to ensure canvas updates
+        requestAnimationFrame(() => {
           window.dispatchEvent(new Event('resize'));
-        }, 50);
+          setTimeout(() => {
+            window.dispatchEvent(new Event('resize'));
+          }, 100);
+          setTimeout(() => {
+            window.dispatchEvent(new Event('resize'));
+          }, 300);
+        });
       },
       setSetupSidebar: (collapsed) => set({ setupSidebarCollapsed: collapsed }),
       setStatsSidebar: (collapsed) => set({ statsSidebarCollapsed: collapsed }),

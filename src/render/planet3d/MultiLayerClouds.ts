@@ -185,7 +185,7 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
     coverage: 0.3,  // Denser for low clouds
     density: 0.9,   // Slightly lower density for visibility
     scale: 3.5,
-    speed: 0.0003,  // Faster movement
+    speed: 0.02,  // Slow cumulus clouds
     color: new THREE.Color(0.95, 0.95, 0.95)  // Slightly darker for contrast
   });
   // Start with some initial rotation for immediate coverage
@@ -204,7 +204,7 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
     coverage: 0.2,  // Lower threshold for more coverage
     density: 0.8,   // Slightly transparent
     scale: 5,       // Different scale for variety
-    speed: 0.00035,  // Faster movement
+    speed: 0.025,  // Mid-speed stratus
     color: new THREE.Color(1, 1, 1)
   });
   // Different initial rotation for variety
@@ -224,7 +224,7 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
     coverage: 0.5,  // High threshold for streaky appearance
     density: 0.4,   // Low density for wispy streaks
     scale: 2.2,     // Different scale
-    speed: 0.0008,  // Very fast movement for jet stream
+    speed: 0.04,  // Fast jet stream
     color: new THREE.Color(0.98, 0.98, 1.0)
   });
   // Rotate jet stream layer to different angle with initial position
@@ -237,7 +237,7 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
     update: (time: number, lightDir?: THREE.Vector3, paused?: boolean) => {
       jetStreamLayer.update(time, lightDir, paused);
       // Add counter-rotation for jet stream effect
-      jetStreamLayer.mesh.rotation.y = -time * 0.00008;
+      jetStreamLayer.mesh.rotation.y = -time * 0.005;
     },
     uniforms: jetStreamLayer.uniforms
   });
@@ -249,7 +249,7 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
     coverage: 0.55,  // Higher coverage threshold for wispier clouds
     density: 0.2,    // Very low density
     scale: 3.0,      // Different scale again
-    speed: 0.0005,  // Faster movement
+    speed: 0.03,  // Fast high-altitude cirrus
     color: new THREE.Color(0.92, 0.92, 1.0)  // More bluish tint for altitude
   });
   // Initial rotation for immediate coverage
@@ -276,7 +276,7 @@ export function makeProceduralCloudShell({ radius }: { radius: number }) {
     coverage: 0.25,
     density: 1.2,
     scale: 4,
-    speed: 0.00015,
+    speed: 0.02,  // Default cloud speed
     color: new THREE.Color(1, 1, 1)
   });
   
