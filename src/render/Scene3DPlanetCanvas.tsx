@@ -270,25 +270,31 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     sunGroup.name = 'SunGroup';
     scene.add(sunGroup);
 
-    // Sun texture - circular to avoid square bloom artifacts
+    // Sun texture - circular to avoid square bloom artifacts with smoother gradients
     const sunTexture = new THREE.CanvasTexture((() => {
       const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 256;
+      canvas.width = 512;  // Higher resolution for smoother gradients
+      canvas.height = 512;
       const ctx = canvas.getContext('2d')!;
       // Clear canvas with transparency
-      ctx.clearRect(0, 0, 256, 256);
-      // Create circular gradient
-      const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-      gradient.addColorStop(0, 'rgba(255, 255, 240, 1)');
+      ctx.clearRect(0, 0, 512, 512);
+      // Create circular gradient with more stops for smoother transitions
+      const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+      gradient.addColorStop(0, 'rgba(255, 255, 250, 1)');
+      gradient.addColorStop(0.1, 'rgba(255, 253, 235, 1)');
       gradient.addColorStop(0.2, 'rgba(255, 250, 200, 1)');
-      gradient.addColorStop(0.5, 'rgba(255, 220, 100, 1)');
-      gradient.addColorStop(0.8, 'rgba(255, 180, 50, 0.5)');
-      gradient.addColorStop(1, 'rgba(255, 150, 0, 0)');
+      gradient.addColorStop(0.3, 'rgba(255, 240, 150, 0.95)');
+      gradient.addColorStop(0.4, 'rgba(255, 230, 120, 0.85)');
+      gradient.addColorStop(0.5, 'rgba(255, 220, 100, 0.7)');
+      gradient.addColorStop(0.6, 'rgba(255, 200, 80, 0.5)');
+      gradient.addColorStop(0.7, 'rgba(255, 180, 60, 0.3)');
+      gradient.addColorStop(0.8, 'rgba(255, 160, 40, 0.15)');
+      gradient.addColorStop(0.9, 'rgba(255, 140, 20, 0.05)');
+      gradient.addColorStop(1, 'rgba(255, 120, 0, 0)');
       ctx.fillStyle = gradient;
       // Draw circular sun instead of rectangle
       ctx.beginPath();
-      ctx.arc(128, 128, 128, 0, Math.PI * 2);
+      ctx.arc(256, 256, 256, 0, Math.PI * 2);
       ctx.fill();
       return canvas;
     })());
@@ -311,56 +317,70 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     const sunGlow = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: sunTexture,
-        color: 0xffdd44,
-        opacity: 0.7,
+        color: 0xffee55,
+        opacity: 0.5,  // Reduced for smoother blending
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         depthTest: true,
       })
     );
-    sunGlow.scale.set(SUN_RADIUS * 1.0, SUN_RADIUS * 1.0, 1); // Full sun size
+    sunGlow.scale.set(SUN_RADIUS * 1.1, SUN_RADIUS * 1.1, 1); // Slightly larger
     sunGroup.add(sunGlow);
 
     // Middle halo
     const sunHalo = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: sunTexture,
-        color: 0xffaa00,
-        opacity: 0.3,
+        color: 0xffcc22,
+        opacity: 0.25,  // Smoother transition
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         depthTest: true,
       })
     );
-    sunHalo.scale.set(SUN_RADIUS * 1.5, SUN_RADIUS * 1.5, 1); // Medium halo
+    sunHalo.scale.set(SUN_RADIUS * 1.4, SUN_RADIUS * 1.4, 1); // Gradual size increase
     sunGroup.add(sunHalo);
 
     // Outer corona
     const sunCorona = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: sunTexture,
-        color: 0xff8800,
-        opacity: 0.15,
+        color: 0xffaa00,
+        opacity: 0.12,  // Subtle outer glow
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         depthTest: true,
       })
     );
-    sunCorona.scale.set(SUN_RADIUS * 2.0, SUN_RADIUS * 2.0, 1); // Large corona
+    sunCorona.scale.set(SUN_RADIUS * 1.7, SUN_RADIUS * 1.7, 1); // Intermediate corona
     sunGroup.add(sunCorona);
+    
+    // Additional intermediate layer for smoother transition
+    const sunMidCorona = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: sunTexture,
+        color: 0xff9900,
+        opacity: 0.08,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true,
+      })
+    );
+    sunMidCorona.scale.set(SUN_RADIUS * 2.0, SUN_RADIUS * 2.0, 1); // Between corona and outer
+    sunGroup.add(sunMidCorona);
 
     // Extra outer halo for more glow
     const sunOuterHalo = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: sunTexture,
-        color: 0xff6600,
-        opacity: 0.05,
+        color: 0xff7700,
+        opacity: 0.04,  // Very subtle
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         depthTest: true,
       })
     );
-    sunOuterHalo.scale.set(SUN_RADIUS * 3.0, SUN_RADIUS * 3.0, 1); // Very large faint halo
+    sunOuterHalo.scale.set(SUN_RADIUS * 2.5, SUN_RADIUS * 2.5, 1); // Large faint halo
     sunGroup.add(sunOuterHalo);
 
     // Point light for glow and additional illumination
@@ -457,15 +477,15 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     
     // ---------- ASTEROID BELT ----------
     // Create asteroid belt between Mars and where Jupiter would be
-    const ASTEROID_BELT_INNER = MARS_ORBIT_RADIUS * 1.3;  // Start after Mars
-    const ASTEROID_BELT_OUTER = MARS_ORBIT_RADIUS * 2.0;  // End before where Jupiter would be
+    const ASTEROID_BELT_INNER = MARS_ORBIT_RADIUS * 1.6;  // Start further from Mars
+    const ASTEROID_BELT_OUTER = MARS_ORBIT_RADIUS * 2.5;  // Extend further out
     
     const spaceDust = createSpaceDust({
-      count: 15000,  // More particles for asteroid belt
+      count: 30000,  // Much denser asteroid field
       radius: ASTEROID_BELT_OUTER,  
       innerRadius: ASTEROID_BELT_INNER,
-      intensity: 0.4,  // Dimmer, more realistic
-      heightRange: 6,  // Thin disk with slight thickness
+      intensity: 0.6,  // Brighter for better visibility
+      heightRange: 8,  // Slightly thicker disk
       isRing: true,  // Make it a ring in the orbital plane
       sizeRange: [0.8, 3.0]  // Slightly larger particles for asteroids
     });
