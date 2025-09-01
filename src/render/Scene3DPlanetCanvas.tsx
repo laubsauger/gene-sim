@@ -6,7 +6,7 @@ import type { MainMsg } from '../sim/types';
 import { DevControlsPlanet3D } from '../ui/DevControlsPlanet3D';
 
 // FPS tracking component (reused from Scene3D)
-function FPSTracker({ client }: { client: SimClient }) {
+function FPSTracker({ client, onFpsUpdate }: { client: SimClient; onFpsUpdate?: (fps: number) => void }) {
   const frameCount = useRef(0);
   const lastTime = useRef(performance.now());
 
@@ -18,6 +18,7 @@ function FPSTracker({ client }: { client: SimClient }) {
     if (delta >= 250) { // Update 4 times per second
       const fps = Math.round((frameCount.current * 1000) / delta);
       client.sendRenderFps(fps);
+      if (onFpsUpdate) onFpsUpdate(fps);
       frameCount.current = 0;
       lastTime.current = now;
     }
@@ -27,8 +28,10 @@ function FPSTracker({ client }: { client: SimClient }) {
 }
 import { makePlanetWithAtmosphere } from './planet3d/PlanetWithAtmosphere';
 import { makeProceduralCloudShell } from './planet3d/ProceduralCloudShell';
+import { createMultiLayerClouds } from './planet3d/MultiLayerClouds';
 import { updateEntitiesFromBuffers, makeGroundEntities } from './planet3d/EntityRenderer';
 import { makeMoon } from './planet3d/MoonComponent';
+import { createSpaceDust, createPlanetaryDustRing } from './planet3d/SpaceDust';
 import {
   PLANET_RADIUS,
   ATMOSPHERE_THICKNESS,
@@ -55,7 +58,8 @@ export interface Scene3DPlanetCanvasProps {
 export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [isPaused, setIsPaused] = useState(true);
-  const fpsTracker = FPSTracker({ client });
+  const [displayFps, setDisplayFps] = useState(0);
+  const fpsTracker = FPSTracker({ client, onFpsUpdate: setDisplayFps });
   const cinematicAnimationRef = useRef<{ startTime: number; duration: number; from: number; to: number; active: boolean } | null>(null);
 
   // Dev control states (like Scene3D)
@@ -83,12 +87,15 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     earth: any;
     entities: THREE.InstancedMesh | null;
     clouds: THREE.Mesh;
+    cloudSystem?: ReturnType<typeof createMultiLayerClouds>;
     moon: THREE.Mesh;
     sun: THREE.DirectionalLight;
     clock: THREE.Clock;
     axisHelper?: THREE.AxesHelper;
     testSphere?: THREE.Mesh;
     atmoDepth?: THREE.Mesh;
+    spaceDust?: ReturnType<typeof createSpaceDust>;
+    dustRing?: ReturnType<typeof createPlanetaryDustRing>;
   } | null>(null);
 
   // Listen for pause state from simulation
@@ -377,16 +384,13 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       earth.meshes.planetMesh.receiveShadow = true;
     }
 
-    // Clouds (procedural, transparent) - renderOrder 2
-    const cloudResult = makeProceduralCloudShell({
-      radius: PLANET_RADIUS * 1.01, // Just above surface
-    });
-    const clouds = cloudResult.mesh;
-    // Enable shadow casting for clouds (subtle cloud shadows)
-    clouds.castShadow = true;
-    clouds.receiveShadow = false; // Clouds don't receive shadows, they cast them
-    // Add clouds to earth group for proper layering
-    earth.group.add(clouds);
+    // Multi-layer cloud system with shadows
+    const cloudSystem = createMultiLayerClouds(PLANET_RADIUS);
+    // Add all cloud layers to earth group
+    earth.group.add(cloudSystem.group);
+    
+    // For backward compatibility, reference the middle layer as main clouds
+    const clouds = cloudSystem.layers[1].mesh; // Middle stratus layer
 
     // Local render orders are already set in component creation
 
@@ -407,6 +411,23 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     moon.receiveShadow = true;
     // Add moon directly to scene, not to earth group
     scene.add(moon);
+    
+    // ---------- SPACE DUST for volumetric lighting ----------
+    const spaceDust = createSpaceDust({
+      count: 3000,
+      radius: EARTH_ORBIT_RADIUS * 1.5,
+      innerRadius: PLANET_RADIUS * 3,
+      intensity: 0.4
+    });
+    scene.add(spaceDust.mesh);
+    
+    // ---------- PLANETARY DUST RING for shadow shafts ----------
+    const dustRing = createPlanetaryDustRing(PLANET_RADIUS, {
+      count: 1500,
+      intensity: 0.25
+    });
+    // Add dust ring to earth group so it follows the planet
+    earth.group.add(dustRing.mesh);
 
     // No need for sanity checks - materials are configured correctly in their components
 
@@ -423,11 +444,14 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       earth,
       entities: null,
       clouds: clouds,
+      cloudSystem,
       moon,
       sun,
       clock,
       axisHelper,
-      atmoDepth
+      atmoDepth,
+      spaceDust,
+      dustRing
     };
 
     // ---------- RESIZE ----------
@@ -523,8 +547,13 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         refs.moon.visible = controls.showMoon;
       }
 
-      if (refs.clouds) {
+      if (refs.cloudSystem) {
         // Cull clouds when planet is small on screen
+        refs.cloudSystem.group.visible = controls.showClouds && planetScreenSize > 10;
+      }
+      
+      if (refs.clouds) {
+        // Backward compatibility
         refs.clouds.visible = controls.showClouds && planetScreenSize > 10;
       }
 
@@ -654,7 +683,18 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         cloudRotationSpeed: CLOUD_ROTATION_SPEED
       });
 
-      // Update cloud uniforms with rotation and pause state
+      // Update all cloud layers
+      if (refs.cloudSystem) {
+        refs.cloudSystem.layers.forEach((layer) => {
+          layer.update(
+            refs.clock.elapsedTime,
+            refs.earth.uniforms.shared.uLightDir.value,
+            controls.pauseClouds
+          );
+        });
+      }
+      
+      // Update single cloud layer for backward compatibility
       if (refs.clouds) {
         const cloudMaterial = refs.clouds.material as THREE.ShaderMaterial;
         if (cloudMaterial.uniforms) {
@@ -666,6 +706,24 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       
       // Force shadow map update to ensure moon shadows are visible
       refs.sun.shadow.needsUpdate = true;
+      
+      // Update space dust with light direction and camera position
+      if (refs.spaceDust) {
+        refs.spaceDust.update(
+          refs.clock.elapsedTime * 1000,
+          sunToEarth,
+          refs.camera.position
+        );
+      }
+      
+      // Update planetary dust ring
+      if (refs.dustRing) {
+        refs.dustRing.update(
+          refs.clock.elapsedTime * 1000,
+          sunToEarth,
+          refs.camera.position
+        );
+      }
 
       // Update entities if they exist
       if (refs.entities && client.buffers) {
@@ -775,6 +833,24 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
           backgroundColor: '#000'
         }}
       />
+      {/* FPS Display Overlay */}
+      <div style={{
+        position: 'absolute',
+        top: '16px',
+        right: '16px',
+        padding: '4px 8px',
+        background: 'rgba(0, 0, 0, 0.7)',
+        border: '1px solid rgba(59, 130, 246, 0.5)',
+        borderRadius: '4px',
+        fontSize: '12px',
+        fontFamily: 'monospace',
+        color: displayFps > 50 ? '#10b981' : displayFps > 30 ? '#f59e0b' : '#ef4444',
+        backdropFilter: 'blur(10px)',
+        pointerEvents: 'none',
+        zIndex: 100
+      }}>
+        {displayFps} FPS
+      </div>
     </>
   );
 }
