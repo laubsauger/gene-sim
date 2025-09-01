@@ -22,15 +22,15 @@
 
 ### 5. Moon Visual Improvements
 
-- [ ] Add crater texture to moon
-  - [ ] Source realistic moon texture map
-  - [ ] Implement bump mapping for 3D crater depth
-  - [ ] Add normal map for surface detail
+- [x] Add crater texture to moon
+  - [x] Source realistic moon texture map (procedural generation)
+  - [x] Implement bump mapping for 3D crater depth
+  - [ ] Add normal map for surface detail (optional enhancement)
   - [ ] Optional: Use actual NASA moon texture data
-- [ ] Adjust moon material properties:
-  - [ ] Roughness for realistic surface
-  - [ ] Metalness adjustments
-  - [ ] Proper shadow receiving
+- [x] Adjust moon material properties:
+  - [x] Roughness for realistic surface (0.95)
+  - [x] Metalness adjustments (0.0 - non-metallic)
+  - [x] Proper shadow receiving
 
 ### 6. Cloud Rendering Fixes
 
