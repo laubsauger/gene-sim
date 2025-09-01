@@ -130,8 +130,8 @@ export const usePlanet3DStore = create<Planet3DState>()(
     bloomIntensity: 0.32,
     bloomThreshold: 0.25,
     atmosphereIntensity: 1.0, // Default atmosphere glow
-    showLensFlare: true, // Off by default for performance
-    lensFlareIntensity: 0.5, // Moderate intensity
+    showLensFlare: true, // On by default now that it's more subtle
+    lensFlareIntensity: 0.3, // Lower default intensity
     showStarfield: true,
     starCount: 20000, // Default 20k stars
     showTwinkle: true,

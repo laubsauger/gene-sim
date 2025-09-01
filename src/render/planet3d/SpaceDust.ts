@@ -77,6 +77,8 @@ export interface SpaceDustOptions {
   innerRadius?: number;
   sizeRange?: [number, number];
   intensity?: number;
+  isRing?: boolean;  // Create a ring instead of sphere
+  heightRange?: number;  // Vertical thickness of the ring
 }
 
 export function createSpaceDust(options: SpaceDustOptions = {}) {
@@ -85,7 +87,9 @@ export function createSpaceDust(options: SpaceDustOptions = {}) {
     radius = 500,
     innerRadius = 50,
     sizeRange = [0.5, 2.0],
-    intensity = 0.5
+    intensity = 0.5,
+    isRing = false,
+    heightRange = 5
   } = options;
   
   // Create geometry
@@ -94,29 +98,57 @@ export function createSpaceDust(options: SpaceDustOptions = {}) {
   const sizes = new Float32Array(count);
   const brightness = new Float32Array(count);
   
-  // Generate dust particles in a full spherical volume with higher density near orbital plane
+  // Generate dust particles
   for (let i = 0; i < count; i++) {
-    // Use a combination of uniform and concentrated distribution
-    const useOrbitalPlane = Math.random() < 0.6; // 60% near orbital plane
-    
-    if (useOrbitalPlane) {
-      // Concentrated near the orbital plane (ecliptic)
+    if (isRing) {
+      // Create asteroid belt ring configuration
       const angle = Math.random() * Math.PI * 2;
-      const r = innerRadius + Math.pow(Math.random(), 0.7) * (radius - innerRadius); // More dense closer to sun
-      const yOffset = (Math.random() - 0.5) * radius * 0.3; // Flattened distribution
+      
+      // Non-uniform radial distribution - more asteroids in certain regions
+      let r;
+      const clumpiness = Math.random();
+      if (clumpiness < 0.3) {
+        // Inner edge concentration (30%)
+        r = innerRadius + Math.random() * (radius - innerRadius) * 0.3;
+      } else if (clumpiness < 0.6) {
+        // Middle concentration (30%)
+        r = innerRadius + (radius - innerRadius) * (0.4 + Math.random() * 0.2);
+      } else {
+        // Spread throughout (40%)
+        r = innerRadius + Math.random() * (radius - innerRadius);
+      }
+      
+      // Add some radial variation for natural clustering
+      r += Math.sin(angle * 4) * (radius - innerRadius) * 0.05;
+      
+      // Vertical distribution - gaussian-like for realistic disk
+      const yOffset = (Math.random() - 0.5) * 2; // -1 to 1
+      const gaussianY = Math.exp(-yOffset * yOffset * 2) * yOffset * heightRange;
       
       positions[i * 3] = r * Math.cos(angle);
-      positions[i * 3 + 1] = yOffset;
+      positions[i * 3 + 1] = gaussianY;
       positions[i * 3 + 2] = r * Math.sin(angle);
     } else {
-      // Uniform spherical distribution for ambient dust
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(Math.random() * 2 - 1);
-      const r = innerRadius + Math.random() * (radius - innerRadius);
+      // Original spherical distribution
+      const useOrbitalPlane = Math.random() < 0.6;
       
-      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      positions[i * 3 + 2] = r * Math.cos(phi);
+      if (useOrbitalPlane) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = innerRadius + Math.pow(Math.random(), 0.7) * (radius - innerRadius);
+        const yOffset = (Math.random() - 0.5) * radius * 0.3;
+        
+        positions[i * 3] = r * Math.cos(angle);
+        positions[i * 3 + 1] = yOffset;
+        positions[i * 3 + 2] = r * Math.sin(angle);
+      } else {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(Math.random() * 2 - 1);
+        const r = innerRadius + Math.random() * (radius - innerRadius);
+        
+        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+        positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        positions[i * 3 + 2] = r * Math.cos(phi);
+      }
     }
     
     // Size variation - smaller particles further out

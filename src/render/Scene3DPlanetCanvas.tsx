@@ -41,6 +41,7 @@ import { makeMars } from './planet3d/MarsComponent';
 import { createSpaceDust, createPlanetaryDustRing } from './planet3d/SpaceDust';
 import { createVolumetricDust } from './planet3d/VolumetricLight';
 import { createEnhancedStarfield, createNebulaClouds } from './planet3d/EnhancedStarfield';
+import { LensFlareSystem } from './planet3d/LensFlareVanilla';
 import { createAuroraEffect } from './planet3d/AuroraEffect';
 import {
   PLANET_RADIUS,
@@ -124,7 +125,8 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     spaceDust?: ReturnType<typeof createSpaceDust>;
     dustRing?: ReturnType<typeof createPlanetaryDustRing>;
     starfield?: ReturnType<typeof createEnhancedStarfield>;
-    nebulae?: THREE.Group;
+    lensFlareSystem?: LensFlareSystem;
+    nebulae?: ReturnType<typeof createNebulaClouds>;
     volumetricDust?: ReturnType<typeof createVolumetricDust>;
     aurora?: ReturnType<typeof createAuroraEffect>;
     northPoleArrow?: THREE.ArrowHelper;
@@ -268,12 +270,15 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     sunGroup.name = 'SunGroup';
     scene.add(sunGroup);
 
-    // Sun texture
+    // Sun texture - circular to avoid square bloom artifacts
     const sunTexture = new THREE.CanvasTexture((() => {
       const canvas = document.createElement('canvas');
       canvas.width = 256;
       canvas.height = 256;
       const ctx = canvas.getContext('2d')!;
+      // Clear canvas with transparency
+      ctx.clearRect(0, 0, 256, 256);
+      // Create circular gradient
       const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
       gradient.addColorStop(0, 'rgba(255, 255, 240, 1)');
       gradient.addColorStop(0.2, 'rgba(255, 250, 200, 1)');
@@ -281,7 +286,10 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       gradient.addColorStop(0.8, 'rgba(255, 180, 50, 0.5)');
       gradient.addColorStop(1, 'rgba(255, 150, 0, 0)');
       ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 256, 256);
+      // Draw circular sun instead of rectangle
+      ctx.beginPath();
+      ctx.arc(128, 128, 128, 0, Math.PI * 2);
+      ctx.fill();
       return canvas;
     })());
 
@@ -358,6 +366,10 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     // Point light for glow and additional illumination
     const sunPointLight = new THREE.PointLight(0xffcc66, 1.5, MARS_ORBIT_RADIUS * 1.5, 2); // Brighter and further reach for new scale
     sunGroup.add(sunPointLight);
+    
+    // Create lens flare system
+    const lensFlareSystem = new LensFlareSystem();
+    scene.add(lensFlareSystem.getGroup());
 
     // ---------- EARTH STACK (per architecture) ----------
 
@@ -440,15 +452,22 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     // ---------- NEBULA CLOUDS (Optional) ----------
     const nebulae = starfieldState.showNebulae ? createNebulaClouds(9000) : undefined;
     if (nebulae) {
-      scene.add(nebulae);
+      scene.add(nebulae.group);
     }
     
-    // ---------- SPACE DUST for volumetric lighting ----------
+    // ---------- ASTEROID BELT ----------
+    // Create asteroid belt between Mars and where Jupiter would be
+    const ASTEROID_BELT_INNER = MARS_ORBIT_RADIUS * 1.3;  // Start after Mars
+    const ASTEROID_BELT_OUTER = MARS_ORBIT_RADIUS * 2.0;  // End before where Jupiter would be
+    
     const spaceDust = createSpaceDust({
-      count: 12000,  // More particles for larger area
-      radius: MARS_ORBIT_RADIUS * 1.2,  // Extend to cover Mars orbit
-      innerRadius: SUN_RADIUS * 1.5,  // Start from edge of sun
-      intensity: 0.6  // Slightly brighter
+      count: 15000,  // More particles for asteroid belt
+      radius: ASTEROID_BELT_OUTER,  
+      innerRadius: ASTEROID_BELT_INNER,
+      intensity: 0.4,  // Dimmer, more realistic
+      heightRange: 6,  // Thin disk with slight thickness
+      isRing: true,  // Make it a ring in the orbital plane
+      sizeRange: [0.8, 3.0]  // Slightly larger particles for asteroids
     });
     scene.add(spaceDust.mesh);
     
@@ -552,6 +571,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       nebulae,
       volumetricDust,
       aurora,
+      lensFlareSystem,
       northPoleArrow,
       southPoleArrow,
       northPoleCylinder,
@@ -746,6 +766,14 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       const sunGroup = refs.scene.getObjectByName('SunGroup');
       if (sunGroup) {
         sunGroup.visible = planet3DState.showSun;
+      }
+      
+      // Update lens flare
+      if (refs.lensFlareSystem) {
+        refs.lensFlareSystem.setEnabled(planet3DState.showLensFlare && planet3DState.showSun);
+        refs.lensFlareSystem.setIntensity(planet3DState.lensFlareIntensity);
+        // Update lens flare position relative to sun (sun is at origin)
+        refs.lensFlareSystem.update(refs.camera, new THREE.Vector3(0, 0, 0));
       }
       
       // Update bloom effect
@@ -1156,17 +1184,20 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       if (starfieldState.showNebulae && !refs.nebulae) {
         // Create nebulae if needed
         const nebulae = createNebulaClouds(9000);
-        refs.scene.add(nebulae);
+        refs.scene.add(nebulae.group);
         refs.nebulae = nebulae;
       } else if (!starfieldState.showNebulae && refs.nebulae) {
         // Remove nebulae if no longer needed
-        refs.scene.remove(refs.nebulae);
+        refs.scene.remove(refs.nebulae.group);
         refs.nebulae = undefined;
       }
       
-      // Update nebulae visibility
+      // Update nebulae visibility and animation
       if (refs.nebulae) {
-        refs.nebulae.visible = starfieldState.showNebulae;
+        refs.nebulae.group.visible = starfieldState.showNebulae;
+        if (starfieldState.showNebulae) {
+          refs.nebulae.update(t); // Animate nebula clouds
+        }
       }
 
       // Lens flare removed due to positioning issues

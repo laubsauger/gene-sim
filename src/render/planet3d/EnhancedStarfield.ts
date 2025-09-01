@@ -323,74 +323,135 @@ export function createEnhancedStarfield(config: Partial<StarfieldConfig> = {}) {
   };
 }
 
-// Optional: Add nebula clouds for background
+// Enhanced nebula clouds with improved visuals
 export function createNebulaClouds(radius: number = 6000) {
   const group = new THREE.Group();
   group.name = 'NebulaClouds';
   
-  // Create several large billboard quads with nebula textures
-  const nebulaCount = 5;
+  // Create multiple layers for depth
+  const nebulaLayers = [
+    { count: 3, distance: radius * 0.8, sizeRange: [800, 1500], opacity: 0.15 },
+    { count: 5, distance: radius * 0.9, sizeRange: [1000, 2000], opacity: 0.2 },
+    { count: 4, distance: radius * 1.0, sizeRange: [1500, 3000], opacity: 0.25 },
+  ];
   
-  for (let i = 0; i < nebulaCount; i++) {
-    const size = 500 + Math.random() * 1000;
-    const geometry = new THREE.PlaneGeometry(size, size);
+  nebulaLayers.forEach((layer, layerIndex) => {
+    for (let i = 0; i < layer.count; i++) {
+      const size = layer.sizeRange[0] + Math.random() * (layer.sizeRange[1] - layer.sizeRange[0]);
+      const geometry = new THREE.PlaneGeometry(size, size);
+      
+      // Create more complex nebula texture
+      const canvas = document.createElement('canvas');
+      canvas.width = 512; // Higher resolution
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d')!;
+      
+      // Clear canvas
+      ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+      ctx.fillRect(0, 0, 512, 512);
+      
+      // Nebula color palettes with more variety
+      const palettes = [
+        [ // Purple/Blue nebula
+          { r: 138, g: 43, b: 226, name: 'purple' },
+          { r: 75, g: 0, b: 130, name: 'indigo' },
+          { r: 30, g: 144, b: 255, name: 'blue' }
+        ],
+        [ // Pink/Orange nebula
+          { r: 255, g: 20, b: 147, name: 'pink' },
+          { r: 255, g: 105, b: 180, name: 'hotpink' },
+          { r: 255, g: 140, b: 0, name: 'orange' }
+        ],
+        [ // Cyan/Green nebula
+          { r: 0, g: 255, b: 255, name: 'cyan' },
+          { r: 64, g: 224, b: 208, name: 'turquoise' },
+          { r: 0, g: 255, b: 127, name: 'springgreen' }
+        ],
+        [ // Red/Yellow nebula
+          { r: 255, g: 69, b: 0, name: 'orangered' },
+          { r: 255, g: 215, b: 0, name: 'gold' },
+          { r: 255, g: 255, b: 100, name: 'lightyellow' }
+        ]
+      ];
+      
+      const palette = palettes[(i + layerIndex) % palettes.length];
+      
+      // Create multiple overlapping gradients for complexity
+      const numClouds = 3 + Math.floor(Math.random() * 3);
+      for (let j = 0; j < numClouds; j++) {
+        const x = 100 + Math.random() * 312;
+        const y = 100 + Math.random() * 312;
+        const cloudSize = 100 + Math.random() * 150;
+        
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, cloudSize);
+        const color = palette[j % palette.length];
+        
+        // Add noise to the gradient for more natural look
+        const noiseAmount = 0.3;
+        const r = color.r + (Math.random() - 0.5) * 255 * noiseAmount;
+        const g = color.g + (Math.random() - 0.5) * 255 * noiseAmount;
+        const b = color.b + (Math.random() - 0.5) * 255 * noiseAmount;
+        
+        gradient.addColorStop(0, `rgba(${Math.max(0, Math.min(255, r))}, ${Math.max(0, Math.min(255, g))}, ${Math.max(0, Math.min(255, b))}, ${layer.opacity * 0.8})`);
+        gradient.addColorStop(0.3, `rgba(${color.r}, ${color.g}, ${color.b}, ${layer.opacity * 0.5})`);
+        gradient.addColorStop(0.6, `rgba(${color.r}, ${color.g}, ${color.b}, ${layer.opacity * 0.2})`);
+        gradient.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 512, 512);
+      }
     
-    // Create gradient texture procedurally
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d')!;
-    
-    // Create radial gradient
-    const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-    
-    // Nebula colors
-    const colors = [
-      { r: 138, g: 43, b: 226 },  // Purple
-      { r: 30, g: 144, b: 255 },   // Blue
-      { r: 255, g: 20, b: 147 },   // Pink
-      { r: 255, g: 140, b: 0 },    // Orange
-    ];
-    
-    const color = colors[i % colors.length];
-    gradient.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`);
-    gradient.addColorStop(0.5, `rgba(${color.r}, ${color.g}, ${color.b}, 0.1)`);
-    gradient.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
-    
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 256, 256);
-    
-    const texture = new THREE.CanvasTexture(canvas);
-    
-    const material = new THREE.MeshBasicMaterial({
-      map: texture,
-      transparent: true,
-      opacity: 0.2,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    
-    const nebula = new THREE.Mesh(geometry, material);
-    
-    // Position randomly on sphere
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(Math.random() * 2 - 1);
-    
-    nebula.position.set(
-      radius * Math.sin(phi) * Math.cos(theta),
-      radius * Math.sin(phi) * Math.sin(theta),
-      radius * Math.cos(phi)
-    );
-    
-    // Random rotation
-    nebula.rotation.z = Math.random() * Math.PI * 2;
-    
-    // Make it always face the camera (billboard)
-    nebula.lookAt(0, 0, 0);
-    
-    group.add(nebula);
-  }
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+      
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 1.0, // Use full opacity since texture has alpha
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        depthTest: false, // Render in background
+      });
+      
+      const nebula = new THREE.Mesh(geometry, material);
+      
+      // Position randomly on sphere at layer distance
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(Math.random() * 2 - 1);
+      
+      nebula.position.set(
+        layer.distance * Math.sin(phi) * Math.cos(theta),
+        layer.distance * Math.sin(phi) * Math.sin(theta),
+        layer.distance * Math.cos(phi)
+      );
+      
+      // Random rotation for variety
+      nebula.rotation.z = Math.random() * Math.PI * 2;
+      
+      // Make it always face the origin (billboard effect)
+      nebula.lookAt(0, 0, 0);
+      
+      // Add subtle animation data
+      nebula.userData = {
+        rotationSpeed: (Math.random() - 0.5) * 0.0001,
+        driftSpeed: (Math.random() - 0.5) * 0.00005,
+        baseRotation: nebula.rotation.z,
+      };
+      
+      group.add(nebula);
+    }
+  });
   
-  return group;
+  // Return group with update function for animation
+  return {
+    group,
+    update: (time: number) => {
+      group.children.forEach((nebula) => {
+        if (nebula.userData.rotationSpeed) {
+          nebula.rotation.z = nebula.userData.baseRotation + time * nebula.userData.rotationSpeed;
+        }
+      });
+    }
+  };
 }
