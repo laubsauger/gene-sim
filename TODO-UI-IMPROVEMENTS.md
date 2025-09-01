@@ -212,7 +212,24 @@
 - [ ] Verify biome multipliers affect capacity but not regrowth prevention
 - [ ] Add debug visualization to confirm regrowth in all areas
 
-### 12. Distance-Based Culling System
+### 12. Aurora Borealis Effect (COMPLETED)
+- [x] Implemented dynamic aurora at poles
+  - [x] Shader-based aurora curtains
+  - [x] Color variations (green, purple, cyan)
+  - [x] Only visible on night side
+  - [x] Animated movement patterns
+  - [x] Latitude-based intensity
+
+### 13. Lens Flare System (COMPLETED)
+- [x] Added lens flare when looking at sun
+  - [x] Multiple flare elements
+  - [x] Hexagonal aperture shapes
+  - [x] Star burst pattern
+  - [x] Occlusion detection for planet
+  - [x] Screen-space positioning
+  - [x] Intensity based on view angle
+
+### 14. Distance-Based Culling System
 
 - [ ] Implement efficient LOD/culling for distant objects
   - [ ] Core principle: Cull objects that would be < 1 pixel on screen
@@ -241,6 +258,90 @@
   - [ ] Clouds: Reduce quality or cull when < 10 pixels
   - [ ] Atmosphere: Cull when planet < 20 pixels
   - [ ] Fine details: Switch to low-res when planet < 100 pixels
+
+## Advanced Visual Effects (Future Enhancements)
+
+### 13. Weather Systems and Storm Patterns
+- [ ] Create dynamic weather systems that move across the planet
+  - [ ] Storm clouds with different opacity/density
+  - [ ] Lightning effects in storm systems
+  - [ ] Hurricane/cyclone spiral patterns
+  - [ ] Seasonal weather variations
+- [ ] Implementation approach:
+  - [ ] Use noise-based movement patterns
+  - [ ] Particle effects for rain/snow
+  - [ ] Shader-based storm cloud rendering
+
+### 14. City Lights on Night Side
+- [ ] Add glowing city lights on the dark side of the planet
+  - [ ] Cluster lights along coastlines and rivers
+  - [ ] Vary intensity based on "population density"
+  - [ ] Subtle flickering for realism
+  - [ ] Different colors for different regions
+- [ ] Technical approach:
+  - [ ] Emissive texture map for night side
+  - [ ] Mask by sun angle to only show in darkness
+  - [ ] Optional: Link to actual entity population density
+
+### 15. Ocean Effects and Water Rendering
+- [ ] Implement realistic ocean rendering
+  - [ ] Wave displacement using vertex shader
+  - [ ] Specular reflections from sun
+  - [ ] Foam at coastlines
+  - [ ] Underwater caustics (optional)
+- [ ] Water shader features:
+  - [ ] Fresnel effect for realistic water appearance
+  - [ ] Normal mapping for wave details
+  - [ ] Reflection probe for sky reflections
+  - [ ] Depth-based color variation
+
+### 16. Meteor and Shooting Star Effects
+- [ ] Add occasional shooting stars in the background
+  - [ ] Random spawn timing (every 10-30 seconds)
+  - [ ] Fast-moving particle trails
+  - [ ] Bright head with fading tail
+  - [ ] Various colors (white, yellow, blue)
+- [ ] Implementation:
+  - [ ] Particle system with trail renderer
+  - [ ] Random trajectories across sky
+  - [ ] Brief lifespan (1-2 seconds)
+  - [ ] Optional: Meteor showers during special events
+
+### 17. Comet System
+- [ ] Add a comet with dynamic tail
+  - [ ] Elliptical orbit around sun
+  - [ ] Tail always points away from sun
+  - [ ] Brightness varies with distance from sun
+  - [ ] Two-part tail (dust and ion)
+- [ ] Technical details:
+  - [ ] Particle system for tail
+  - [ ] Billboard quad for coma (head)
+  - [ ] Dynamic tail length based on sun distance
+  - [ ] Orbital mechanics simulation
+
+### 18. Nebula Background
+- [ ] Create colorful nebula clouds in deep space
+  - [ ] Multi-layer parallax effect
+  - [ ] Color gradients (purple, blue, pink, orange)
+  - [ ] Subtle animation/movement
+  - [ ] Different nebula types (emission, reflection, dark)
+- [ ] Implementation:
+  - [ ] Large billboard quads with gradient textures
+  - [ ] Multiple layers at different distances
+  - [ ] Very subtle rotation for movement
+  - [ ] Additive blending for glow effect
+
+### 19. Atmospheric Scattering Enhancement
+- [ ] Improve atmospheric rendering for sunsets/sunrises
+  - [ ] Rayleigh scattering for blue sky
+  - [ ] Mie scattering for sun glow
+  - [ ] Orange/red colors at terminator
+  - [ ] Atmospheric fog at horizon
+- [ ] Advanced features:
+  - [ ] Multiple scattering for realistic sky
+  - [ ] Aerial perspective for distant objects
+  - [ ] Ozone layer absorption
+  - [ ] Height-based density falloff
 
 ## Technical Notes
 

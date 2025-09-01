@@ -106,11 +106,22 @@ export function ButtonGroup({ children, style = {} }: { children: React.ReactNod
           const isFirst = index === 0;
           const isLast = index === childCount - 1;
 
+          // Get the existing border from child props to avoid conflicts
+          const childStyle = child.props.style || {};
+          const borderStyle = {
+            borderTopWidth: '1px',
+            borderRightWidth: '1px',
+            borderBottomWidth: '1px',
+            borderLeftWidth: index > 0 ? '0' : '1px',
+            borderStyle: 'solid',
+            borderColor: childStyle.borderColor || '#3b82f6',
+          };
+          
           return React.cloneElement(child as React.ReactElement<any>, {
             style: {
-              ...(child.props.style || {}),
+              ...childStyle,
+              ...borderStyle,
               borderRadius: isFirst ? '4px 0 0 4px' : isLast ? '0 4px 4px 0' : '0',
-              borderLeft: index > 0 ? 'none' : undefined,
               marginLeft: index > 0 ? '-1px' : undefined, // Overlap borders
             },
           });

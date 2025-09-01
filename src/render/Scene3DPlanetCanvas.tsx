@@ -33,6 +33,7 @@ import { updateEntitiesFromBuffers, makeGroundEntities } from './planet3d/Entity
 import { makeMoon } from './planet3d/MoonComponent';
 import { createSpaceDust, createPlanetaryDustRing } from './planet3d/SpaceDust';
 import { createStarfield, createVolumetricDust } from './planet3d/VolumetricLight';
+import { createAuroraEffect } from './planet3d/AuroraEffect';
 import {
   PLANET_RADIUS,
   ATMOSPHERE_THICKNESS,
@@ -99,6 +100,11 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     dustRing?: ReturnType<typeof createPlanetaryDustRing>;
     starfield?: THREE.Group;
     volumetricDust?: ReturnType<typeof createVolumetricDust>;
+    aurora?: ReturnType<typeof createAuroraEffect>;
+    northPoleArrow?: THREE.ArrowHelper;
+    southPoleArrow?: THREE.ArrowHelper;
+    northPoleCylinder?: THREE.Mesh;
+    southPoleCylinder?: THREE.Mesh;
   } | null>(null);
 
   // Listen for pause state from simulation
@@ -138,22 +144,15 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(renderer.domElement);
     
-    // Add Stats panel
+    // Add Stats panel - position at bottom right
     const stats = new Stats();
     stats.showPanel(0); // 0: fps, 1: ms, 2: mb
     stats.dom.style.position = 'absolute';
-    stats.dom.style.top = '16px';
+    stats.dom.style.bottom = '16px';
     stats.dom.style.right = '16px';
+    stats.dom.style.top = 'auto'; // Override default
     mount.appendChild(stats.dom);
     statsRef.current = stats;
-
-    // Verify renderer settings
-    console.log('[Renderer Setup] Settings:', {
-      sortObjects: renderer.sortObjects,
-      logarithmicDepthBuffer: renderer.capabilities.logarithmicDepthBuffer,
-    });
-
-    // Renderer successfully created
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x02060d);
@@ -238,38 +237,6 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       return canvas;
     })());
 
-    // Flare texture (cross pattern)
-    // const flareTexture = new THREE.CanvasTexture((() => {
-    //   const canvas = document.createElement('canvas');
-    //   canvas.width = 512;
-    //   canvas.height = 512;
-    //   const ctx = canvas.getContext('2d')!;
-
-    //   // Horizontal flare
-    //   const hGrad = ctx.createLinearGradient(0, 256, 512, 256);
-    //   hGrad.addColorStop(0, 'rgba(255, 220, 150, 0)');
-    //   hGrad.addColorStop(0.3, 'rgba(255, 230, 180, 0.3)');
-    //   hGrad.addColorStop(0.5, 'rgba(255, 255, 220, 0.6)');
-    //   hGrad.addColorStop(0.7, 'rgba(255, 230, 180, 0.3)');
-    //   hGrad.addColorStop(1, 'rgba(255, 220, 150, 0)');
-
-    //   ctx.fillStyle = hGrad;
-    //   ctx.fillRect(0, 240, 512, 32);
-
-    //   // Vertical flare
-    //   const vGrad = ctx.createLinearGradient(256, 0, 256, 512);
-    //   vGrad.addColorStop(0, 'rgba(255, 220, 150, 0)');
-    //   vGrad.addColorStop(0.3, 'rgba(255, 230, 180, 0.3)');
-    //   vGrad.addColorStop(0.5, 'rgba(255, 255, 220, 0.6)');
-    //   vGrad.addColorStop(0.7, 'rgba(255, 230, 180, 0.3)');
-    //   vGrad.addColorStop(1, 'rgba(255, 220, 150, 0)');
-
-    //   ctx.fillStyle = vGrad;
-    //   ctx.fillRect(240, 0, 32, 512);
-
-    //   return canvas;
-    // })());
-
     // Main sun core - scaled up for visual impact
     const sunCore = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -297,37 +264,6 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     );
     sunGlow.scale.set(SUN_RADIUS * 1.0, SUN_RADIUS * 1.0, 1); // Full sun size
     sunGroup.add(sunGlow);
-
-    // // Lens flare cross
-    // const lensFlare1 = new THREE.Sprite(
-    //   new THREE.SpriteMaterial({
-    //     map: flareTexture,
-    //     color: 0xffffff,
-    //     opacity: 0.4,
-    //     blending: THREE.AdditiveBlending,
-    //     depthWrite: false,
-    //     depthTest: true,
-    //   })
-    // );
-    // lensFlare1.scale.set(15, 15, 1);
-    // lensFlare1.userData.isFlare = true;
-    // sunGroup.add(lensFlare1);
-
-    // // Secondary flare rotated
-    // const lensFlare2 = new THREE.Sprite(
-    //   new THREE.SpriteMaterial({
-    //     map: flareTexture,
-    //     color: 0xffee88,
-    //     opacity: 0.25,
-    //     blending: THREE.AdditiveBlending,
-    //     depthWrite: false,
-    //     depthTest: true,
-    //   })
-    // );
-    // lensFlare2.scale.set(12, 12, 1);
-    // lensFlare2.rotation.z = Math.PI / 4;
-    // lensFlare2.userData.isFlare = true;
-    // sunGroup.add(lensFlare2);
 
     // Middle halo
     const sunHalo = new THREE.Sprite(
@@ -446,6 +382,56 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     });
     scene.add(volumetricDust.mesh);
     
+    // ---------- AURORA BOREALIS ----------
+    const aurora = createAuroraEffect(PLANET_RADIUS);
+    earth.group.add(aurora.mesh); // Add to earth group so it rotates with planet
+
+    // ---------- LENS FLARE ----------
+    // Removed - was causing issues with positioning
+
+    // ---------- DEBUG: POLE MARKERS (SUPER OBVIOUS) ----------
+    // North pole marker (BRIGHT RED arrow pointing up)
+    const northPoleArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 1, 0), // Direction (up)
+      new THREE.Vector3(0, PLANET_RADIUS, 0), // Start right at north pole surface
+      PLANET_RADIUS * 1.5, // VERY LONG arrow
+      0xff0000, // Bright red color
+      PLANET_RADIUS * 0.4, // Large head
+      PLANET_RADIUS * 0.2 // Wide head
+    );
+    northPoleArrow.visible = true; // ALWAYS VISIBLE FOR DEBUG
+    earth.group.add(northPoleArrow); // Add to earth group so it rotates with planet
+
+    // Add a cylinder at north pole for extra visibility
+    const northPoleCylinder = new THREE.Mesh(
+      new THREE.CylinderGeometry(PLANET_RADIUS * 0.05, PLANET_RADIUS * 0.05, PLANET_RADIUS * 2, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff0000 })
+    );
+    northPoleCylinder.position.y = PLANET_RADIUS;
+    northPoleCylinder.visible = true;
+    earth.group.add(northPoleCylinder);
+
+    // South pole marker (BRIGHT BLUE arrow pointing down)
+    const southPoleArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, -1, 0), // Direction (down)
+      new THREE.Vector3(0, -PLANET_RADIUS, 0), // Start right at south pole surface
+      PLANET_RADIUS * 1.5, // VERY LONG arrow
+      0x00ffff, // Bright cyan color
+      PLANET_RADIUS * 0.4, // Large head
+      PLANET_RADIUS * 0.2 // Wide head
+    );
+    southPoleArrow.visible = true; // ALWAYS VISIBLE FOR DEBUG
+    earth.group.add(southPoleArrow); // Add to earth group so it rotates with planet
+
+    // Add a cylinder at south pole for extra visibility
+    const southPoleCylinder = new THREE.Mesh(
+      new THREE.CylinderGeometry(PLANET_RADIUS * 0.05, PLANET_RADIUS * 0.05, PLANET_RADIUS * 2, 8),
+      new THREE.MeshBasicMaterial({ color: 0x00ffff })
+    );
+    southPoleCylinder.position.y = -PLANET_RADIUS;
+    southPoleCylinder.visible = true;
+    earth.group.add(southPoleCylinder);
+
     // ---------- PLANETARY DUST RING for shadow shafts ----------
     // Disabled - was creating unwanted ring appearance around Earth
     // const dustRing = createPlanetaryDustRing(PLANET_RADIUS, {
@@ -480,7 +466,12 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       spaceDust,
       dustRing,
       starfield,
-      volumetricDust
+      volumetricDust,
+      aurora,
+      northPoleArrow,
+      southPoleArrow,
+      northPoleCylinder,
+      southPoleCylinder
     };
 
     // ---------- RESIZE ----------
@@ -596,6 +587,19 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       }
       if (refs.testSphere) {
         refs.testSphere.visible = controls.showDebug;
+      }
+      // Update pole markers visibility
+      if (refs.northPoleArrow) {
+        refs.northPoleArrow.visible = true; // Always visible for debug
+      }
+      if (refs.southPoleArrow) {
+        refs.southPoleArrow.visible = true; // Always visible for debug
+      }
+      if (refs.northPoleCylinder) {
+        refs.northPoleCylinder.visible = true;
+      }
+      if (refs.southPoleCylinder) {
+        refs.southPoleCylinder.visible = true;
       }
 
       // Control sun visibility
@@ -758,6 +762,17 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         });
       }
       
+      // Update aurora effect
+      if (refs.aurora) {
+        refs.aurora.update(
+          refs.clock.elapsedTime * 1000,
+          sunToEarth,
+          refs.camera.position
+        );
+      }
+
+      // Lens flare removed due to positioning issues
+
       // Update planetary dust ring (disabled)
       // if (refs.dustRing) {
       //   refs.dustRing.update(
