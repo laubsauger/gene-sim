@@ -54,6 +54,24 @@ export function DevControlsPlanet3D({
     setCameraTarget,
     cameraMode,
     setCameraMode,
+    showBloom,
+    setShowBloom,
+    bloomIntensity,
+    setBloomIntensity,
+    bloomThreshold,
+    setBloomThreshold,
+    showStarfield,
+    setShowStarfield,
+    starCount,
+    setStarCount,
+    showTwinkle,
+    setShowTwinkle,
+    twinkleIntensity,
+    setTwinkleIntensity,
+    showMilkyWay,
+    setShowMilkyWay,
+    showNebulae,
+    setShowNebulae,
   } = usePlanet3DStore();
   
   return (
@@ -327,6 +345,110 @@ export function DevControlsPlanet3D({
           />
           God Rays
         </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', marginTop: '3px' }}>
+          <input
+            type="checkbox"
+            checked={showBloom}
+            onChange={(e) => setShowBloom(e.target.checked)}
+          />
+          Bloom Effect
+        </label>
+        {showBloom && (
+          <>
+            <div style={{ marginTop: '5px', marginLeft: '20px' }}>
+              <label style={{ fontSize: '9px', color: '#888' }}>Intensity: {bloomIntensity.toFixed(1)}</label>
+              <input
+                type="range"
+                min="0.1"
+                max="3"
+                step="0.1"
+                value={bloomIntensity}
+                onChange={(e) => setBloomIntensity(parseFloat(e.target.value))}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div style={{ marginLeft: '20px' }}>
+              <label style={{ fontSize: '9px', color: '#888' }}>Threshold: {bloomThreshold.toFixed(2)}</label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={bloomThreshold}
+                onChange={(e) => setBloomThreshold(parseFloat(e.target.value))}
+                style={{ width: '100%' }}
+              />
+            </div>
+          </>
+        )}
+      </div>
+      
+      <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
+        <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
+          Starfield
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={showStarfield}
+            onChange={(e) => setShowStarfield(e.target.checked)}
+          />
+          Show Stars
+        </label>
+        {showStarfield && (
+          <>
+            <div style={{ marginTop: '5px', marginLeft: '20px' }}>
+              <label style={{ fontSize: '9px', color: '#888' }}>Count: {starCount.toLocaleString()} (requires refresh)</label>
+              <input
+                type="range"
+                min="1000"
+                max="100000"
+                step="1000"
+                value={starCount}
+                onChange={(e) => setStarCount(parseInt(e.target.value))}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', marginLeft: '20px', marginTop: '3px' }}>
+              <input
+                type="checkbox"
+                checked={showTwinkle}
+                onChange={(e) => setShowTwinkle(e.target.checked)}
+              />
+              Twinkle
+            </label>
+            {showTwinkle && (
+              <div style={{ marginLeft: '40px' }}>
+                <label style={{ fontSize: '9px', color: '#888' }}>Intensity: {twinkleIntensity.toFixed(1)}</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={twinkleIntensity}
+                  onChange={(e) => setTwinkleIntensity(parseFloat(e.target.value))}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', marginLeft: '20px', marginTop: '3px' }}>
+              <input
+                type="checkbox"
+                checked={showMilkyWay}
+                onChange={(e) => setShowMilkyWay(e.target.checked)}
+              />
+              Milky Way Band (requires refresh)
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', marginLeft: '20px', marginTop: '3px' }}>
+              <input
+                type="checkbox"
+                checked={showNebulae}
+                onChange={(e) => setShowNebulae(e.target.checked)}
+              />
+              Nebula Clouds
+            </label>
+          </>
+        )}
       </div>
       
       <div style={{ paddingBottom: '5px', marginBottom: '5px' }}>

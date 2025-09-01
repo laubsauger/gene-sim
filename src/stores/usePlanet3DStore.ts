@@ -15,6 +15,17 @@ interface Planet3DState {
   showAurora: boolean;
   showSpaceDust: boolean;
   showVolumetricDust: boolean;
+  showBloom: boolean;
+  bloomIntensity: number;
+  bloomThreshold: number;
+  
+  // Starfield configuration
+  showStarfield: boolean;
+  starCount: number; // 1k to 100k
+  showTwinkle: boolean;
+  twinkleIntensity: number; // 0-1
+  showMilkyWay: boolean;
+  showNebulae: boolean;
   
   // Debug
   showDebug: boolean;
@@ -42,6 +53,7 @@ interface Planet3DState {
   toggleShowAurora: () => void;
   toggleShowSpaceDust: () => void;
   toggleShowVolumetricDust: () => void;
+  toggleShowBloom: () => void;
   toggleShowDebug: () => void;
   toggleShowPoleMarkers: () => void;
   toggleOrbitalMode: () => void;
@@ -60,6 +72,9 @@ interface Planet3DState {
   setShowAurora: (value: boolean) => void;
   setShowSpaceDust: (value: boolean) => void;
   setShowVolumetricDust: (value: boolean) => void;
+  setShowBloom: (value: boolean) => void;
+  setBloomIntensity: (value: number) => void;
+  setBloomThreshold: (value: number) => void;
   setShowDebug: (value: boolean) => void;
   setShowPoleMarkers: (value: boolean) => void;
   setOrbitalMode: (value: boolean) => void;
@@ -69,6 +84,14 @@ interface Planet3DState {
   setCameraTarget: (target: 'sun' | 'venus' | 'earth' | 'mars' | 'moon') => void;
   setOrbitalSpeed: (speed: number) => void;
   setCameraMode: (mode: 'free' | 'geostationary') => void;
+  
+  // Starfield setters
+  setShowStarfield: (value: boolean) => void;
+  setStarCount: (count: number) => void;
+  setShowTwinkle: (value: boolean) => void;
+  setTwinkleIntensity: (intensity: number) => void;
+  setShowMilkyWay: (value: boolean) => void;
+  setShowNebulae: (value: boolean) => void;
 }
 
 export const usePlanet3DStore = create<Planet3DState>()(
@@ -84,6 +107,15 @@ export const usePlanet3DStore = create<Planet3DState>()(
     showAurora: true,
     showSpaceDust: true,
     showVolumetricDust: true,
+    showBloom: true, // On by default with reduced intensity
+    bloomIntensity: 0.45,
+    bloomThreshold: 0.175,
+    showStarfield: true,
+    starCount: 20000, // Default 20k stars
+    showTwinkle: true,
+    twinkleIntensity: 0.3,
+    showMilkyWay: true,
+    showNebulae: false, // Off by default for performance
     showDebug: false,
     showPoleMarkers: false,
     orbitalMode: true,
@@ -105,6 +137,7 @@ export const usePlanet3DStore = create<Planet3DState>()(
     toggleShowAurora: () => set((state) => ({ showAurora: !state.showAurora })),
     toggleShowSpaceDust: () => set((state) => ({ showSpaceDust: !state.showSpaceDust })),
     toggleShowVolumetricDust: () => set((state) => ({ showVolumetricDust: !state.showVolumetricDust })),
+    toggleShowBloom: () => set((state) => ({ showBloom: !state.showBloom })),
     toggleShowDebug: () => set((state) => ({ showDebug: !state.showDebug })),
     toggleShowPoleMarkers: () => set((state) => ({ showPoleMarkers: !state.showPoleMarkers })),
     toggleOrbitalMode: () => set((state) => ({ orbitalMode: !state.orbitalMode })),
@@ -123,6 +156,9 @@ export const usePlanet3DStore = create<Planet3DState>()(
     setShowAurora: (value) => set({ showAurora: value }),
     setShowSpaceDust: (value) => set({ showSpaceDust: value }),
     setShowVolumetricDust: (value) => set({ showVolumetricDust: value }),
+    setShowBloom: (value) => set({ showBloom: value }),
+    setBloomIntensity: (value) => set({ bloomIntensity: value }),
+    setBloomThreshold: (value) => set({ bloomThreshold: value }),
     setShowDebug: (value) => set({ showDebug: value }),
     setShowPoleMarkers: (value) => set({ showPoleMarkers: value }),
     setOrbitalMode: (value) => set({ orbitalMode: value }),
@@ -132,6 +168,14 @@ export const usePlanet3DStore = create<Planet3DState>()(
     setCameraTarget: (target) => set({ cameraTarget: target }),
     setOrbitalSpeed: (speed) => set({ orbitalSpeed: speed }),
     setCameraMode: (mode) => set({ cameraMode: mode }),
+    
+    // Starfield setters
+    setShowStarfield: (value) => set({ showStarfield: value }),
+    setStarCount: (count) => set({ starCount: count }),
+    setShowTwinkle: (value) => set({ showTwinkle: value }),
+    setTwinkleIntensity: (intensity) => set({ twinkleIntensity: intensity }),
+    setShowMilkyWay: (value) => set({ showMilkyWay: value }),
+    setShowNebulae: (value) => set({ showNebulae: value }),
   }))
 );
 

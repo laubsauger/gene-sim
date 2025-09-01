@@ -2,10 +2,8 @@
 
 ## Scene3DPlanetCanvas Enhancements
 
-- [x] Add camera mode toggle:
-  - [x] Geostationary (locked to Earth rotation)
-  - [x] Free orbit (current behavior)
-  - [x] Smooth transition between modes
+- [x] Geostationary
+  - [x] Geostationary works for earth but needs to work with other planets when jumping between them
 
 ### 4c. Cinematic Zoom Animation Controls / Planet Target resp Camera target change animation
 
@@ -22,49 +20,22 @@
 
 ### 5. Moon Visual Improvements
 
-- [x] Add crater texture to moon
-  - [x] Source realistic moon texture map (procedural generation)
-  - [x] Implement bump mapping for 3D crater depth
-  - [ ] Add normal map for surface detail (optional enhancement)
-  - [ ] Optional: Use actual NASA moon texture data
-- [x] Adjust moon material properties:
-  - [x] Roughness for realistic surface (0.95)
-  - [x] Metalness adjustments (0.0 - non-metallic)
-  - [x] Proper shadow receiving
-
-### 6. Cloud Rendering Fixes
-
-- [x] Adjust cloud rotation speed
-- [x] too slow currently. constant for cloud speed does not seem to work
-
-## Implementation Priority
-
-### Phase 2 (Visual Polish)
-
-1. Moon textures and materials
-
-### Phase 3 (Fine-tuning)
-
-1. Camera modes
-2. Performance optimizations
-3. Lighting enhancements
-
-## Additional Visual Enhancements
+- [ ] Moon: Add normal map for surface detail (optional enhancement)
 
 ### 7. Lighting & Atmosphere Improvements
 
-- [ ] Increase day/night terminator band width
-  - [ ] Adjust atmosphere scattering parameters
-  - [ ] Widen the twilight zone for more gradual transition
-  - [ ] Fine-tune sunset/sunrise colors in terminator region
+- [x] Increase day/night terminator band width
+  - [x] Adjust atmosphere scattering parameters
+  - [x] Widen the twilight zone for more gradual transition (from 0.5 to 0.7 range)
+  - [x] Fine-tune sunset/sunrise colors in terminator region
   - [ ] Add atmospheric glow intensity control
 
 ### 8. Bloom & Post-processing Effects
 
-- [ ] Add optional bloom effect for orbit mode
-  - [ ] Toggle in planet 3d controls
-  - [ ] Adjustable bloom intensity slider
-  - [ ] Bloom threshold control
+- [x] Add optional bloom effect for orbit mode
+  - [x] Toggle in planet 3d controls
+  - [x] Adjustable bloom intensity slider
+  - [x] Bloom threshold control
   - [ ] Performance-aware (disable on low-end devices)
 - [ ] Additional lighting effects:
   - [ ] Lens flare options for sun
@@ -74,20 +45,20 @@
 
 ### 9. Starfield/Skybox System
 
-- [ ] Expand / update hyper-efficient configurable star skybox
-  - [ ] Configurable star density (sparse to dense)
-  - [ ] Variable star sizes and brightness
-  - [ ] Subtle color variation (white, blue, yellow, red stars)
-- [ ] Performance optimizations:
-  - [ ] Use point sprites or instanced geometry
-  - [ ] Frustum culling for off-screen stars
-  - [ ] Static batching for distant stars
+- [x] Expand / update hyper-efficient configurable star skybox
+  - [x] Configurable star density (sparse to dense)
+  - [x] Variable star sizes and brightness
+  - [x] Subtle color variation (white, blue, yellow, red stars)
+- [x] Performance optimizations:
+  - [x] Use point sprites or instanced geometry
+  - [x] Frustum culling for off-screen stars
+  - [x] Static batching for distant stars
   - [ ] Optional: Use texture atlas for star varieties
-- [ ] Configuration options:
-  - [ ] Star count slider (1k to 100k stars)
-  - [ ] Twinkle effect toggle
-  - [ ] Milky way band toggle
-  - [ ] Nebula clouds (subtle, optional)
+- [x] Configuration options:
+  - [x] Star count slider (1k to 100k stars)
+  - [x] Twinkle effect toggle
+  - [x] Milky way band toggle
+  - [x] Nebula clouds (subtle, optional)
 - [ ] Consider using:
   - [ ] BufferGeometry with custom shaders
   - [ ] GPU-based star positioning
@@ -144,11 +115,11 @@
   - [ ] Ensure even cells with capacity of 1-2 can regrow
   - [ ] Test across different biome types with varying capacities
 - [ ] Verify biome multipliers affect capacity but not regrowth prevention
-- [ ] Add debug visualization to confirm regrowth in all areas
+- [ ] Improve debug visualization overlay to confirm regrowth in all areas and show potential for food / thepretica;l capacity ata given spot bsased on bionme in addition to current food distribution
 
 ### 14. Distance-Based Culling System
 
-- [ ] Implement efficient LOD/culling for distant objects
+- [ ] Implement efficient LOD/culling for distant objects - IF WERE NOT ALREADY DOING THAt. i cam see some saort of LOD happening lready so planet atmosphere is already disappearing at a certain zoom. not sure if thats the coorrect way so investigae bevfore duplicating / getting anything n3q
   - [ ] Core principle: Cull objects that would be < 1 pixel on screen
   - [ ] Calculate screen-space size based on:
     - [ ] Object world size
@@ -170,7 +141,7 @@
   - [ ] Simulation continues regardless of rendering
   - [ ] Smooth transitions when objects appear/disappear
   - [ ] No popping artifacts
-- [ ] Specific thresholds:
+- [ ] Specific thresholds:x
   - [ ] Entities: Cull when < 0.5 pixels
   - [ ] Clouds: Reduce quality or cull when < 10 pixels
   - [ ] Atmosphere: Cull when planet < 20 pixels
@@ -179,6 +150,7 @@
 ## Advanced Visual Effects
 
 ### 13. Weather Systems and Storm Patterns
+
 - [ ] Create dynamic weather systems that move across the planet
   - [ ] Storm clouds with different opacity/density
   - [ ] Lightning effects in storm systems
@@ -189,6 +161,7 @@
   - [ ] Shader-based storm cloud rendering
 
 ### 15. Ocean Effects and Water Rendering
+
 - [ ] Implement realistic ocean rendering
   - [ ] Wave displacement using vertex shader
   - [ ] Specular reflections from sun
@@ -199,6 +172,7 @@
   - [ ] Depth-based color variation
 
 ### 16. Meteor and Shooting Star Effects
+
 - [ ] Add occasional shooting stars in the background
   - [ ] Random spawn timing (every 10-30 seconds)
   - [ ] Fast-moving particle trails
@@ -211,6 +185,7 @@
   - [ ] Optional: Meteor showers during special events
 
 ### 17. Comet System
+
 - [ ] Add a comet with dynamic tail
   - [ ] Elliptical orbit around sun
   - [ ] Tail always points away from sun
@@ -223,6 +198,7 @@
   - [ ] Orbital mechanics simulation
 
 ### 18. Nebula Background
+
 - [ ] Create colorful nebula clouds in deep space
   - [ ] Multi-layer parallax effect
   - [ ] Color gradients (purple, blue, pink, orange)
@@ -235,6 +211,7 @@
   - [ ] Additive blending for glow effect
 
 ### 19. Atmospheric Scattering Enhancement
+
 - [ ] Improve atmospheric rendering for sunsets/sunrises
   - [ ] Rayleigh scattering for blue sky
   - [ ] Mie scattering for sun glow (should already be present to a degree)
@@ -247,11 +224,13 @@
 ## Technical Notes
 
 ### Collapsible Components
+
 - Use React state for collapsed/expanded
 - CSS transitions for smooth animations
 - Consider using a shared hook for collapsible behavior
 
 ### Texture Resources
+
 - Moon: Consider NASA's CGI Moon Kit or similar public domain resources
 - Ensure textures are optimized for web (compressed, appropriate resolution)
 
@@ -261,11 +240,13 @@
 - Ensure texture.wrapS and texture.wrapT are set to THREE.RepeatWrapping
 
 ### Lighting Implementation Notes
+
 - Terminator band: Modify atmosphere shader's scattering calculation
 - Bloom: Use THREE.UnrealBloomPass from postprocessing examples
 - Consider EffectComposer for managing multiple post-processing passes
 
 ## Testing Checklist
+
 - [ ] All controls function correctly in each render mode
 - [ ] Collapsible panels save state between sessions
 - [ ] No performance degradation with new textures

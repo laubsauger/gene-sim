@@ -2,6 +2,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import Stats from 'three/addons/libs/stats.module.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import type { SimClient } from '../client/setupSimClientHybrid';
 import type { MainMsg } from '../sim/types';
 import { DevControlsPlanet3D } from '../ui/DevControlsPlanet3D';
@@ -35,7 +39,8 @@ import { makeMoon } from './planet3d/MoonComponent';
 import { makeVenus } from './planet3d/VenusComponent';
 import { makeMars } from './planet3d/MarsComponent';
 import { createSpaceDust, createPlanetaryDustRing } from './planet3d/SpaceDust';
-import { createStarfield, createVolumetricDust } from './planet3d/VolumetricLight';
+import { createVolumetricDust } from './planet3d/VolumetricLight';
+import { createEnhancedStarfield, createNebulaClouds } from './planet3d/EnhancedStarfield';
 import { createAuroraEffect } from './planet3d/AuroraEffect';
 import {
   PLANET_RADIUS,
@@ -108,7 +113,8 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     atmoDepth?: THREE.Mesh;
     spaceDust?: ReturnType<typeof createSpaceDust>;
     dustRing?: ReturnType<typeof createPlanetaryDustRing>;
-    starfield?: THREE.Group;
+    starfield?: ReturnType<typeof createEnhancedStarfield>;
+    nebulae?: THREE.Group;
     volumetricDust?: ReturnType<typeof createVolumetricDust>;
     aurora?: ReturnType<typeof createAuroraEffect>;
     northPoleArrow?: THREE.ArrowHelper;
@@ -193,6 +199,27 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     controls.rotateSpeed = 0.5;
     controls.zoomSpeed = 1.0;
     controls.target.set(EARTH_ORBIT_RADIUS, 0, 0); // Look at Earth's initial position
+    
+    // Create EffectComposer for post-processing
+    const composer = new EffectComposer(renderer);
+    
+    // Add render pass (renders the scene)
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    
+    // Add bloom pass (optional, controlled by state)
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(width, height),
+      0.45,  // intensity (reduced from 1.5)
+      0.4,   // radius
+      0.175  // threshold (reduced from 0.85)
+    );
+    bloomPass.enabled = true; // Start enabled with lower intensity
+    composer.addPass(bloomPass);
+    
+    // Add output pass for proper color space conversion
+    const outputPass = new OutputPass();
+    composer.addPass(outputPass);
 
     // Add ambient light for debugging
     const ambientLight = new THREE.AmbientLight(0x404040, 0.1); // Reduced for better shadows
@@ -384,9 +411,27 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     // Add moon directly to scene, not to earth group
     scene.add(moon);
     
-    // ---------- STARFIELD BACKGROUND ----------
-    const starfield = createStarfield(8000, 25000); // Far away starfield with multiple layers
-    scene.add(starfield);
+    // ---------- ENHANCED STARFIELD BACKGROUND ----------
+    const starfieldState = storeRef.current.getState();
+    const starfield = createEnhancedStarfield({
+      starCount: starfieldState.starCount,
+      radius: 8000,
+      densityVariation: true,
+      milkyWayBand: starfieldState.showMilkyWay,
+      sizeRange: [0.5, 3.0],
+      colorVariation: true,
+      twinkleEffect: starfieldState.showTwinkle,
+      twinkleIntensity: starfieldState.twinkleIntensity,
+      useLOD: true,
+      frustumCulling: true,
+    });
+    scene.add(starfield.group);
+    
+    // ---------- NEBULA CLOUDS (Optional) ----------
+    const nebulae = starfieldState.showNebulae ? createNebulaClouds(9000) : undefined;
+    if (nebulae) {
+      scene.add(nebulae);
+    }
     
     // ---------- SPACE DUST for volumetric lighting ----------
     const spaceDust = createSpaceDust({
@@ -475,6 +520,8 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     // Store refs (clouds temporarily null for debugging)
     sceneRef.current = {
       renderer,
+      composer,
+      bloomPass,
       scene,
       camera,
       controls,
@@ -492,6 +539,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       spaceDust,
       dustRing,
       starfield,
+      nebulae,
       volumetricDust,
       aurora,
       northPoleArrow,
@@ -505,6 +553,8 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       const w = mount.clientWidth;
       const h = mount.clientHeight;
       renderer.setSize(w, h);
+      composer.setSize(w, h);
+      bloomPass.resolution.set(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     };
@@ -513,6 +563,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     return () => {
       window.removeEventListener("resize", onResize);
       controls.dispose();
+      composer.dispose();
       renderer.dispose();
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
@@ -664,6 +715,13 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       if (sunGroup) {
         sunGroup.visible = planet3DState.showSun;
       }
+      
+      // Update bloom effect
+      if (refs.bloomPass) {
+        refs.bloomPass.enabled = planet3DState.showBloom;
+        refs.bloomPass.strength = planet3DState.bloomIntensity;
+        refs.bloomPass.threshold = planet3DState.bloomThreshold;
+      }
 
       // Handle camera planet transition animation
       const transition = cameraTransitionRef.current;
@@ -790,10 +848,45 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         }
       }
 
-      // Geostationary camera mode - maintains position relative to Earth's surface
-      if (planet3DState.cameraMode === 'geostationary' && planet3DState.cameraTarget === 'earth') {
-        // Calculate current camera position relative to Earth
-        const cameraRelativePos = refs.camera.position.clone().sub(earthPos);
+      // Geostationary camera mode - maintains position relative to target planet's surface
+      if (planet3DState.cameraMode === 'geostationary') {
+        // Get the target planet's position and rotation speed
+        let targetPos = new THREE.Vector3();
+        let rotationSpeed = 0;
+        
+        switch (planet3DState.cameraTarget) {
+          case 'earth':
+            targetPos = earthPos;
+            rotationSpeed = EARTH_ROTATION_SPEED;
+            break;
+          case 'mars':
+            targetPos = marsPos;
+            rotationSpeed = MARS_ROTATION_SPEED;
+            break;
+          case 'venus':
+            targetPos = venusPos;
+            rotationSpeed = VENUS_ROTATION_SPEED;
+            break;
+          case 'moon':
+            // Moon is tidally locked, so its rotation matches its orbit
+            targetPos.set(
+              earthPos.x + Math.cos(refs.clock.elapsedTime * MOON_ORBIT_SPEED * planet3DState.orbitalSpeed) * MOON_ORBIT_RADIUS,
+              earthPos.y + Math.sin(refs.clock.elapsedTime * MOON_ORBIT_SPEED * planet3DState.orbitalSpeed) * MOON_ORBIT_RADIUS * Math.sin(MOON_ORBITAL_INCLINATION),
+              earthPos.z + Math.sin(refs.clock.elapsedTime * MOON_ORBIT_SPEED * planet3DState.orbitalSpeed) * MOON_ORBIT_RADIUS * Math.cos(MOON_ORBITAL_INCLINATION)
+            );
+            rotationSpeed = MOON_ORBIT_SPEED; // Moon rotates at same speed as orbit
+            break;
+          case 'sun':
+            targetPos.set(0, 0, 0);
+            rotationSpeed = 0.01; // Sun rotates slowly
+            break;
+          default:
+            targetPos = earthPos;
+            rotationSpeed = EARTH_ROTATION_SPEED;
+        }
+        
+        // Calculate current camera position relative to target
+        const cameraRelativePos = refs.camera.position.clone().sub(targetPos);
         const currentDistance = cameraRelativePos.length();
         
         // Calculate the current angle of the camera relative to Earth's center
@@ -802,7 +895,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         // If we haven't stored the geostationary offset yet, calculate it
         if (!geostationaryOffsetRef.current) {
           geostationaryOffsetRef.current = {
-            angle: currentAngle - refs.clock.elapsedTime * EARTH_ROTATION_SPEED * planet3DState.orbitalSpeed,
+            angle: currentAngle - refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed,
             height: cameraRelativePos.y,
             distance: Math.sqrt(cameraRelativePos.x * cameraRelativePos.x + cameraRelativePos.z * cameraRelativePos.z)
           };
@@ -810,32 +903,32 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         
         // Update the stored offset whenever the user moves the camera
         // This makes the new position the geostationary reference point
-        const expectedAngle = geostationaryOffsetRef.current.angle + refs.clock.elapsedTime * EARTH_ROTATION_SPEED * planet3DState.orbitalSpeed;
+        const expectedAngle = geostationaryOffsetRef.current.angle + refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed;
         const angleDiff = Math.abs(currentAngle - expectedAngle);
         
-        // If camera has moved significantly (user dragged it), update the reference
+        // If camera has moved significantly (user dragged it) or target changed, update the reference
         if (angleDiff > 0.01 || Math.abs(currentDistance - geostationaryOffsetRef.current.distance) > 1) {
           geostationaryOffsetRef.current = {
-            angle: currentAngle - refs.clock.elapsedTime * EARTH_ROTATION_SPEED * planet3DState.orbitalSpeed,
+            angle: currentAngle - refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed,
             height: cameraRelativePos.y,
             distance: Math.sqrt(cameraRelativePos.x * cameraRelativePos.x + cameraRelativePos.z * cameraRelativePos.z)
           };
         }
         
-        // Apply the geostationary rotation
-        const earthRotation = refs.clock.elapsedTime * EARTH_ROTATION_SPEED * planet3DState.orbitalSpeed;
-        const geostationaryAngle = geostationaryOffsetRef.current.angle + earthRotation;
+        // Apply the geostationary rotation for the target planet
+        const planetRotation = refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed;
+        const geostationaryAngle = geostationaryOffsetRef.current.angle + planetRotation;
         
-        // Calculate new position that maintains the same relative position to Earth's surface
+        // Calculate new position that maintains the same relative position to planet's surface
         const newCameraPos = new THREE.Vector3(
-          earthPos.x + Math.cos(geostationaryAngle) * geostationaryOffsetRef.current.distance,
-          earthPos.y + geostationaryOffsetRef.current.height,
-          earthPos.z + Math.sin(geostationaryAngle) * geostationaryOffsetRef.current.distance
+          targetPos.x + Math.cos(geostationaryAngle) * geostationaryOffsetRef.current.distance,
+          targetPos.y + geostationaryOffsetRef.current.height,
+          targetPos.z + Math.sin(geostationaryAngle) * geostationaryOffsetRef.current.distance
         );
         
         // Apply the position (no lerping - direct positioning for precise geostationary orbit)
         refs.camera.position.copy(newCameraPos);
-        refs.controls.target.copy(earthPos);
+        refs.controls.target.copy(targetPos);
       } else {
         // Reset geostationary offset when switching to free mode
         geostationaryOffsetRef.current = null;
@@ -903,6 +996,10 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
           earthPos.y + my,  // Moon's orbit has vertical component due to inclination
           earthPos.z + mz
         );
+        
+        // Tidal locking - moon rotates once per orbit to always show same face to Earth
+        // The rotation needs to match the orbital position
+        refs.moon.rotation.y = moonAngle + Math.PI / 2; // PI/2 offset to orient the same face toward Earth
       }
 
       // Update sun's light to shine from origin (sun position) toward Earth
@@ -982,6 +1079,41 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
           refs.camera.position
         );
       }
+      
+      // Update starfield - rebuild if configuration changed
+      const starfieldState = storeRef.current.getState();
+      if (refs.starfield) {
+        refs.starfield.group.visible = starfieldState.showStarfield;
+        
+        // Check if we need to rebuild starfield (star count or Milky Way changed)
+        // Note: This is a limitation - changing star count or Milky Way requires rebuilding
+        // For now, just update what we can dynamically
+        
+        // Update twinkle animation
+        if (starfieldState.showTwinkle && starfieldState.showStarfield) {
+          refs.starfield.update(refs.clock.elapsedTime);
+        }
+        
+        // Update twinkle intensity if changed
+        refs.starfield.setTwinkleIntensity(starfieldState.twinkleIntensity);
+      }
+      
+      // Handle nebulae - create or remove as needed
+      if (starfieldState.showNebulae && !refs.nebulae) {
+        // Create nebulae if needed
+        const nebulae = createNebulaClouds(9000);
+        refs.scene.add(nebulae);
+        refs.nebulae = nebulae;
+      } else if (!starfieldState.showNebulae && refs.nebulae) {
+        // Remove nebulae if no longer needed
+        refs.scene.remove(refs.nebulae);
+        refs.nebulae = undefined;
+      }
+      
+      // Update nebulae visibility
+      if (refs.nebulae) {
+        refs.nebulae.visible = starfieldState.showNebulae;
+      }
 
       // Lens flare removed due to positioning issues
 
@@ -1023,7 +1155,8 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         statsRef.current.update();
       }
 
-      refs.renderer.render(refs.scene, refs.camera);
+      // Use composer for rendering (handles bloom and other post-processing)
+      refs.composer.render();
     };
 
     animate();

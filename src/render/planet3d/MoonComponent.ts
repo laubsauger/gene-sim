@@ -12,18 +12,59 @@ function createMoonTextures() {
   colorCanvas.height = height;
   const colorCtx = colorCanvas.getContext('2d')!;
   
-  // Base moon color - grayish
-  colorCtx.fillStyle = '#c8c8c8';
+  // Base moon color - slightly varied gray
+  const gradient = colorCtx.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, '#d0d0d0');
+  gradient.addColorStop(0.5, '#c8c8c8');
+  gradient.addColorStop(1, '#c0c0c0');
+  colorCtx.fillStyle = gradient;
   colorCtx.fillRect(0, 0, width, height);
   
-  // Add noise for surface variation
-  for (let i = 0; i < 10000; i++) {
+  // Add larger scale noise patterns for regions
+  for (let i = 0; i < 50; i++) {
     const x = Math.random() * width;
     const y = Math.random() * height;
-    const brightness = 180 + Math.random() * 40;
-    const alpha = Math.random() * 0.3;
+    const radius = Math.random() * 100 + 50;
+    const brightness = 160 + Math.random() * 60;
+    
+    const noiseGradient = colorCtx.createRadialGradient(x, y, 0, x, y, radius);
+    noiseGradient.addColorStop(0, `rgba(${brightness}, ${brightness}, ${brightness}, 0.3)`);
+    noiseGradient.addColorStop(1, `rgba(${brightness}, ${brightness}, ${brightness}, 0)`);
+    
+    colorCtx.fillStyle = noiseGradient;
+    colorCtx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  }
+  
+  // Add fine noise for surface texture
+  for (let i = 0; i < 20000; i++) {
+    const x = Math.random() * width;
+    const y = Math.random() * height;
+    const brightness = 140 + Math.random() * 80;
+    const size = Math.random() * 2 + 1;
+    const alpha = Math.random() * 0.4 + 0.1;
     colorCtx.fillStyle = `rgba(${brightness}, ${brightness}, ${brightness}, ${alpha})`;
-    colorCtx.fillRect(x, y, Math.random() * 3, Math.random() * 3);
+    colorCtx.fillRect(x, y, size, size);
+  }
+  
+  // Add some streak patterns for geological features
+  for (let i = 0; i < 30; i++) {
+    const x1 = Math.random() * width;
+    const y1 = Math.random() * height;
+    const x2 = x1 + (Math.random() - 0.5) * 200;
+    const y2 = y1 + (Math.random() - 0.5) * 100;
+    
+    const streakGradient = colorCtx.createLinearGradient(x1, y1, x2, y2);
+    const brightness = 150 + Math.random() * 50;
+    streakGradient.addColorStop(0, `rgba(${brightness}, ${brightness}, ${brightness}, 0)`);
+    streakGradient.addColorStop(0.5, `rgba(${brightness}, ${brightness}, ${brightness}, 0.2)`);
+    streakGradient.addColorStop(1, `rgba(${brightness}, ${brightness}, ${brightness}, 0)`);
+    
+    colorCtx.strokeStyle = streakGradient;
+    colorCtx.lineWidth = Math.random() * 3 + 1;
+    colorCtx.beginPath();
+    colorCtx.moveTo(x1, y1);
+    colorCtx.quadraticCurveTo((x1 + x2) / 2 + Math.random() * 50 - 25, (y1 + y2) / 2 + Math.random() * 50 - 25, x2, y2);
+    colorCtx.stroke();
   }
   
   // Add lunar maria (dark patches) - distributed across the sphere
@@ -145,12 +186,12 @@ export function makeMoon(planetRadius: number) {
   const moonMat = new THREE.MeshStandardMaterial({
     map: colorTexture,
     bumpMap: bumpTexture,
-    bumpScale: 0.02, // Subtle bump effect
+    bumpScale: 0.08, // Increased bump effect for more visible craters
     color: 0xffffff, // White to let texture show through
     emissive: MOON_EMISSIVE,
-    emissiveIntensity: 0.05,
-    roughness: 0.95, // Very rough surface
-    metalness: 0.0,
+    emissiveIntensity: 0.03,
+    roughness: 0.98, // Very rough surface
+    metalness: 0.05, // Tiny bit of metalness for subtle highlights
     // CRITICAL: These ensure moon stays in opaque queue
     transparent: false,
     opacity: 1.0,
