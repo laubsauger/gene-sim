@@ -12,6 +12,14 @@ interface DevControlsPlanet3DProps {
   setShowSun: (show: boolean) => void;
   showDebug: boolean;
   setShowDebug: (show: boolean) => void;
+  showAurora?: boolean;
+  setShowAurora?: (show: boolean) => void;
+  showSpaceDust?: boolean;
+  setShowSpaceDust?: (show: boolean) => void;
+  showVolumetricDust?: boolean;
+  setShowVolumetricDust?: (show: boolean) => void;
+  showPoleMarkers?: boolean;
+  setShowPoleMarkers?: (show: boolean) => void;
   orbitalMode: boolean;
   setOrbitalMode: (orbital: boolean) => void;
   followEarth: boolean;
@@ -37,6 +45,14 @@ export function DevControlsPlanet3D({
   setShowSun,
   showDebug,
   setShowDebug,
+  showAurora = true,
+  setShowAurora,
+  showSpaceDust = true,
+  setShowSpaceDust,
+  showVolumetricDust = true,
+  setShowVolumetricDust,
+  showPoleMarkers = false,
+  setShowPoleMarkers,
   orbitalMode,
   setOrbitalMode,
   followEarth,
@@ -160,14 +176,67 @@ export function DevControlsPlanet3D({
         </label>
       </div>
       
-      <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
-        <input
-          type="checkbox"
-          checked={showDebug}
-          onChange={(e) => setShowDebug(e.target.checked)}
-        />
-        Debug (Axes)
-      </label>
+      {(setShowAurora || setShowSpaceDust || setShowVolumetricDust) && (
+        <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
+          <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
+            Visual Effects
+          </div>
+          {setShowAurora && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={showAurora}
+                onChange={(e) => setShowAurora(e.target.checked)}
+              />
+              Aurora
+            </label>
+          )}
+          {setShowSpaceDust && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={showSpaceDust}
+                onChange={(e) => setShowSpaceDust(e.target.checked)}
+              />
+              Space Dust
+            </label>
+          )}
+          {setShowVolumetricDust && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={showVolumetricDust}
+                onChange={(e) => setShowVolumetricDust(e.target.checked)}
+              />
+              God Rays
+            </label>
+          )}
+        </div>
+      )}
+      
+      <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
+        <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
+          Debug
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={showDebug}
+            onChange={(e) => setShowDebug(e.target.checked)}
+          />
+          Axes
+        </label>
+        {setShowPoleMarkers && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={showPoleMarkers}
+              onChange={(e) => setShowPoleMarkers(e.target.checked)}
+            />
+            Pole Markers
+          </label>
+        )}
+      </div>
       
       {(onZoomToSurface || onZoomToSystem) && (
         <div style={{ borderTop: '1px solid #333', paddingTop: '5px', marginTop: '5px' }}>

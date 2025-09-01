@@ -75,12 +75,16 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
   const [followEarth, setFollowEarth] = useState(true); // Enable follow Earth by default
   const [pauseOrbits, setPauseOrbits] = useState(false); // New control to pause all orbital mechanics
   const [pauseClouds, setPauseClouds] = useState(false); // New control to pause cloud movement
-  const controlsRef = useRef({ showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits, pauseClouds });
+  const [showAurora, setShowAurora] = useState(true); // Aurora visibility
+  const [showSpaceDust, setShowSpaceDust] = useState(true); // Space dust visibility
+  const [showVolumetricDust, setShowVolumetricDust] = useState(true); // Volumetric dust (god rays) visibility
+  const [showPoleMarkers, setShowPoleMarkers] = useState(false); // Debug pole markers
+  const controlsRef = useRef({ showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits, pauseClouds, showAurora, showSpaceDust, showVolumetricDust, showPoleMarkers });
 
   // Update controls ref when state changes
   useEffect(() => {
-    controlsRef.current = { showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits, pauseClouds };
-  }, [showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits, pauseClouds]);
+    controlsRef.current = { showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits, pauseClouds, showAurora, showSpaceDust, showVolumetricDust, showPoleMarkers };
+  }, [showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits, pauseClouds, showAurora, showSpaceDust, showVolumetricDust, showPoleMarkers]);
   const sceneRef = useRef<{
     renderer: THREE.WebGLRenderer;
     scene: THREE.Scene;
@@ -150,6 +154,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     stats.dom.style.position = 'absolute';
     stats.dom.style.bottom = '16px';
     stats.dom.style.right = '16px';
+    stats.dom.style.left = 'auto'; // Ensure it's on right, not left
     stats.dom.style.top = 'auto'; // Override default
     mount.appendChild(stats.dom);
     statsRef.current = stats;
@@ -590,16 +595,16 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       }
       // Update pole markers visibility
       if (refs.northPoleArrow) {
-        refs.northPoleArrow.visible = true; // Always visible for debug
+        refs.northPoleArrow.visible = controlsRef.current.showPoleMarkers;
       }
       if (refs.southPoleArrow) {
-        refs.southPoleArrow.visible = true; // Always visible for debug
+        refs.southPoleArrow.visible = controlsRef.current.showPoleMarkers;
       }
       if (refs.northPoleCylinder) {
-        refs.northPoleCylinder.visible = true;
+        refs.northPoleCylinder.visible = controlsRef.current.showPoleMarkers;
       }
       if (refs.southPoleCylinder) {
-        refs.southPoleCylinder.visible = true;
+        refs.southPoleCylinder.visible = controlsRef.current.showPoleMarkers;
       }
 
       // Control sun visibility
@@ -742,6 +747,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       
       // Update space dust with light direction and camera position
       if (refs.spaceDust) {
+        refs.spaceDust.mesh.visible = controlsRef.current.showSpaceDust;
         refs.spaceDust.update(
           refs.clock.elapsedTime * 1000,
           sunToEarth,
@@ -751,6 +757,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       
       // Update volumetric dust for god rays effect
       if (refs.volumetricDust) {
+        refs.volumetricDust.mesh.visible = controlsRef.current.showVolumetricDust;
         refs.volumetricDust.update({
           time: refs.clock.elapsedTime * 1000,
           sunPos: new THREE.Vector3(0, 0, 0), // Sun at origin
@@ -764,6 +771,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       
       // Update aurora effect
       if (refs.aurora) {
+        refs.aurora.mesh.visible = controlsRef.current.showAurora;
         refs.aurora.update(
           refs.clock.elapsedTime * 1000,
           sunToEarth,
@@ -874,6 +882,14 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         setShowSun={setShowSun}
         showDebug={showDebug}
         setShowDebug={setShowDebug}
+        showAurora={showAurora}
+        setShowAurora={setShowAurora}
+        showSpaceDust={showSpaceDust}
+        setShowSpaceDust={setShowSpaceDust}
+        showVolumetricDust={showVolumetricDust}
+        setShowVolumetricDust={setShowVolumetricDust}
+        showPoleMarkers={showPoleMarkers}
+        setShowPoleMarkers={setShowPoleMarkers}
         orbitalMode={orbitalMode}
         setOrbitalMode={setOrbitalMode}
         followEarth={followEarth}

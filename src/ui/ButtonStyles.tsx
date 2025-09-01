@@ -49,10 +49,10 @@ export function StyledButton({
     return `${baseColor}20`; // 20 is hex for ~12.5% opacity
   };
 
-  const getBorder = () => {
-    if (disabled) return '1px solid #4b5563';
-    if (variant === 'toggle' && !active) return '1px solid #4b5563';
-    return `1px solid ${baseColor}`;
+  const getBorderColor = () => {
+    if (disabled) return '#4b5563';
+    if (variant === 'toggle' && !active) return '#4b5563';
+    return baseColor;
   };
 
   return (
@@ -63,7 +63,9 @@ export function StyledButton({
       style={{
         ...sizeStyles[size],
         background: getBackground(),
-        border: getBorder(),
+        borderWidth: '1px',
+        borderStyle: 'solid',
+        borderColor: getBorderColor(),
         borderRadius: '4px',
         color: disabled ? '#6b7280' : '#fff',
         cursor: disabled ? 'not-allowed' : 'pointer',

@@ -52,9 +52,6 @@ const auroraFragmentShader = `
     float latitude = abs(localNormal.y);
     float polarMask = smoothstep(0.65, 0.9, latitude); // Aurora zone at high latitudes
     
-    // Don't discard based on polar mask - let it fade naturally
-    // if (polarMask < 0.01) discard;
-    
     // Calculate view angle
     vec3 viewDir = normalize(uCameraPos - vPosition);
     float viewAngle = dot(normal, viewDir);
@@ -64,20 +61,27 @@ const auroraFragmentShader = `
     // Increase night side intensity
     nightSide = pow(nightSide, 0.7);
     
-    // Aurora visibility calculation - should work from all angles
-    // Edge visibility (when viewing from side)
+    // Aurora visibility - similar approach to clouds
+    // Check if we're looking at the front side of the sphere
+    float frontFacing = step(0.0, viewAngle); // 1 if front-facing, 0 if back-facing
+    
+    // Discard if not at poles or on back side
+    if (polarMask < 0.01 || frontFacing < 0.5) discard;
+    
+    // Edge visibility for side views
     float edgeFade = 1.0 - abs(viewAngle);
-    edgeFade = pow(edgeFade, 0.3); // Stronger edge visibility
+    edgeFade = pow(edgeFade, 0.5);
     
-    // Polar cap visibility (when looking down at poles)
-    // Use local normal to determine if we're at a pole
-    float polarCapVisibility = polarMask; // Direct polar mask usage
+    // Pole visibility for top-down views
+    // When viewing pole from above, viewAngle is near 1 (or -1 for back)
+    float poleViewFactor = smoothstep(0.5, 0.9, abs(viewAngle));
+    float poleVisibility = polarMask * poleViewFactor * 0.8;
     
-    // Always show aurora at poles regardless of view angle
-    float viewVisibility = max(edgeFade, polarCapVisibility * 0.7);
+    // Combine and only show on front-facing side
+    float viewVisibility = max(edgeFade, poleVisibility) * frontFacing;
     
-    // Ensure minimum visibility when at poles
-    viewVisibility = max(viewVisibility, polarMask * 0.5);
+    // Ensure some minimum visibility at poles when front-facing
+    viewVisibility = max(viewVisibility, polarMask * 0.3 * frontFacing);
     
     // Animated aurora curtains - slower animation
     float timeOffset = uTime * 0.0002; // Slower animation
@@ -122,7 +126,7 @@ const auroraFragmentShader = `
 
 export function createAuroraEffect(planetRadius: number) {
   const geometry = new THREE.SphereGeometry(
-    planetRadius * 1.08, // Slightly above atmosphere
+    planetRadius * 1.08, // Back to original height above atmosphere
     128,
     64
   );
@@ -139,13 +143,13 @@ export function createAuroraEffect(planetRadius: number) {
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
-    depthTest: false, // Disable depth test so aurora always renders
-    side: THREE.DoubleSide
+    depthTest: true, // Keep depth test for proper occlusion
+    side: THREE.DoubleSide // Render both sides like clouds
   });
   
   const mesh = new THREE.Mesh(geometry, material);
   mesh.frustumCulled = false;
-  mesh.renderOrder = 10; // Render after planet but before UI
+  mesh.renderOrder = 2; // Render after planet
   
   return {
     mesh,
