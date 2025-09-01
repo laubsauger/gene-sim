@@ -4,13 +4,15 @@ import { usePlanet3DStore } from '../stores/usePlanet3DStore';
 interface DevControlsPlanet3DProps {
   onZoomToSurface?: () => void;
   onZoomToSystem?: () => void;
+  onCameraTargetChange?: (target: 'sun' | 'venus' | 'earth' | 'mars' | 'moon') => void;
 }
 
 export function DevControlsPlanet3D({
   onZoomToSurface,
   onZoomToSystem,
+  onCameraTargetChange,
 }: DevControlsPlanet3DProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true); // Collapsed by default
   
   // Get all state and setters from store
   const {
@@ -24,6 +26,10 @@ export function DevControlsPlanet3D({
     setShowMoon,
     showSun,
     setShowSun,
+    showVenus,
+    setShowVenus,
+    showMars,
+    setShowMars,
     showDebug,
     setShowDebug,
     showAurora,
@@ -42,6 +48,8 @@ export function DevControlsPlanet3D({
     setPauseOrbits,
     pauseClouds,
     setPauseClouds,
+    cameraTarget,
+    setCameraTarget,
   } = usePlanet3DStore();
   
   return (
@@ -86,6 +94,39 @@ export function DevControlsPlanet3D({
           gap: '5px'
         }}>
       
+      {onCameraTargetChange && (
+        <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
+          <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
+            Camera Target
+          </div>
+          <select
+            value={cameraTarget}
+            onChange={(e) => {
+              const target = e.target.value as 'sun' | 'venus' | 'earth' | 'mars' | 'moon';
+              setCameraTarget(target);
+              onCameraTargetChange(target);
+            }}
+            style={{
+              width: '100%',
+              padding: '4px',
+              fontSize: '11px',
+              background: 'rgba(100, 150, 255, 0.1)',
+              border: '1px solid rgba(100, 150, 255, 0.3)',
+              borderRadius: '3px',
+              color: '#fff',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          >
+            <option value="sun" style={{ background: '#000' }}>☀️ Sun</option>
+            <option value="venus" style={{ background: '#000' }}>🟡 Venus</option>
+            <option value="earth" style={{ background: '#000' }}>🌍 Earth</option>
+            <option value="mars" style={{ background: '#000' }}>🔴 Mars</option>
+            <option value="moon" style={{ background: '#000' }}>🌙 Moon</option>
+          </select>
+        </div>
+      )}
+      
       <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
         <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
           Orbital Mechanics
@@ -96,7 +137,7 @@ export function DevControlsPlanet3D({
             checked={orbitalMode}
             onChange={(e) => setOrbitalMode(e.target.checked)}
           />
-          Earth Orbit
+          Planetary Orbits
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', opacity: orbitalMode ? 1 : 0.5 }}>
           <input
@@ -105,7 +146,7 @@ export function DevControlsPlanet3D({
             disabled={!orbitalMode}
             onChange={(e) => setFollowEarth(e.target.checked)}
           />
-          Follow Earth
+          Follow Target
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
           <input
@@ -173,6 +214,24 @@ export function DevControlsPlanet3D({
           />
           Sun
         </label>
+        
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={showVenus}
+            onChange={(e) => setShowVenus(e.target.checked)}
+          />
+          Venus
+        </label>
+        
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={showMars}
+            onChange={(e) => setShowMars(e.target.checked)}
+          />
+          Mars
+        </label>
       </div>
       
       <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
@@ -230,7 +289,7 @@ export function DevControlsPlanet3D({
       {(onZoomToSurface || onZoomToSystem) && (
         <div style={{ borderTop: '1px solid #333', paddingTop: '5px', marginTop: '5px' }}>
           <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa' }}>
-            Cinematic Zoom
+            Quick Zoom
           </div>
           <div style={{ display: 'flex', gap: '5px' }}>
             {onZoomToSurface && (

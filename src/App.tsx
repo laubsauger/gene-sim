@@ -47,7 +47,7 @@ export default function App() {
   const [biomeMode, setBiomeMode] = useState<'hidden' | 'natural' | 'highlight'>('natural'); // Biome display mode
   const [biomeLegendCollapsed, setBiomeLegendCollapsed] = useState(true); // Biome legend collapse state - collapsed by default
   const [simRestartKey, setSimRestartKey] = useState(0); // Force re-render on simulation restart
-  const { controlsHidden, renderMode, setRenderMode } = useUIStore(); // Get UI state from store
+  const { controlsHidden, renderMode, setRenderMode, statsSidebarCollapsed, setupSidebarCollapsed } = useUIStore(); // Get UI state from store
 
   const lastConfigRef = useRef<any>(null);
   
@@ -271,13 +271,13 @@ export default function App() {
   // Cleanup on unmount
   // Note: Fullscreen handling and keyboard shortcuts (F for fullscreen, H for hide UI) are now handled in Controls.tsx via UIStore
   
-  // Trigger resize event when UI visibility changes
+  // Trigger resize event when UI visibility or sidebar state changes
   useEffect(() => {
     // Dispatch resize event to update canvas dimensions
     setTimeout(() => {
       window.dispatchEvent(new Event('resize'));
     }, 50); // Small delay to ensure DOM has updated
-  }, [controlsHidden]);
+  }, [controlsHidden, statsSidebarCollapsed, setupSidebarCollapsed]);
   
   useEffect(() => {
     return () => {
@@ -288,13 +288,18 @@ export default function App() {
     };
   }, []);
 
+  // Determine if the right sidebar is collapsed
+  const rightSidebarCollapsed = showSetup ? setupSidebarCollapsed : statsSidebarCollapsed;
+  
   return (
     <div style={{
       display: controlsHidden ? 'block' : 'grid',
       gridTemplateColumns: controlsHidden ? '1fr' : 
         biomeMode !== 'hidden' ? 
-          (biomeLegendCollapsed ? '1fr 40px 420px' : '1fr 260px 420px') : 
-          '1fr 420px',
+          (biomeLegendCollapsed ? 
+            (rightSidebarCollapsed ? '1fr 40px 60px' : '1fr 40px 420px') : 
+            (rightSidebarCollapsed ? '1fr 260px 60px' : '1fr 260px 420px')) : 
+          (rightSidebarCollapsed ? '1fr 60px' : '1fr 420px'),
       height: '100vh',
       width: '100vw',
       overflow: 'hidden',
@@ -376,10 +381,12 @@ export default function App() {
       
       {!controlsHidden && (
         <div style={{
-          overflowY: 'auto',
+          width: rightSidebarCollapsed ? '60px' : '420px',
+          overflowY: rightSidebarCollapsed ? 'hidden' : 'auto',
           overflowX: 'hidden',
           background: '#111',
           borderLeft: '1px solid #222',
+          transition: 'width 0.3s ease',
         }}>
         {showSetup ? (
           <SimulationSetup

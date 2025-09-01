@@ -6,6 +6,7 @@ import type { SimClient } from '../client/setupSimClientHybrid';
 import type { MainMsg } from '../sim/types';
 import { DevControlsPlanet3D } from '../ui/DevControlsPlanet3D';
 import { usePlanet3DStore } from '../stores/usePlanet3DStore';
+import { useUIStore } from '../stores/useUIStore';
 
 // FPS tracking component (reused from Scene3D)
 function FPSTracker({ client }: { client: SimClient }) {
@@ -31,6 +32,8 @@ import { makePlanetWithAtmosphere } from './planet3d/PlanetWithAtmosphere';
 import { createMultiLayerClouds } from './planet3d/MultiLayerClouds';
 import { updateEntitiesFromBuffers, makeGroundEntities } from './planet3d/EntityRenderer';
 import { makeMoon } from './planet3d/MoonComponent';
+import { makeVenus } from './planet3d/VenusComponent';
+import { makeMars } from './planet3d/MarsComponent';
 import { createSpaceDust, createPlanetaryDustRing } from './planet3d/SpaceDust';
 import { createStarfield, createVolumetricDust } from './planet3d/VolumetricLight';
 import { createAuroraEffect } from './planet3d/AuroraEffect';
@@ -48,7 +51,15 @@ import {
   MOON_ORBITAL_INCLINATION,
   INITIAL_CAMERA_POSITION,
   CAMERA_CONFIG,
-  SUN_RADIUS
+  SUN_RADIUS,
+  VENUS_ORBIT_RADIUS,
+  VENUS_ORBIT_SPEED,
+  VENUS_ROTATION_SPEED,
+  VENUS_RADIUS,
+  MARS_ORBIT_RADIUS,
+  MARS_ORBIT_SPEED,
+  MARS_ROTATION_SPEED,
+  MARS_RADIUS
 } from './planet3d/planetUtils';
 
 export interface Scene3DPlanetCanvasProps {
@@ -62,7 +73,17 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
   const [isPaused, setIsPaused] = useState(true);
   const fpsTracker = FPSTracker({ client });
   const cinematicAnimationRef = useRef<{ startTime: number; duration: number; from: number; to: number; active: boolean } | null>(null);
+  const cameraTransitionRef = useRef<{
+    startTime: number;
+    duration: number;
+    fromPos: THREE.Vector3;
+    toPos: THREE.Vector3;
+    fromTarget: THREE.Vector3;
+    toTarget: THREE.Vector3;
+    active: boolean;
+  } | null>(null);
   const statsRef = useRef<Stats | null>(null);
+  const { controlsHidden } = useUIStore();
 
   // Store reference for animation loop - we'll use getState() inside the loop
   // to always get the current state values
@@ -73,6 +94,8 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     camera: THREE.PerspectiveCamera;
     controls: OrbitControls;
     earth: any;
+    venus?: ReturnType<typeof makeVenus>;
+    mars?: ReturnType<typeof makeMars>;
     entities: THREE.InstancedMesh | null;
     clouds: THREE.Mesh;
     cloudSystem?: ReturnType<typeof createMultiLayerClouds>;
@@ -186,14 +209,14 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     sun.position.set(100, 100, 100); // Initial position (will be updated per frame)
     sun.castShadow = true;
     sun.shadow.mapSize.set(4096, 4096); // Higher resolution for better shadows
-    // Expanded shadow camera for orbital mechanics and moon orbit
-    const shadowSize = Math.max(EARTH_ORBIT_RADIUS, MOON_ORBIT_RADIUS) * 2;
+    // Expanded shadow camera for orbital mechanics and moon orbit with new scale
+    const shadowSize = Math.max(MARS_ORBIT_RADIUS, MOON_ORBIT_RADIUS) * 1.5;
     sun.shadow.camera.left = -shadowSize;
     sun.shadow.camera.right = shadowSize;
     sun.shadow.camera.top = shadowSize;
     sun.shadow.camera.bottom = -shadowSize;
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = shadowSize * 4; // Cover full orbital range including moon
+    sun.shadow.camera.far = shadowSize * 2; // Cover full orbital range including Mars
     sun.shadow.bias = -0.0001; // Fine-tuned for better shadows
     sun.shadow.normalBias = 0.02; // Additional shadow acne prevention
     // Add target for directional light
@@ -295,7 +318,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     sunGroup.add(sunOuterHalo);
 
     // Point light for glow and additional illumination
-    const sunPointLight = new THREE.PointLight(0xffcc66, 1.0, EARTH_ORBIT_RADIUS * 4, 2); // Brighter and further reach
+    const sunPointLight = new THREE.PointLight(0xffcc66, 1.5, MARS_ORBIT_RADIUS * 1.5, 2); // Brighter and further reach for new scale
     sunGroup.add(sunPointLight);
 
     // ---------- EARTH STACK (per architecture) ----------
@@ -337,6 +360,19 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     // Skip atmosphere depth prepass for now - focus on getting basic rendering working
     let atmoDepth: THREE.Mesh | undefined;
 
+    // ---------- VENUS (closer to sun) ----------
+    const venus = makeVenus();
+    venus.group.position.set(VENUS_ORBIT_RADIUS, 0, 0); // Start at orbit position
+    scene.add(venus.group);
+    
+    // ---------- MARS (further from sun) ----------
+    const mars = makeMars();
+    mars.group.position.set(MARS_ORBIT_RADIUS, 0, 0); // Start at orbit position
+    scene.add(mars.group);
+    // Add Mars' moons to scene
+    scene.add(mars.phobos);
+    scene.add(mars.deimos);
+    
     // ---------- MOON (using proper component) ----------
     const moonResult = makeMoon(PLANET_RADIUS);
     const moon = moonResult.mesh;
@@ -353,18 +389,18 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     
     // ---------- SPACE DUST for volumetric lighting ----------
     const spaceDust = createSpaceDust({
-      count: 8000,  // More particles for better coverage
-      radius: EARTH_ORBIT_RADIUS * 2,  // Extend further out
-      innerRadius: PLANET_RADIUS * 2,  // Start closer to sun
+      count: 12000,  // More particles for larger area
+      radius: MARS_ORBIT_RADIUS * 1.2,  // Extend to cover Mars orbit
+      innerRadius: SUN_RADIUS * 1.5,  // Start from edge of sun
       intensity: 0.6  // Slightly brighter
     });
     scene.add(spaceDust.mesh);
     
     // ---------- VOLUMETRIC DUST (god rays) ----------
     const volumetricDust = createVolumetricDust({
-      count: 10000,
-      sunRadius: 100,
-      spread: EARTH_ORBIT_RADIUS * 2.5,
+      count: 15000,  // More particles for larger area
+      sunRadius: SUN_RADIUS * 10,  // Match new sun scale
+      spread: MARS_ORBIT_RADIUS * 1.3,  // Cover entire system
       intensity: 0.4
     });
     scene.add(volumetricDust.mesh);
@@ -442,6 +478,8 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       camera,
       controls,
       earth,
+      venus,
+      mars,
       entities: null,
       clouds: clouds,
       cloudSystem,
@@ -553,6 +591,14 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       if (refs.moon) {
         refs.moon.visible = planet3DState.showMoon;
       }
+      
+      if (refs.venus) {
+        refs.venus.group.visible = planet3DState.showVenus;
+      }
+      
+      if (refs.mars) {
+        refs.mars.group.visible = planet3DState.showMars;
+      }
 
       if (refs.cloudSystem) {
         // Cull clouds when planet is small on screen
@@ -596,9 +642,30 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         sunGroup.visible = planet3DState.showSun;
       }
 
+      // Handle camera planet transition animation
+      const transition = cameraTransitionRef.current;
+      if (transition && transition.active) {
+        const elapsed = performance.now() - transition.startTime;
+        const progress = Math.min(elapsed / transition.duration, 1);
+
+        // Easing function (ease-in-out-cubic)
+        const eased = progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+        // Interpolate camera position and target
+        refs.camera.position.lerpVectors(transition.fromPos, transition.toPos, eased);
+        refs.controls.target.lerpVectors(transition.fromTarget, transition.toTarget, eased);
+
+        // End animation
+        if (progress >= 1) {
+          transition.active = false;
+        }
+      }
+
       // Handle cinematic zoom animation
       const anim = cinematicAnimationRef.current;
-      if (anim && anim.active) {
+      if (anim && anim.active && !transition?.active) { // Don't zoom while transitioning
         const elapsed = performance.now() - anim.startTime;
         const progress = Math.min(elapsed / anim.duration, 1);
 
@@ -623,36 +690,111 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       // Update controls
       refs.controls.update();
 
-      // Earth orbit mechanics on ecliptic plane (controlled by orbital mode and pause)
+      // Planetary orbit mechanics on ecliptic plane (controlled by orbital mode and pause)
       const earthPos = new THREE.Vector3(0, 0, 0);
+      const venusPos = new THREE.Vector3(0, 0, 0);
+      const marsPos = new THREE.Vector3(0, 0, 0);
+      
       if (planet3DState.orbitalMode) {
         if (!planet3DState.pauseOrbits) {
           const orbitTime = refs.clock.elapsedTime;  // Use elapsed time for continuous motion
+          
+          // Venus orbit (closer, faster)
+          if (refs.venus) {
+            const vx = Math.cos(orbitTime * VENUS_ORBIT_SPEED) * VENUS_ORBIT_RADIUS;
+            const vz = Math.sin(orbitTime * VENUS_ORBIT_SPEED) * VENUS_ORBIT_RADIUS;
+            venusPos.set(vx, 0, vz);
+            refs.venus.group.position.copy(venusPos);
+            // Venus rotation (retrograde and very slow)
+            refs.venus.group.rotation.y = orbitTime * VENUS_ROTATION_SPEED;
+          }
+          
           // Earth orbits in the ecliptic plane (XZ plane, Y=0)
           const ex = Math.cos(orbitTime * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
           const ez = Math.sin(orbitTime * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
           earthPos.set(ex, 0, ez);  // Ecliptic plane
           refs.earth.group.position.copy(earthPos);
+          
+          // Mars orbit (further, slower)
+          if (refs.mars) {
+            const mx = Math.cos(orbitTime * MARS_ORBIT_SPEED) * MARS_ORBIT_RADIUS;
+            const mz = Math.sin(orbitTime * MARS_ORBIT_SPEED) * MARS_ORBIT_RADIUS;
+            marsPos.set(mx, 0, mz);
+            refs.mars.group.position.copy(marsPos);
+            // Mars rotation (similar to Earth)
+            refs.mars.group.rotation.y = orbitTime * MARS_ROTATION_SPEED;
+            
+            // Mars' moons orbits (Phobos and Deimos)
+            if (refs.mars.phobos) {
+              const phobosAngle = orbitTime * 0.8; // Very fast orbit
+              refs.mars.phobos.position.set(
+                marsPos.x + Math.cos(phobosAngle) * MARS_RADIUS * 2.5,
+                marsPos.y,
+                marsPos.z + Math.sin(phobosAngle) * MARS_RADIUS * 2.5
+              );
+            }
+            if (refs.mars.deimos) {
+              const deimosAngle = orbitTime * 0.3; // Slower orbit
+              refs.mars.deimos.position.set(
+                marsPos.x + Math.cos(deimosAngle) * MARS_RADIUS * 4,
+                marsPos.y + Math.sin(deimosAngle) * MARS_RADIUS * 0.5, // Slight inclination
+                marsPos.z + Math.sin(deimosAngle) * MARS_RADIUS * 4
+              );
+            }
+          }
         } else {
-          // When paused, maintain current position
+          // When paused, maintain current positions
           earthPos.copy(refs.earth.group.position);
+          if (refs.venus) venusPos.copy(refs.venus.group.position);
+          if (refs.mars) marsPos.copy(refs.mars.group.position);
         }
       } else {
-        // When orbital mode is off, Earth stays at orbit radius on ecliptic plane
+        // When orbital mode is off, planets stay at initial positions
         earthPos.set(EARTH_ORBIT_RADIUS, 0, 0);
         refs.earth.group.position.copy(earthPos);
+        if (refs.venus) {
+          venusPos.set(VENUS_ORBIT_RADIUS, 0, 0);
+          refs.venus.group.position.copy(venusPos);
+        }
+        if (refs.mars) {
+          marsPos.set(MARS_ORBIT_RADIUS, 0, 0);
+          refs.mars.group.position.copy(marsPos);
+        }
       }
 
-      // Camera tracking for Earth (smooth following)
-      if (planet3DState.followEarth && planet3DState.orbitalMode) {
+      // Camera tracking for selected planet (smooth following)
+      if (planet3DState.followEarth && planet3DState.orbitalMode && !cameraTransitionRef.current?.active) {
+        // Get the target position based on current camera target
+        let targetPlanetPos = new THREE.Vector3();
+        
+        switch (planet3DState.cameraTarget) {
+          case 'sun':
+            targetPlanetPos.set(0, 0, 0);
+            break;
+          case 'venus':
+            targetPlanetPos.copy(venusPos);
+            break;
+          case 'earth':
+            targetPlanetPos.copy(earthPos);
+            break;
+          case 'mars':
+            targetPlanetPos.copy(marsPos);
+            break;
+          case 'moon':
+            if (refs.moon) {
+              refs.moon.getWorldPosition(targetPlanetPos);
+            }
+            break;
+        }
+
         // Maintain current camera offset from target
         const currentOffset = new THREE.Vector3().subVectors(refs.camera.position, refs.controls.target);
 
         // Smoothly interpolate target and camera positions
         const lerpFactor = Math.min(1.0, dt * 2.0); // Smooth following
-        refs.controls.target.lerp(earthPos, lerpFactor);
+        refs.controls.target.lerp(targetPlanetPos, lerpFactor);
 
-        const newCameraPos = earthPos.clone().add(currentOffset);
+        const newCameraPos = targetPlanetPos.clone().add(currentOffset);
         refs.camera.position.lerp(newCameraPos, lerpFactor);
       }
 
@@ -849,13 +991,63 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
     };
   }, []);
 
+  const handleCameraTargetChange = useCallback((target: 'sun' | 'venus' | 'earth' | 'mars' | 'moon') => {
+    if (!sceneRef.current) return;
+    const { controls, camera, venus, mars, earth, moon } = sceneRef.current;
+
+    // Get target position based on selection
+    let targetPos = new THREE.Vector3();
+    let viewDistance = PLANET_RADIUS * 10; // Default view distance
+    
+    switch (target) {
+      case 'sun':
+        targetPos.set(0, 0, 0);
+        viewDistance = SUN_RADIUS * 3;
+        break;
+      case 'venus':
+        if (venus) targetPos.copy(venus.group.position);
+        viewDistance = VENUS_RADIUS * 10;
+        break;
+      case 'earth':
+        if (earth) targetPos.copy(earth.group.position);
+        viewDistance = PLANET_RADIUS * 10;
+        break;
+      case 'mars':
+        if (mars) targetPos.copy(mars.group.position);
+        viewDistance = MARS_RADIUS * 15;
+        break;
+      case 'moon':
+        if (moon) moon.getWorldPosition(targetPos);
+        viewDistance = MOON_RADIUS * 20;
+        break;
+    }
+
+    // Calculate camera position to maintain similar viewing angle
+    const currentDir = camera.position.clone().sub(controls.target).normalize();
+    const newCameraPos = targetPos.clone().addScaledVector(currentDir, viewDistance);
+
+    // Start smooth transition
+    cameraTransitionRef.current = {
+      startTime: performance.now(),
+      duration: 2000, // 2 seconds for smooth flight
+      fromPos: camera.position.clone(),
+      toPos: newCameraPos,
+      fromTarget: controls.target.clone(),
+      toTarget: targetPos,
+      active: true
+    };
+  }, []);
+
 
   return (
     <>
-      <DevControlsPlanet3D
-        onZoomToSurface={handleZoomToSurface}
-        onZoomToSystem={handleZoomToSystem}
-      />
+      {!controlsHidden && (
+        <DevControlsPlanet3D
+          onZoomToSurface={handleZoomToSurface}
+          onZoomToSystem={handleZoomToSystem}
+          onCameraTargetChange={handleCameraTargetChange}
+        />
+      )}
       <div
         ref={mountRef}
         className="w-full h-full"

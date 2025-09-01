@@ -8,6 +8,8 @@ interface Planet3DState {
   showClouds: boolean;
   showMoon: boolean;
   showSun: boolean;
+  showVenus: boolean;
+  showMars: boolean;
   
   // Visual effects
   showAurora: boolean;
@@ -20,9 +22,12 @@ interface Planet3DState {
   
   // Orbital mechanics
   orbitalMode: boolean;
-  followEarth: boolean;
+  followEarth: boolean; // Now follows any selected target, not just Earth
   pauseOrbits: boolean;
   pauseClouds: boolean;
+  
+  // Camera controls
+  cameraTarget: 'sun' | 'venus' | 'earth' | 'mars' | 'moon';
   
   // Actions
   toggleShowEntities: () => void;
@@ -30,6 +35,8 @@ interface Planet3DState {
   toggleShowClouds: () => void;
   toggleShowMoon: () => void;
   toggleShowSun: () => void;
+  toggleShowVenus: () => void;
+  toggleShowMars: () => void;
   toggleShowAurora: () => void;
   toggleShowSpaceDust: () => void;
   toggleShowVolumetricDust: () => void;
@@ -46,6 +53,8 @@ interface Planet3DState {
   setShowClouds: (value: boolean) => void;
   setShowMoon: (value: boolean) => void;
   setShowSun: (value: boolean) => void;
+  setShowVenus: (value: boolean) => void;
+  setShowMars: (value: boolean) => void;
   setShowAurora: (value: boolean) => void;
   setShowSpaceDust: (value: boolean) => void;
   setShowVolumetricDust: (value: boolean) => void;
@@ -55,6 +64,7 @@ interface Planet3DState {
   setFollowEarth: (value: boolean) => void;
   setPauseOrbits: (value: boolean) => void;
   setPauseClouds: (value: boolean) => void;
+  setCameraTarget: (target: 'sun' | 'venus' | 'earth' | 'mars' | 'moon') => void;
 }
 
 export const usePlanet3DStore = create<Planet3DState>()(
@@ -65,6 +75,8 @@ export const usePlanet3DStore = create<Planet3DState>()(
     showClouds: true,
     showMoon: true,
     showSun: true,
+    showVenus: true,
+    showMars: true,
     showAurora: true,
     showSpaceDust: true,
     showVolumetricDust: true,
@@ -74,6 +86,7 @@ export const usePlanet3DStore = create<Planet3DState>()(
     followEarth: true,
     pauseOrbits: false,
     pauseClouds: false,
+    cameraTarget: 'earth',
     
     // Toggle actions
     toggleShowEntities: () => set((state) => ({ showEntities: !state.showEntities })),
@@ -81,6 +94,8 @@ export const usePlanet3DStore = create<Planet3DState>()(
     toggleShowClouds: () => set((state) => ({ showClouds: !state.showClouds })),
     toggleShowMoon: () => set((state) => ({ showMoon: !state.showMoon })),
     toggleShowSun: () => set((state) => ({ showSun: !state.showSun })),
+    toggleShowVenus: () => set((state) => ({ showVenus: !state.showVenus })),
+    toggleShowMars: () => set((state) => ({ showMars: !state.showMars })),
     toggleShowAurora: () => set((state) => ({ showAurora: !state.showAurora })),
     toggleShowSpaceDust: () => set((state) => ({ showSpaceDust: !state.showSpaceDust })),
     toggleShowVolumetricDust: () => set((state) => ({ showVolumetricDust: !state.showVolumetricDust })),
@@ -97,6 +112,8 @@ export const usePlanet3DStore = create<Planet3DState>()(
     setShowClouds: (value) => set({ showClouds: value }),
     setShowMoon: (value) => set({ showMoon: value }),
     setShowSun: (value) => set({ showSun: value }),
+    setShowVenus: (value) => set({ showVenus: value }),
+    setShowMars: (value) => set({ showMars: value }),
     setShowAurora: (value) => set({ showAurora: value }),
     setShowSpaceDust: (value) => set({ showSpaceDust: value }),
     setShowVolumetricDust: (value) => set({ showVolumetricDust: value }),
@@ -106,6 +123,7 @@ export const usePlanet3DStore = create<Planet3DState>()(
     setFollowEarth: (value) => set({ followEarth: value }),
     setPauseOrbits: (value) => set({ pauseOrbits: value }),
     setPauseClouds: (value) => set({ pauseClouds: value }),
+    setCameraTarget: (target) => set({ cameraTarget: target }),
   }))
 );
 

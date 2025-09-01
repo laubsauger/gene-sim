@@ -2,20 +2,9 @@
 
 ## Control Panel Reorganization
 
-### 1. Unified Render Mode Controls
-- [ ] Integrate 2D/3D/Orbit mode selector into main Controls component
-- [ ] Make Planet3D controls collapsible
-- [ ] Consolidate all render mode controls into single panel
-
 ### 3. Sidebar Improvement
 
-- [ ] Collapse biome types by default
-- [ ] make sure that sidebar does free up space and triggers resize for the ganme area to redraw
-- [ ]  make sure that biomeselection does free up space and triggers resize for the ganme area to redraw
-- sidebar in setup mode becomes hidden on hide ui enabled and then never comes back when we show ui
-- oh and when collapsing the sidebar theres still space occupied instead of collapsing
-  to the right screen edge. likely due to the grid stling on the parent? and then we need to
-  trigger resize event  to redraw canvas? if were in setup mode we need to show start simulate button without label in collapsed sidebar mode. just with the play icon.
+- [ ] sidebar when expanded opens to the right. it needs to claim space to the left, resize the gamecanvas to make space aetc
 
 ## Scene3DPlanetCanvas Enhancements
 
@@ -231,11 +220,9 @@
   - [ ] Wave displacement using vertex shader
   - [ ] Specular reflections from sun
   - [ ] Foam at coastlines
-  - [ ] Underwater caustics (optional)
 - [ ] Water shader features:
   - [ ] Fresnel effect for realistic water appearance
   - [ ] Normal mapping for wave details
-  - [ ] Reflection probe for sky reflections
   - [ ] Depth-based color variation
 
 ### 16. Meteor and Shooting Star Effects
@@ -296,26 +283,14 @@
 - Ensure textures are optimized for web (compressed, appropriate resolution)
 
 ### UV Mapping Fix
+
 - May need to regenerate sphere geometry with better UV layout
-- Consider using THREE.SphereGeometry with higher segment count
 - Ensure texture.wrapS and texture.wrapT are set to THREE.RepeatWrapping
 
 ### Lighting Implementation Notes
 - Terminator band: Modify atmosphere shader's scattering calculation
 - Bloom: Use THREE.UnrealBloomPass from postprocessing examples
 - Consider EffectComposer for managing multiple post-processing passes
-
-### Starfield Implementation Strategy
-```javascript
-// Pseudo-code for efficient starfield
-class StarField {
-  - Use THREE.Points with BufferGeometry
-  - Store positions in Float32Array
-  - Use custom vertex/fragment shaders
-  - Implement LOD: fewer stars when zoomed in on planet
-  - Static stars, no physics simulation needed
-}
-```
 
 ## Testing Checklist
 - [ ] All controls function correctly in each render mode

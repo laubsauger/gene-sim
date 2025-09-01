@@ -229,28 +229,48 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
       {onRenderModeChange && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
           <span style={{ fontSize: '9px', color: '#64748b', fontWeight: '500' }}>VIEW</span>
-          <ButtonGroup>
+          <div style={{ display: 'flex', gap: '2px' }}>
+            <ButtonGroup>
+              <StyledButton
+                onClick={() => onRenderModeChange('2D')}
+                active={renderMode === '2D'}
+                color="blue"
+                size="small"
+                variant="toggle"
+                title="2D Flat view"
+              >
+                2D
+              </StyledButton>
+              <StyledButton
+                onClick={() => onRenderModeChange('3D-Planet')}
+                active={renderMode === '3D-Planet'}
+                color="blue"
+                size="small"
+                variant="toggle"
+                title="3D Orbital view"
+              >
+                3D
+              </StyledButton>
+            </ButtonGroup>
             <StyledButton
-              onClick={() => onRenderModeChange('2D')}
-              active={renderMode === '2D'}
-              color="blue"
+              onClick={toggleControlsVisibility}
+              color="gray"
               size="small"
-              variant="toggle"
-              title="2D Flat view"
+              title="Hide UI (H key)"
             >
-              2D
+              Hide
             </StyledButton>
             <StyledButton
-              onClick={() => onRenderModeChange('3D-Planet')}
-              active={renderMode === '3D-Planet'}
-              color="blue"
+              onClick={toggleFullscreen}
+              active={isFullscreen}
+              color="gray"
               size="small"
               variant="toggle"
-              title="3D Orbital view"
+              title="Toggle fullscreen (F key)"
             >
-              3D
+              {isFullscreen ? 'Exit' : 'FS'}
             </StyledButton>
-          </ButtonGroup>
+          </div>
         </div>
       )}
       
@@ -323,33 +343,6 @@ export function Controls({ client, isRunning, onStart, entitySize, onEntitySizeC
           )}
         </div>
       </div>
-      
-      {/* UI Visibility and Fullscreen Controls */}
-      <div style={{
-        display: 'flex',
-        gap: '2px',
-        marginLeft: 'auto', // Push to the right
-      }}>
-        <StyledButton
-          onClick={toggleControlsVisibility}
-          color="gray"
-          size="small"
-          title="Hide UI (H key)"
-        >
-          Hide
-        </StyledButton>
-        <StyledButton
-          onClick={toggleFullscreen}
-          active={isFullscreen}
-          color="gray"
-          size="small"
-          variant="toggle"
-          title="Toggle fullscreen (F key)"
-        >
-          {isFullscreen ? 'Exit' : 'FS'}
-        </StyledButton>
-      </div>
-      
     </div>
   );
 }
