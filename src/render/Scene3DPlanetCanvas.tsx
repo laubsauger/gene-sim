@@ -5,6 +5,7 @@ import Stats from 'three/addons/libs/stats.module.js';
 import type { SimClient } from '../client/setupSimClientHybrid';
 import type { MainMsg } from '../sim/types';
 import { DevControlsPlanet3D } from '../ui/DevControlsPlanet3D';
+import { usePlanet3DStore } from '../stores/usePlanet3DStore';
 
 // FPS tracking component (reused from Scene3D)
 function FPSTracker({ client }: { client: SimClient }) {
@@ -27,7 +28,6 @@ function FPSTracker({ client }: { client: SimClient }) {
   return { trackFrame };
 }
 import { makePlanetWithAtmosphere } from './planet3d/PlanetWithAtmosphere';
-import { makeProceduralCloudShell } from './planet3d/ProceduralCloudShell';
 import { createMultiLayerClouds } from './planet3d/MultiLayerClouds';
 import { updateEntitiesFromBuffers, makeGroundEntities } from './planet3d/EntityRenderer';
 import { makeMoon } from './planet3d/MoonComponent';
@@ -64,27 +64,9 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
   const cinematicAnimationRef = useRef<{ startTime: number; duration: number; from: number; to: number; active: boolean } | null>(null);
   const statsRef = useRef<Stats | null>(null);
 
-  // Dev control states (like Scene3D)
-  const [showEntities, setShowEntities] = useState(true);
-  const [showAtmosphere, setShowAtmosphere] = useState(true); // Enable by default
-  const [showClouds, setShowClouds] = useState(true);
-  const [showMoon, setShowMoon] = useState(true);
-  const [showSun, setShowSun] = useState(true);
-  const [showDebug, setShowDebug] = useState(false); // Hide debug elements by default
-  const [orbitalMode, setOrbitalMode] = useState(true); // Enable orbital mode by default
-  const [followEarth, setFollowEarth] = useState(true); // Enable follow Earth by default
-  const [pauseOrbits, setPauseOrbits] = useState(false); // New control to pause all orbital mechanics
-  const [pauseClouds, setPauseClouds] = useState(false); // New control to pause cloud movement
-  const [showAurora, setShowAurora] = useState(true); // Aurora visibility
-  const [showSpaceDust, setShowSpaceDust] = useState(true); // Space dust visibility
-  const [showVolumetricDust, setShowVolumetricDust] = useState(true); // Volumetric dust (god rays) visibility
-  const [showPoleMarkers, setShowPoleMarkers] = useState(false); // Debug pole markers
-  const controlsRef = useRef({ showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits, pauseClouds, showAurora, showSpaceDust, showVolumetricDust, showPoleMarkers });
-
-  // Update controls ref when state changes
-  useEffect(() => {
-    controlsRef.current = { showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits, pauseClouds, showAurora, showSpaceDust, showVolumetricDust, showPoleMarkers };
-  }, [showEntities, showAtmosphere, showClouds, showMoon, showSun, showDebug, orbitalMode, followEarth, pauseOrbits, pauseClouds, showAurora, showSpaceDust, showVolumetricDust, showPoleMarkers]);
+  // Store reference for animation loop - we'll use getState() inside the loop
+  // to always get the current state values
+  const storeRef = useRef(usePlanet3DStore);
   const sceneRef = useRef<{
     renderer: THREE.WebGLRenderer;
     scene: THREE.Scene;
@@ -194,7 +176,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
 
     // Add axis helper for orientation
     const axisHelper = new THREE.AxesHelper(5);
-    axisHelper.visible = controlsRef.current.showDebug;
+    axisHelper.visible = storeRef.current.getState().showDebug;
     scene.add(axisHelper);
 
     // ---------- SUN (Directional Light) - Position at origin ----------
@@ -349,7 +331,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
 
     // Control initial visibility
     if (earth.meshes.atmosphereMesh) {
-      earth.meshes.atmosphereMesh.visible = controlsRef.current.showAtmosphere;
+      earth.meshes.atmosphereMesh.visible = storeRef.current.getState().showAtmosphere;
     }
 
     // Skip atmosphere depth prepass for now - focus on getting basic rendering working
@@ -553,7 +535,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       }
 
       // Update visibility based on dev controls
-      const controls = controlsRef.current;
+      const planet3DState = storeRef.current.getState();
 
       // Distance-based culling for performance
       const cameraDistance = refs.camera.position.distanceTo(refs.earth.group.position);
@@ -561,56 +543,57 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
 
       if (refs.earth?.meshes?.atmosphereMesh) {
         // Cull atmosphere when planet is very small on screen
-        refs.earth.meshes.atmosphereMesh.visible = controls.showAtmosphere && planetScreenSize > 20;
+        refs.earth.meshes.atmosphereMesh.visible = planet3DState.showAtmosphere && planetScreenSize > 20;
       }
 
       if (refs.atmoDepth) {
-        refs.atmoDepth.visible = controls.showAtmosphere && planetScreenSize > 20;
+        refs.atmoDepth.visible = planet3DState.showAtmosphere && planetScreenSize > 20;
       }
 
       if (refs.moon) {
-        refs.moon.visible = controls.showMoon;
+        refs.moon.visible = planet3DState.showMoon;
       }
 
       if (refs.cloudSystem) {
         // Cull clouds when planet is small on screen
-        refs.cloudSystem.group.visible = controls.showClouds && planetScreenSize > 10;
+        refs.cloudSystem.group.visible = planet3DState.showClouds && planetScreenSize > 10;
       }
       
       if (refs.clouds) {
         // Backward compatibility
-        refs.clouds.visible = controls.showClouds && planetScreenSize > 10;
+        refs.clouds.visible = planet3DState.showClouds && planetScreenSize > 10;
       }
 
       if (refs.entities) {
         // Cull entities when they would be smaller than 0.5 pixels
-        refs.entities.visible = controls.showEntities && planetScreenSize > 50;
+        refs.entities.visible = planet3DState.showEntities && planetScreenSize > 50;
       }
 
       if (refs.axisHelper) {
-        refs.axisHelper.visible = controls.showDebug;
+        refs.axisHelper.visible = planet3DState.showDebug;
       }
       if (refs.testSphere) {
-        refs.testSphere.visible = controls.showDebug;
+        refs.testSphere.visible = planet3DState.showDebug;
       }
       // Update pole markers visibility
+      const showPoleMarkers = storeRef.current.getState().showPoleMarkers;
       if (refs.northPoleArrow) {
-        refs.northPoleArrow.visible = controlsRef.current.showPoleMarkers;
+        refs.northPoleArrow.visible = showPoleMarkers;
       }
       if (refs.southPoleArrow) {
-        refs.southPoleArrow.visible = controlsRef.current.showPoleMarkers;
+        refs.southPoleArrow.visible = showPoleMarkers;
       }
       if (refs.northPoleCylinder) {
-        refs.northPoleCylinder.visible = controlsRef.current.showPoleMarkers;
+        refs.northPoleCylinder.visible = showPoleMarkers;
       }
       if (refs.southPoleCylinder) {
-        refs.southPoleCylinder.visible = controlsRef.current.showPoleMarkers;
+        refs.southPoleCylinder.visible = showPoleMarkers;
       }
 
       // Control sun visibility
       const sunGroup = refs.scene.getObjectByName('SunGroup');
       if (sunGroup) {
-        sunGroup.visible = controls.showSun;
+        sunGroup.visible = planet3DState.showSun;
       }
 
       // Handle cinematic zoom animation
@@ -642,8 +625,8 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
 
       // Earth orbit mechanics on ecliptic plane (controlled by orbital mode and pause)
       const earthPos = new THREE.Vector3(0, 0, 0);
-      if (controls.orbitalMode) {
-        if (!controls.pauseOrbits) {
+      if (planet3DState.orbitalMode) {
+        if (!planet3DState.pauseOrbits) {
           const orbitTime = refs.clock.elapsedTime;  // Use elapsed time for continuous motion
           // Earth orbits in the ecliptic plane (XZ plane, Y=0)
           const ex = Math.cos(orbitTime * EARTH_ORBIT_SPEED) * EARTH_ORBIT_RADIUS;
@@ -661,7 +644,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       }
 
       // Camera tracking for Earth (smooth following)
-      if (controls.followEarth && controls.orbitalMode) {
+      if (planet3DState.followEarth && planet3DState.orbitalMode) {
         // Maintain current camera offset from target
         const currentOffset = new THREE.Vector3().subVectors(refs.camera.position, refs.controls.target);
 
@@ -681,12 +664,12 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         refs.earth.group.userData.tiltApplied = true;
       }
       // Rotate Earth on its tilted axis (pause if orbital mechanics are paused)
-      if (!controls.pauseOrbits) {
+      if (!planet3DState.pauseOrbits) {
         refs.earth.group.rotation.y = refs.clock.elapsedTime * EARTH_ROTATION_SPEED;
       }
 
       // Moon orbit around Earth with 5.14° inclination from ecliptic
-      if (!controls.pauseOrbits) {
+      if (!planet3DState.pauseOrbits) {
         const moonTime = refs.clock.elapsedTime;  // Use elapsed time for continuous motion
         // Moon's orbit is tilted 5.14° from the ecliptic plane
         const moonAngle = moonTime * MOON_ORBIT_SPEED;
@@ -727,7 +710,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
           layer.update(
             refs.clock.elapsedTime,
             refs.earth.uniforms.shared.uLightDir.value,
-            controls.pauseClouds
+            planet3DState.pauseClouds
           );
         });
       }
@@ -738,7 +721,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
         if (cloudMaterial.uniforms) {
           cloudMaterial.uniforms.uLightDir.value.copy(refs.earth.uniforms.shared.uLightDir.value);
           cloudMaterial.uniforms.uTime.value = refs.clock.elapsedTime;
-          cloudMaterial.uniforms.uPaused.value = controls.pauseClouds ? 1 : 0;  // Set pause state
+          cloudMaterial.uniforms.uPaused.value = planet3DState.pauseClouds ? 1 : 0;  // Set pause state
         }
       }
       
@@ -747,7 +730,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       
       // Update space dust with light direction and camera position
       if (refs.spaceDust) {
-        refs.spaceDust.mesh.visible = controlsRef.current.showSpaceDust;
+        refs.spaceDust.mesh.visible = storeRef.current.getState().showSpaceDust;
         refs.spaceDust.update(
           refs.clock.elapsedTime * 1000,
           sunToEarth,
@@ -757,7 +740,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       
       // Update volumetric dust for god rays effect
       if (refs.volumetricDust) {
-        refs.volumetricDust.mesh.visible = controlsRef.current.showVolumetricDust;
+        refs.volumetricDust.mesh.visible = storeRef.current.getState().showVolumetricDust;
         refs.volumetricDust.update({
           time: refs.clock.elapsedTime * 1000,
           sunPos: new THREE.Vector3(0, 0, 0), // Sun at origin
@@ -771,7 +754,7 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
       
       // Update aurora effect
       if (refs.aurora) {
-        refs.aurora.mesh.visible = controlsRef.current.showAurora;
+        refs.aurora.mesh.visible = storeRef.current.getState().showAurora;
         refs.aurora.update(
           refs.clock.elapsedTime * 1000,
           sunToEarth,
@@ -870,34 +853,6 @@ export function Scene3DPlanetCanvas({ client, world }: Scene3DPlanetCanvasProps)
   return (
     <>
       <DevControlsPlanet3D
-        showEntities={showEntities}
-        setShowEntities={setShowEntities}
-        showAtmosphere={showAtmosphere}
-        setShowAtmosphere={setShowAtmosphere}
-        showClouds={showClouds}
-        setShowClouds={setShowClouds}
-        showMoon={showMoon}
-        setShowMoon={setShowMoon}
-        showSun={showSun}
-        setShowSun={setShowSun}
-        showDebug={showDebug}
-        setShowDebug={setShowDebug}
-        showAurora={showAurora}
-        setShowAurora={setShowAurora}
-        showSpaceDust={showSpaceDust}
-        setShowSpaceDust={setShowSpaceDust}
-        showVolumetricDust={showVolumetricDust}
-        setShowVolumetricDust={setShowVolumetricDust}
-        showPoleMarkers={showPoleMarkers}
-        setShowPoleMarkers={setShowPoleMarkers}
-        orbitalMode={orbitalMode}
-        setOrbitalMode={setOrbitalMode}
-        followEarth={followEarth}
-        setFollowEarth={setFollowEarth}
-        pauseOrbits={pauseOrbits}
-        setPauseOrbits={setPauseOrbits}
-        pauseClouds={pauseClouds}
-        setPauseClouds={setPauseClouds}
         onZoomToSurface={handleZoomToSurface}
         onZoomToSystem={handleZoomToSystem}
       />
