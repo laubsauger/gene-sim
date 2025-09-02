@@ -19,7 +19,6 @@ const scaleVec = new THREE.Vector3();
 export function updateEntitiesFromBuffers(
   mesh: THREE.InstancedMesh,
   pos: Float32Array,
-  color: Uint8Array,
   alive: Uint8Array,
   count: number,
   worldWidth: number,
@@ -40,47 +39,34 @@ export function updateEntitiesFromBuffers(
   scaleVec.set(scale, scale, scale);
   
   // Pre-calculate constants
-  const lonScale = Math.PI * 2 / worldWidth;
-  const lonOffset = -Math.PI;
   const latRange = Math.PI * 0.85;
-  const latScale = latRange / worldHeight;
   
-  // First pass: collect alive entities and update birth/death transitions
-  let newAliveCount = 0;
+  // Update all entities positions - alive/dead should be filtered worker-side
+  // For now, still check alive status but this should move to worker
   let updateCount = 0;
   
   for (let i = 0; i < count; i++) {
-    const isAlive = alive[i] > 0;
-    const wasAlive = prevAlive[i] > 0;
-    
-    if (isAlive) {
-      aliveIndices[newAliveCount++] = i;
-    }
-    
-    // Only update if state changed
-    if (isAlive !== wasAlive) {
-      if (!isAlive) {
-        // Entity died - hide it
+    // Skip dead entities (this check should eventually be removed)
+    if (alive[i] === 0) {
+      // Hide dead entities
+      if (prevAlive[i] > 0) {
         mesh.setMatrixAt(i, hiddenMatrix);
         updateCount++;
+        prevAlive[i] = 0;
       }
-      prevAlive[i] = alive[i];
+      continue;
     }
-  }
-  
-  // Second pass: only update alive entities' positions
-  // Limit updates per frame to prevent performance issues
-  const maxUpdatesPerFrame = Math.min(newAliveCount, 5000);
-  
-  for (let j = 0; j < maxUpdatesPerFrame; j++) {
-    const i = aliveIndices[j];
+
+    prevAlive[i] = alive[i];
     
     const x = pos[i * 2];
     const y = pos[i * 2 + 1];
     
-    // Simplified calculations
-    const lon = x * lonScale + lonOffset;
-    const lat = (0.5 - y / worldHeight) * latRange;
+    // Map 2D coordinates to spherical coordinates
+    // X maps to longitude: 0 to worldWidth -> -PI to PI
+    // Y maps to latitude: 0 to worldHeight -> -latRange/2 to latRange/2
+    const lon = (x / worldWidth - 0.5) * Math.PI * 2;
+    const lat = (y / worldHeight - 0.5) * latRange;
     
     // Direct calculation without intermediate vector
     const cosLat = Math.cos(lat);
@@ -109,7 +95,10 @@ export function updateEntitiesFromBuffers(
   }
   
   // Update alive count without logging
-  aliveCount = newAliveCount;
+  let aliveCount = 0;
+  for (let i = 0; i < count; i++) {
+    if (alive[i] > 0) aliveCount++;
+  }
   
   // Only flag update if we actually changed something
   if (updateCount > 0) {

@@ -1409,16 +1409,26 @@ export function Scene3DPlanetCanvas({
           updateEntitiesFromBuffers(
             refs.entities,
             pos,
-            color,
             alive,
             count,
             world.width,
             world.height
           );
-          // Update entity lighting
+          // Update entity lighting - use world space light direction directly
           const entityMaterial = refs.entities.material as THREE.ShaderMaterial;
           if (entityMaterial.uniforms && entityMaterial.uniforms.uLightDir) {
-            entityMaterial.uniforms.uLightDir.value.copy(refs.earth.uniforms.shared.uLightDir.value);
+            // Use the same light direction as the planet (sun to earth vector)
+            entityMaterial.uniforms.uLightDir.value.copy(sunToEarth);
+            
+            // Debug: log once every 60 frames
+            if (frameCount % 60 === 0) {
+              console.log('Entity light dir:', entityMaterial.uniforms.uLightDir.value);
+            }
+          } else if (frameCount % 60 === 0) {
+            console.warn('Entity material missing uniforms or uLightDir!', {
+              hasUniforms: !!entityMaterial.uniforms,
+              uniforms: entityMaterial.uniforms
+            });
           }
         }
       }

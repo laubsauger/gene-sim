@@ -84,6 +84,11 @@ const fragmentShader = `
   }
 `;
 
+/**
+ * @deprecated
+ * @param param0
+ * @returns 
+ */
 export function EntityPoints3D({
   pos,
   color,
