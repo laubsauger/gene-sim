@@ -18,6 +18,11 @@ interface Planet3DState {
   biomeMode: 'hidden' | 'natural' | 'highlight';
   showBiomeBoundaries: boolean;
   showFoodOverlay: boolean;
+  useAdvancedBiomeShaders: boolean;
+  biomeShaderBlend: number;
+  biomeOceanWaves: number;
+  biomeShowContours: boolean;
+  biomeSatelliteView: boolean;
   
   // Visual effects
   showAurora: boolean;
@@ -66,6 +71,11 @@ interface Planet3DState {
   setBiomeMode: (mode: 'hidden' | 'natural' | 'highlight') => void;
   setShowBiomeBoundaries: (value: boolean) => void;
   setShowFoodOverlay: (value: boolean) => void;
+  setUseAdvancedBiomeShaders: (value: boolean) => void;
+  setBiomeShaderBlend: (value: number) => void;
+  setBiomeOceanWaves: (value: number) => void;
+  setBiomeShowContours: (value: boolean) => void;
+  setBiomeSatelliteView: (value: boolean) => void;
 
   // Actions
   toggleShowEntities: () => void;
@@ -138,13 +148,18 @@ export const usePlanet3DStore = create<Planet3DState>()(
     showClouds: true,
     showMoon: true,
     showSun: true,
-    showVenus: false, // Disabled in low quality
-    showMars: false, // Disabled in low quality
+    showVenus: true, // Now enabled by default
+    showMars: true, // Now enabled by default
   
   // Biome settings
   biomeMode: 'natural',
   showBiomeBoundaries: false,
   showFoodOverlay: true, // Default to true like in Scene2D
+  useAdvancedBiomeShaders: true, // Enable by default for better visuals
+  biomeShaderBlend: 0.8,
+  biomeOceanWaves: 0.7,
+  biomeShowContours: false,
+  biomeSatelliteView: true,
     showAurora: true,
     showSpaceDust: true,
     showVolumetricDust: true,
@@ -154,7 +169,7 @@ export const usePlanet3DStore = create<Planet3DState>()(
     atmosphereIntensity: 1.0, // Default atmosphere glow
     showLensFlare: false, // Disabled in low quality
     lensFlareIntensity: 0.3, // Lower default intensity
-    showStarfield: false, // Disabled in low quality
+    showStarfield: true, // Now enabled by default
     starCount: 20000, // Default 20k stars
     showTwinkle: true,
     twinkleIntensity: 0.3,
@@ -178,6 +193,11 @@ export const usePlanet3DStore = create<Planet3DState>()(
   setBiomeMode: (mode) => set({ biomeMode: mode }),
   setShowBiomeBoundaries: (value) => set({ showBiomeBoundaries: value }),
   setShowFoodOverlay: (value) => set({ showFoodOverlay: value }),
+  setUseAdvancedBiomeShaders: (value) => set({ useAdvancedBiomeShaders: value }),
+  setBiomeShaderBlend: (value) => set({ biomeShaderBlend: value }),
+  setBiomeOceanWaves: (value) => set({ biomeOceanWaves: value }),
+  setBiomeShowContours: (value) => set({ biomeShowContours: value }),
+  setBiomeSatelliteView: (value) => set({ biomeSatelliteView: value }),
     
     // Toggle actions
     toggleShowEntities: () => set((state) => ({ showEntities: !state.showEntities })),

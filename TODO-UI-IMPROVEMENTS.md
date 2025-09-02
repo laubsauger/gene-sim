@@ -2,6 +2,13 @@
 
 ### 4c. Cinematic Zoom Animation Controls / Planet Target resp Camera target change animation
 
+- [ ] FIX: Flicker during zoom animation - appears to run twice with one track arriving early
+  - [ ] Investigate animation track synchronization
+  - [ ] Ensure single animation instance per zoom
+  - [ ] Fix frame interpolation issues
+- [ ] FIX: Geostationary camera rotates opposite to planetary rotation
+  - [ ] Camera should maintain view of same planetary surface spot
+  - [ ] Sync rotation direction with planet's rotation
 - [ ] Visual polish:
   - [ ] Consider adding motion blur post-process (optional)
 
@@ -80,6 +87,47 @@
 - [ ] Implementation approach:
   - [ ] Use noise-based movement patterns
   - [ ] Shader-based storm cloud rendering
+
+### 14. Biome Visualization with Stylized Shaders
+
+- [ ] Replace low-res textures with procedural shader-based biome rendering
+  - [ ] **Ocean Shader**
+    - [ ] Animated wave displacement with vertex shader
+    - [ ] Fresnel effect for realistic water reflectance
+    - [ ] Depth-based color gradients (deep blue to turquoise)
+    - [ ] Specular highlights from sun
+    - [ ] Subtle foam patterns at coastlines
+    - [ ] Normal mapping for micro-wave details
+  - [ ] **Mountain/Rock Shader**
+    - [ ] Procedural rock texturing with triplanar mapping
+    - [ ] Height-based color variation (snow caps, rock bands)
+    - [ ] Ambient occlusion in crevices
+    - [ ] Rough surface normal perturbation
+    - [ ] Subtle metallic/mineral sparkles
+  - [ ] **Desert Shader**
+    - [ ] Sand dune patterns with Perlin noise
+    - [ ] Heat shimmer distortion effect
+    - [ ] Subtle sand grain sparkle
+    - [ ] Wind pattern streaks
+  - [ ] **Forest/Grassland Shader**
+    - [ ] Procedural vegetation density patterns
+    - [ ] Color variation for different vegetation types
+    - [ ] Subtle wind animation on "grass"
+    - [ ] Seasonal color transitions
+  - [ ] **Arctic/Tundra Shader**
+    - [ ] Ice crystal reflections
+    - [ ] Snow accumulation patterns
+    - [ ] Subsurface scattering for ice
+    - [ ] Permafrost texture blending
+- [ ] Stylization approach:
+  - [ ] Satellite imagery aesthetic with artistic enhancement
+  - [ ] Subtle elevation-based shading
+  - [ ] Smooth biome transitions with gradient mapping
+  - [ ] Optional: Topographic contour lines overlay
+- [ ] Performance optimizations:
+  - [ ] LOD system for shader complexity
+  - [ ] Texture atlas for shared resources
+  - [ ] Instanced rendering where applicable
 
 ### 15. Ocean Effects and Water Rendering
 

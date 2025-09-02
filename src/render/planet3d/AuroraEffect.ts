@@ -4,7 +4,7 @@ import auroraMatFragmentShader from './shader/auroraMat.frag.glsl'
 
 export function createAuroraEffect(planetRadius: number) {
   const geometry = new THREE.SphereGeometry(
-    planetRadius * 1.08, // Aurora occurs at 100-400km altitude in ionosphere
+    planetRadius * 1.07, // Lower altitude, closer to planet surface
     128,
     64
   );

@@ -55,8 +55,8 @@ export const INITIAL_CAMERA_POSITION: [number, number, number] = [
 
 export const CAMERA_CONFIG = {
   fov: 60,
-  near: 0.01,
-  far: 20000,
+  near: 0.1,  // Increased from 0.01 to improve depth buffer precision
+  far: 10000,  // Reduced from 20000 for better depth precision
   minDistance: PLANET_RADIUS * 1.15,  // Prevent clipping through planet
   maxDistance: MARS_ORBIT_RADIUS * 3,  // Allow zooming out to see full system including Mars
 };

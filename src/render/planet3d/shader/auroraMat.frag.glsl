@@ -39,7 +39,7 @@ void main() {
   
   // Use local Y position for pole detection (planet's actual poles)
   float latitude = abs(localNormal.y);
-  float polarMask = smoothstep(0.80, 0.92, latitude); // Tighter zone, very close to poles
+  float polarMask = smoothstep(0.83, 0.96, latitude); // Wider smoothstep for softer edge
   
   // Calculate view angle
   vec3 viewDir = normalize(uCameraPos - vPosition);
@@ -81,36 +81,34 @@ void main() {
   
   // Calculate position on sphere for noise sampling
   float azimuth = atan(localNormal.z, localNormal.x);
-  float timeFlow = uTime * 0.0002;
+  float timeFlow = uTime * 0.00008; // Moderate speed for visible movement
   
   // Create noise that displaces the ring positions with much more variance
   // Different displacement for each ring to break up circular symmetry
-  vec3 ringDisp1 = vec3(localNormal.x * 2.5, localNormal.z * 2.5, timeFlow * 1.2);
-  vec3 ringDisp2 = vec3(localNormal.x * 3.0 + 1.5, localNormal.z * 3.0 + 1.5, timeFlow * 1.5);
-  vec3 ringDisp3 = vec3(localNormal.x * 2.0 - 1.0, localNormal.z * 2.0 - 1.0, timeFlow * 1.0);
-  vec3 ringDisp4 = vec3(localNormal.x * 3.5 + 0.5, localNormal.z * 3.5 + 0.5, timeFlow * 1.8);
+  vec3 ringDisp1 = vec3(localNormal.x * 2.5, localNormal.z * 2.5, timeFlow * 0.8);
+  vec3 ringDisp2 = vec3(localNormal.x * 3.0 + 1.5, localNormal.z * 3.0 + 1.5, timeFlow * 1.2);
+  vec3 ringDisp3 = vec3(localNormal.x * 2.0 - 1.0, localNormal.z * 2.0 - 1.0, timeFlow * 0.6);
   
-  // Much larger displacement for irregular shapes
-  float latOffset1 = fbm(ringDisp1) * 0.12; // Up to 12% latitude variance
-  float latOffset2 = fbm(ringDisp2) * 0.10;
-  float latOffset3 = fbm(ringDisp3) * 0.15; // Even more for outer ring
-  float latOffset4 = fbm(ringDisp4) * 0.08;
+  // Moderate displacement for irregular but not too chaotic shapes
+  float latOffset1 = fbm(ringDisp1) * 0.08; // Up to 8% latitude variance
+  float latOffset2 = fbm(ringDisp2) * 0.06;
+  float latOffset3 = fbm(ringDisp3) * 0.10; // More for outer ring
   
-  // Define four rings with individual displacement for irregular shapes
-  float ring1 = smoothstep(0.82, 0.83, latitude + latOffset1) * smoothstep(0.845, 0.835, latitude + latOffset1);
-  float ring2 = smoothstep(0.845, 0.855, latitude + latOffset2) * smoothstep(0.87, 0.86, latitude + latOffset2);
-  float ring3 = smoothstep(0.87, 0.88, latitude + latOffset3) * smoothstep(0.895, 0.885, latitude + latOffset3);
-  float ring4 = smoothstep(0.895, 0.905, latitude + latOffset4) * smoothstep(0.92, 0.91, latitude + latOffset4);
+  // Define three rings with softer edges using wider smoothstep ranges
+  float ring1 = smoothstep(0.865, 0.88, latitude + latOffset1) * smoothstep(0.90, 0.885, latitude + latOffset1);  // Inner ring, softer edges
+  float ring2 = smoothstep(0.895, 0.91, latitude + latOffset2) * smoothstep(0.93, 0.915, latitude + latOffset2);  // Middle ring, softer edges
+  float ring3 = smoothstep(0.925, 0.94, latitude + latOffset3) * smoothstep(0.96, 0.945, latitude + latOffset3);  // Outer ring, softer edges
   
-  // Combine rings with different intensities
-  float rings = ring1 * 0.9 + ring2 * 0.8 + ring3 * 0.7 + ring4 * 0.6;
+  // Combine three rings with some overlap for smoother transitions
+  float rings = ring1 * 0.9 + ring2 * 0.7 + ring3 * 0.5;
+  rings = min(rings, 1.2); // Cap to prevent over-brightness
   
-  // Add temporal variation to ring brightness (not position)
-  float brightnessPulse = sin(timeFlow * 8.0) * 0.2 + 0.8;
+  // Add subtle temporal variation to ring brightness
+  float brightnessPulse = sin(timeFlow * 2.5) * 0.1 + 0.9; // Much slower and subtler
   rings *= brightnessPulse;
   
   // Add some flowing brightness variation using 3D noise
-  vec3 flowPos = vec3(localNormal.x, localNormal.y, localNormal.z) * 5.0 + vec3(0.0, 0.0, timeFlow * 3.0);
+  vec3 flowPos = vec3(localNormal.x, localNormal.y, localNormal.z) * 5.0 + vec3(0.0, 0.0, timeFlow * 1.5);
   float flowPattern = noise(flowPos) * 0.4 + 0.6;
   
   // Final aurora pattern
@@ -134,18 +132,25 @@ void main() {
   vec3 color1 = mix(greenAurora, yellowAurora, noise(vec3(localNormal.x * 5.0, localNormal.z * 5.0, timeFlow)) * 0.5 + 0.5);
   vec3 color2 = mix(greenAurora, blueAurora, noise(vec3(localNormal.x * 4.0 + 1.0, localNormal.z * 4.0, timeFlow * 1.2)) * 0.6 + 0.4);
   vec3 color3 = mix(purpleAurora, redAurora, noise(vec3(localNormal.x * 6.0, localNormal.z * 6.0 - 1.0, timeFlow * 0.8)) * 0.7 + 0.3);
-  vec3 color4 = mix(redAurora, purpleAurora, flowPattern);
   
-  // Combine ring colors based on their intensities
-  vec3 auroraColor = color1 * ring1 + color2 * ring2 * 0.8 + color3 * ring3 * 0.7 + color4 * ring4 * 0.6;
-  auroraColor = normalize(auroraColor + vec3(0.1)) * 1.2; // Normalize and boost
+  // Mix colors based on which ring is dominant (non-additive)
+  vec3 auroraColor = vec3(0.0);
+  float maxRing = max(max(ring1, ring2), ring3);
+  if (maxRing > 0.01) {
+    // Weight colors by ring strength but don't add them
+    auroraColor = color1 * (ring1 / maxRing) * 0.5 + 
+                  color2 * (ring2 / maxRing) * 0.3 + 
+                  color3 * (ring3 / maxRing) * 0.2;
+    auroraColor = normalize(auroraColor + vec3(0.1)) * 2.0; // Brighter
+  }
   
-  // Add gentle shimmer based on time only (no azimuth dependency)
-  float shimmer = sin(uTime * 0.004) * 0.15 + 0.85;
-  shimmer *= cos(uTime * 0.007) * 0.1 + 0.9;
+  // Add very subtle shimmer based on time only
+  float shimmer = sin(uTime * 0.001) * 0.06 + 0.95; // Slower and subtler
+  shimmer *= cos(uTime * 0.002) * 0.035 + 0.85;
   aurora *= shimmer;
   
-  // Balanced final appearance
-  float finalAlpha = aurora * 0.9;
-  gl_FragColor = vec4(auroraColor * aurora * 2.5, finalAlpha);
+  // Variable opacity for more depth
+  float opacity = aurora * (0.7 + flowPattern * 0.5); // Opacity varies with flow pattern
+  float finalAlpha = min(opacity * 1.3, 1.0); // Cap at 1.0
+  gl_FragColor = vec4(auroraColor * aurora * 3.0, finalAlpha);
 }

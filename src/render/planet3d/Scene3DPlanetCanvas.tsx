@@ -115,7 +115,7 @@ export function Scene3DPlanetCanvas({
   } | null>(null);
   const statsRef = useRef<Stats | null>(null);
   const { controlsHidden, setupSidebarCollapsed, statsSidebarCollapsed } = useUIStore();
-  const geostationaryOffsetRef = useRef<{ angle: number; height: number; distance: number } | null>(null);
+  const geostationaryOffsetRef = useRef<{ angle: number; height: number; distance: number; target: string } | null>(null);
 
   // Store reference for animation loop - we'll use getState() inside the loop
   // to always get the current state values
@@ -316,7 +316,9 @@ export function Scene3DPlanetCanvas({
       powerPreference: "high-performance",
       preserveDrawingBuffer: false,
       stencil: false,
-      depth: true
+      depth: true,
+      alpha: false,  // Opaque canvas for better performance
+      premultipliedAlpha: true  // Correct alpha blending
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
@@ -1165,9 +1167,9 @@ export function Scene3DPlanetCanvas({
         }
       }
 
-      // Handle cinematic zoom animation
+      // Handle cinematic zoom animation - ensure no conflicts with transitions
       const anim = cinematicAnimationRef.current;
-      if (anim && anim.active && !transition?.active) { // Don't zoom while transitioning
+      if (anim && anim.active && !(transition && transition.active)) { // Clearer condition to prevent conflicts
         const elapsed = performance.now() - anim.startTime;
         const progress = Math.min(elapsed / anim.duration, 1);
 
@@ -1210,8 +1212,8 @@ export function Scene3DPlanetCanvas({
         }
       }
 
-      // Update controls - always enabled except during cinematic zoom
-      refs.controls.enabled = !cinematicAnimationRef.current?.active;
+      // Update controls - disabled during both cinematic zoom and camera transitions
+      refs.controls.enabled = !cinematicAnimationRef.current?.active && !cameraTransitionRef.current?.active;
       refs.controls.update();
 
       // Planetary orbit mechanics on ecliptic plane (controlled by orbital mode and pause)
@@ -1330,31 +1332,36 @@ export function Scene3DPlanetCanvas({
         // Calculate the current angle of the camera relative to Earth's center
         const currentAngle = Math.atan2(cameraRelativePos.z, cameraRelativePos.x);
 
-        // If we haven't stored the geostationary offset yet, calculate it
-        if (!geostationaryOffsetRef.current) {
+        // If we haven't stored the geostationary offset yet, or if target changed, initialize it
+        if (!geostationaryOffsetRef.current || geostationaryOffsetRef.current.target !== planet3DState.cameraTarget) {
+          const currentRotation = planet3DState.pauseOrbits ? 0 : refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed;
           geostationaryOffsetRef.current = {
-            angle: currentAngle - refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed,
+            angle: currentAngle - currentRotation,
             height: cameraRelativePos.y,
-            distance: Math.sqrt(cameraRelativePos.x * cameraRelativePos.x + cameraRelativePos.z * cameraRelativePos.z)
+            distance: Math.sqrt(cameraRelativePos.x * cameraRelativePos.x + cameraRelativePos.z * cameraRelativePos.z),
+            target: planet3DState.cameraTarget
           };
         }
 
         // Update the stored offset whenever the user moves the camera
         // This makes the new position the geostationary reference point
-        const expectedAngle = geostationaryOffsetRef.current.angle + refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed;
+        const currentRotation = planet3DState.pauseOrbits ? 0 : refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed;
+        const expectedAngle = geostationaryOffsetRef.current.angle + currentRotation;
         const angleDiff = Math.abs(currentAngle - expectedAngle);
 
-        // If camera has moved significantly (user dragged it) or target changed, update the reference
+        // If camera has moved significantly (user dragged it), update the reference
         if (angleDiff > 0.01 || Math.abs(currentDistance - geostationaryOffsetRef.current.distance) > 1) {
           geostationaryOffsetRef.current = {
-            angle: currentAngle - refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed,
+            angle: currentAngle - currentRotation,
             height: cameraRelativePos.y,
-            distance: Math.sqrt(cameraRelativePos.x * cameraRelativePos.x + cameraRelativePos.z * cameraRelativePos.z)
+            distance: Math.sqrt(cameraRelativePos.x * cameraRelativePos.x + cameraRelativePos.z * cameraRelativePos.z),
+            target: planet3DState.cameraTarget
           };
         }
 
-        // Apply the geostationary rotation for the target planet
-        const planetRotation = refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed;
+        // Apply the geostationary rotation for the target planet (only if orbits aren't paused)
+        // The camera needs to rotate WITH the planet to maintain view of the same spot
+        const planetRotation = planet3DState.pauseOrbits ? 0 : refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed;
         const geostationaryAngle = geostationaryOffsetRef.current.angle + planetRotation;
 
         // Calculate new position that maintains the same relative position to planet's surface

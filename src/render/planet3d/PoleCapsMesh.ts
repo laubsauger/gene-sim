@@ -18,7 +18,7 @@ export function createPoleCaps(radius: number = PLANET_RADIUS): THREE.Group {
   
   // North pole cap
   const northCapGeo = new THREE.SphereGeometry(
-    radius * 1.0001, // Slightly larger to avoid z-fighting
+    radius * 1.001, // Slightly larger to avoid z-fighting
     64, 
     32,
     0, // phiStart
@@ -29,7 +29,7 @@ export function createPoleCaps(radius: number = PLANET_RADIUS): THREE.Group {
   
   // South pole cap
   const southCapGeo = new THREE.SphereGeometry(
-    radius * 1.0001,
+    radius * 1.001,
     64,
     32,
     0,
@@ -45,6 +45,9 @@ export function createPoleCaps(radius: number = PLANET_RADIUS): THREE.Group {
     metalness: 0.05,
     emissive: new THREE.Color(0x304050), // Much darker emissive for better shadow contrast
     emissiveIntensity: 0.05, // Very low emissive so shadows are visible
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1
   });
   
   // Create meshes

@@ -65,6 +65,9 @@ export function createFoodOverlay3D(config: FoodOverlay3DConfig): {
   mesh.receiveShadow = false;
   mesh.castShadow = false;
   
+  // Apply small scale to prevent z-fighting with planet surface
+  mesh.scale.setScalar(1.002);
+  
   // Update function
   let frameCount = 0;
   const update = (foodData: Uint8Array, time: number) => {
