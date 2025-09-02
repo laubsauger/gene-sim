@@ -1,77 +1,168 @@
 import * as THREE from 'three';
 import { PLANET_RADIUS, ENTITY_ALTITUDE } from './planetUtils';
+import entityMatVertexShader from './shader/entityMat.vertex.glsl'
+import entityMatFragmentShader from './shader/entityMat.frag.glsl'
+
+// Track frame count for update throttling
+let frameCount = 0;
+let aliveCount = 0;
+const hiddenMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
+
+// Cache for tracking which entities need updates
+const prevAlive = new Uint8Array(196000);
+const aliveIndices = new Uint32Array(196000);
+
+// Reusable objects to avoid allocation
+const mat4 = new THREE.Matrix4();
+const scaleVec = new THREE.Vector3();
 
 export function updateEntitiesFromBuffers(
   mesh: THREE.InstancedMesh,
   pos: Float32Array,
-  color: Uint8Array,
   alive: Uint8Array,
   count: number,
   worldWidth: number,
   worldHeight: number
 ) {
-  const mat4 = new THREE.Matrix4();
-  const vec3 = new THREE.Vector3();
-  const col = new THREE.Color();
+  frameCount++;
+  
+  // Update every 5 frames for better performance
+  const doFullUpdate = frameCount % 5 === 0;
+  
+  if (!doFullUpdate) {
+    return;
+  }
+  
   const planetRadius = PLANET_RADIUS;
   const altitude = planetRadius + ENTITY_ALTITUDE;
-
+  const scale = 0.0075;
+  scaleVec.set(scale, scale, scale);
+  
+  // Update all entities positions - alive/dead should be filtered worker-side
+  // For now, still check alive status but this should move to worker
+  let updateCount = 0;
+  
   for (let i = 0; i < count; i++) {
-    const isAlive = alive[i] > 0;
+    // Skip dead entities (this check should eventually be removed)
+    if (alive[i] === 0) {
+      // Hide dead entities
+      if (prevAlive[i] > 0) {
+        mesh.setMatrixAt(i, hiddenMatrix);
+        updateCount++;
+        prevAlive[i] = 0;
+      }
+      continue;
+    }
+
+    prevAlive[i] = alive[i];
     
-    if (isAlive) {
-      const x = pos[i * 2];
-      const y = pos[i * 2 + 1];
-      const lon = (x / worldWidth) * Math.PI * 2;
-      const lat = (y / worldHeight) * Math.PI - Math.PI / 2;
-      
-      const cosLat = Math.cos(lat);
-      const px = altitude * cosLat * Math.cos(lon);
-      const py = altitude * Math.sin(lat);
-      const pz = altitude * cosLat * Math.sin(lon);
-      vec3.set(px, py, pz);
-      
-      mat4.makeTranslation(px, py, pz);
-      const scale = 0.002;
-      mat4.scale(new THREE.Vector3(scale, scale, scale));
-      mesh.setMatrixAt(i, mat4);
-      
-      const r = color[i * 3] / 255;
-      const g = color[i * 3 + 1] / 255;
-      const b = color[i * 3 + 2] / 255;
-      col.setRGB(r, g, b);
-      mesh.setColorAt(i, col);
-    } else {
-      mat4.makeScale(0, 0, 0);
-      mesh.setMatrixAt(i, mat4);
+    const x = pos[i * 2];
+    const y = pos[i * 2 + 1];
+    
+    // Map 2D coordinates to spherical coordinates matching Three.js sphere UV mapping
+    // Three.js SphereGeometry UV: U (0-1) maps to longitude 0 to 2π (starting from +X)
+    // V (0-1) maps from south pole (π/2) to north pole (-π/2)
+    // Our world: X (0-worldWidth) should map around the sphere
+    // Y (0-worldHeight) should map to the middle 85% of the texture (7.5% padding each side for poles)
+    // Subtract 90 degree rotation to align with texture (-π/2 radians)
+    const lon = (x / worldWidth) * Math.PI * 2 - Math.PI / 2; // Rotate -90 degrees
+    // Map Y to account for pole padding in texture (7.5% top, 85% middle, 7.5% bottom)
+    // Y=0 should map to 7.5% from bottom, Y=worldHeight should map to 92.5% from bottom
+    const textureV = 0.075 + (y / worldHeight) * 0.85; // Map to middle 85% of texture
+    const lat = (textureV - 0.5) * Math.PI; // Convert to latitude (-π/2 to π/2)
+    
+    // Direct calculation without intermediate vector
+    const cosLat = Math.cos(lat);
+    const sinLat = Math.sin(lat);
+    const sinLon = Math.sin(lon);
+    const cosLon = Math.cos(lon);
+    
+    mat4.makeTranslation(
+      altitude * cosLat * sinLon,
+      altitude * sinLat,
+      altitude * cosLat * cosLon
+    );
+    mat4.scale(scaleVec);
+    mesh.setMatrixAt(i, mat4);
+    
+    updateCount++;
+  }
+  
+  // Update the color attribute directly from SharedArrayBuffer
+  // This happens less frequently as colors don't change often
+  if (frameCount % 30 === 0) {
+    const colorAttribute = (mesh as any).colorAttribute;
+    if (colorAttribute) {
+      colorAttribute.needsUpdate = true;
     }
   }
   
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  // Update alive count without logging
+  let aliveCount = 0;
+  for (let i = 0; i < count; i++) {
+    if (alive[i] > 0) aliveCount++;
+  }
+  
+  // Only flag update if we actually changed something
+  if (updateCount > 0) {
+    mesh.instanceMatrix.needsUpdate = true;
+    // Also update the custom color attribute
+    const colorAttribute = (mesh as any).colorAttribute;
+    if (colorAttribute) {
+      colorAttribute.needsUpdate = true;
+    }
+  }
 }
 
-export function makeGroundEntities(count: number): THREE.InstancedMesh {
-  const geo = new THREE.SphereGeometry(1, 6, 4);
-  const mat = new THREE.MeshPhongMaterial({
-    vertexColors: true,
-    emissive: new THREE.Color(0x111111),
-    emissiveIntensity: 0.3,
-    shininess: 5,
+export function makeGroundEntities(count: number, colorBuffer?: Uint8Array): THREE.InstancedMesh {
+  // Use even simpler geometry - tetrahedron is the simplest 3D shape
+  const geo = new THREE.TetrahedronGeometry(1, 0); // 0 detail level = 4 faces only
+
+  // Shader with lighting similar to clouds
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uLightDir: { value: new THREE.Vector3(1, 0, 0) }
+    },
+    vertexShader: entityMatVertexShader,
+    fragmentShader: entityMatFragmentShader,
+    transparent: false,
+    depthWrite: false,
+    depthTest: true
   });
   
-  const mesh = new THREE.InstancedMesh(geo, mat, count);
-  mesh.frustumCulled = false;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
+  // Use the SharedArrayBuffer color data directly if provided
+  let colorAttribute;
+  if (colorBuffer) {
+    // Use the Uint8Array directly with normalization (like 2D renderer)
+    colorAttribute = new THREE.InstancedBufferAttribute(colorBuffer, 3, true); // true = normalized
+  } else {
+    // Fallback for initialization
+    const colors = new Uint8Array(count * 3);
+    colorAttribute = new THREE.InstancedBufferAttribute(colors, 3, true);
+  }
+  geo.setAttribute('customColor', colorAttribute);
   
-  // Initialize with zero scale
-  const mat4 = new THREE.Matrix4();
-  mat4.makeScale(0, 0, 0);
+  const mesh = new THREE.InstancedMesh(geo, mat, count);
+  mesh.frustumCulled = false; // Don't cull
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  mesh.matrixAutoUpdate = false;
+  mesh.renderOrder = 0; // Same as planet
+  
+  // Store reference for updates
+  (mesh as any).colorAttribute = colorAttribute;
+  
+  // Entity mesh initialized with custom shader
+  
+  // Initialize all as hidden
+  const hiddenMat = new THREE.Matrix4().makeScale(0, 0, 0);
   for (let i = 0; i < count; i++) {
-    mesh.setMatrixAt(i, mat4);
+    mesh.setMatrixAt(i, hiddenMat);
   }
   mesh.instanceMatrix.needsUpdate = true;
+  
+  // Also initialize prevAlive to match
+  prevAlive.fill(0);
   
   return mesh;
 }

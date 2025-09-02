@@ -12,14 +12,15 @@ export function worldToSphere(
   worldHeight: number,
   radius: number = PLANET_RADIUS
 ): THREE.Vector3 {
-  // Map to spherical coordinates (longitude and latitude)
-  // X wraps around horizontally (longitude)
-  const lon = (x / worldWidth) * Math.PI * 2 - Math.PI; // -π to π
+  // Map to spherical coordinates matching Three.js sphere UV mapping and biome texture
+  // X wraps around horizontally (longitude) 0 to 2π
+  // Subtract 90 degree rotation to align with texture
+  const lon = (x / worldWidth) * Math.PI * 2 - Math.PI / 2; // Rotate -90 degrees
   
-  // Y maps to latitude, but we'll adjust the range to avoid singularities at poles
-  // Using 85% of the latitude range to keep entities away from poles
-  const latRange = Math.PI * 0.85;
-  const lat = (y / worldHeight) * latRange - latRange / 2;
+  // Y maps to the middle 85% of the texture to match biome texture padding
+  // The biome texture has 7.5% padding at top and bottom for poles
+  const textureV = 0.075 + (y / worldHeight) * 0.85; // Map to middle 85% of texture
+  const lat = (textureV - 0.5) * Math.PI; // Convert to latitude (-π/2 to π/2)
   
   // Convert spherical to Cartesian coordinates
   const cartX = radius * Math.cos(lat) * Math.sin(lon);
@@ -45,9 +46,12 @@ export function batchWorldToSphere(
     const x = positions[i * 2];
     const y = positions[i * 2 + 1];
     
-    const lon = (x / worldWidth) * Math.PI * 2 - Math.PI;
-    const latRange = Math.PI * 0.85;
-    const lat = (y / worldHeight) * latRange - latRange / 2;
+    // Match Three.js sphere UV mapping and biome texture padding
+    // Subtract 90 degree rotation to align with texture
+    const lon = (x / worldWidth) * Math.PI * 2 - Math.PI / 2; // Rotate -90 degrees
+    // Map Y to account for pole padding in texture (7.5% top, 85% middle, 7.5% bottom)
+    const textureV = 0.075 + (y / worldHeight) * 0.85; // Map to middle 85% of texture
+    const lat = (textureV - 0.5) * Math.PI; // Convert to latitude (-π/2 to π/2)
     
     output[i * 3] = radius * Math.cos(lat) * Math.sin(lon);
     output[i * 3 + 1] = radius * Math.sin(lat);

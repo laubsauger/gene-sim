@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Scene2D } from './render/Scene2D';
-import { Scene3D } from './render/Scene3D';
-import { Scene3DPlanetCanvas } from './render/Scene3DPlanetCanvas';
+import { Scene3DPlanetCanvas } from './render/planet3d/Scene3DPlanetCanvas';
 import { createSimClient, detectBestMode, type SimMode, type SimClient } from './client/setupSimClientHybrid';
 import { Controls } from './ui/Controls';
 import { StatsPanel } from './ui/StatsPanel';
@@ -10,6 +9,8 @@ import { GameOver } from './ui/GameOver';
 import { COIStatus } from './ui/COIStatus';
 import { BiomeLegend } from './ui/BiomeLegend';
 import type { SimStats } from './sim/types';
+import { useUIStore } from './stores/useUIStore';
+import { usePlanet3DStore } from './stores/usePlanet3DStore';
 import './App.css';
 
 const WORLD_WIDTH = 8000;
@@ -41,12 +42,32 @@ export default function App() {
     console.log('[App] Initializing default entity size to:', defaultSize);
     return defaultSize;
   }); // Default entity size
-  const [renderMode, setRenderMode] = useState<'2D' | '3D' | '3D-Planet'>('2D'); // Toggle between 2D, 3D and 3D-Planet
   const [showFood, setShowFood] = useState(true); // Toggle food display
   const [showBoundaries, setShowBoundaries] = useState(true); // Toggle boundary visualization - enabled by default
+  
+  // Initialize 3D store boundary and food state on mount
+  useEffect(() => {
+    usePlanet3DStore.getState().setShowBiomeBoundaries(showBoundaries);
+    usePlanet3DStore.getState().setShowFoodOverlay(showFood);
+  }, []); // Only run once on mount
+  
+  // Sync boundary state with 3D store when toggled
+  const handleBoundariesChange = (show: boolean) => {
+    setShowBoundaries(show);
+    // Also update the 3D store
+    usePlanet3DStore.getState().setShowBiomeBoundaries(show);
+  };
+  
+  // Sync food overlay state with 3D store when toggled
+  const handleShowFoodChange = (show: boolean) => {
+    setShowFood(show);
+    // Also update the 3D store
+    usePlanet3DStore.getState().setShowFoodOverlay(show);
+  };
   const [biomeMode, setBiomeMode] = useState<'hidden' | 'natural' | 'highlight'>('natural'); // Biome display mode
-  const [biomeLegendCollapsed, setBiomeLegendCollapsed] = useState(false); // Biome legend collapse state
+  const [biomeLegendCollapsed, setBiomeLegendCollapsed] = useState(true); // Biome legend collapse state - collapsed by default
   const [simRestartKey, setSimRestartKey] = useState(0); // Force re-render on simulation restart
+  const { controlsHidden, renderMode, setRenderMode, statsSidebarCollapsed, setupSidebarCollapsed } = useUIStore(); // Get UI state from store
 
   const lastConfigRef = useRef<any>(null);
   
@@ -268,6 +289,16 @@ export default function App() {
   }, [client]);
   
   // Cleanup on unmount
+  // Note: Fullscreen handling and keyboard shortcuts (F for fullscreen, H for hide UI) are now handled in Controls.tsx via UIStore
+  
+  // Trigger resize event when UI visibility or sidebar state changes
+  useEffect(() => {
+    // Dispatch resize event to update canvas dimensions
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 200); // Increased delay to ensure DOM and grid layout have updated
+  }, [controlsHidden, statsSidebarCollapsed, setupSidebarCollapsed]);
+  
   useEffect(() => {
     return () => {
       console.log('[App] Cleaning up on unmount');
@@ -277,16 +308,25 @@ export default function App() {
     };
   }, []);
 
+  // Determine if the right sidebar is collapsed
+  const rightSidebarCollapsed = showSetup ? setupSidebarCollapsed : statsSidebarCollapsed;
+  
   return (
     <div style={{
-      display: 'grid',
-      gridTemplateColumns: biomeMode !== 'hidden' ? '1fr auto 420px' : '1fr 420px',
+      display: controlsHidden ? 'block' : 'grid',
+      gridTemplateColumns: controlsHidden ? '1fr' : 
+        biomeMode !== 'hidden' ? 
+          (biomeLegendCollapsed ? 
+            (rightSidebarCollapsed ? '1fr 40px 60px' : '1fr 40px 420px') : 
+            (rightSidebarCollapsed ? '1fr 260px 60px' : '1fr 260px 420px')) : 
+          (rightSidebarCollapsed ? '1fr 60px' : '1fr 420px'),
       height: '100vh',
       width: '100vw',
       overflow: 'hidden',
+      transition: 'grid-template-columns 0.3s ease',
       // background: '#0a0a0a',
     }}>
-      <COIStatus />
+      {!controlsHidden && <COIStatus />}
       <div style={{ position: 'relative' }}>
         {renderMode === '2D' ? (
           <>
@@ -301,23 +341,14 @@ export default function App() {
               simRestartKey={simRestartKey}
             />
           </>
-        ) : renderMode === '3D' ? (
-          <Scene3D
-            client={client} 
-            world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
-            entitySize={entitySize}
-            seed={currentSeed}
-            showFood={showFood}
-            biomeMode={biomeMode}
-          />
         ) : (
           <Scene3DPlanetCanvas
             client={client} 
             world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
             entitySize={entitySize}
             seed={currentSeed}
-            showFood={showFood}
             biomeMode={biomeMode}
+            showBoundaries={showBoundaries}
           />
         )}
         <div style={{
@@ -335,30 +366,39 @@ export default function App() {
             renderMode={renderMode}
             onRenderModeChange={setRenderMode}
             showFood={showFood}
-            onShowFoodChange={setShowFood}
+            onShowFoodChange={handleShowFoodChange}
             showBoundaries={showBoundaries}
-            onShowBoundariesChange={setShowBoundaries}
+            onShowBoundariesChange={handleBoundariesChange}
             biomeMode={biomeMode}
             onBiomeModeChange={setBiomeMode}
           />
         </div>
       </div>
       
-      {biomeMode !== 'hidden' && (
+      {biomeMode !== 'hidden' && !controlsHidden && (
         <BiomeLegend 
           biomeMode={biomeMode} 
           collapsed={biomeLegendCollapsed}
-          onToggleCollapse={() => setBiomeLegendCollapsed(!biomeLegendCollapsed)}
+          onToggleCollapse={() => {
+            setBiomeLegendCollapsed(!biomeLegendCollapsed);
+            // Trigger resize event to update canvas dimensions
+            setTimeout(() => {
+              window.dispatchEvent(new Event('resize'));
+            }, 350); // After transition completes (300ms + buffer)
+          }}
           position="right"
         />
       )}
       
-      <div style={{
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        background: '#111',
-        borderLeft: '1px solid #222',
-      }}>
+      {!controlsHidden && (
+        <div style={{
+          width: rightSidebarCollapsed ? '60px' : '420px',
+          overflowY: rightSidebarCollapsed ? 'hidden' : 'auto',
+          overflowX: 'hidden',
+          background: '#111',
+          borderLeft: '1px solid #222',
+          transition: 'width 0.3s ease',
+        }}>
         {showSetup ? (
           <SimulationSetup
             client={client}
@@ -399,6 +439,7 @@ export default function App() {
           </button>
         )} */}
       </div>
+      )}
       
       {gameOver && (
         <GameOver
