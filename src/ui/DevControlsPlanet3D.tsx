@@ -689,6 +689,76 @@ export function DevControlsPlanet3D({
               </button>
             )}
           </div>
+          
+          {/* Save/Restore State Buttons */}
+          <div style={{ marginTop: '10px', borderTop: '1px solid #333', paddingTop: '10px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '5px', color: '#aaa' }}>
+              Scene State
+            </div>
+            <div style={{ display: 'flex', gap: '5px' }}>
+              <button
+                onClick={() => {
+                  if ((window as any).saveSceneState) {
+                    (window as any).saveSceneState();
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  background: 'rgba(100, 200, 100, 0.2)',
+                  border: '1px solid rgba(100, 200, 100, 0.5)',
+                  borderRadius: '3px',
+                  color: '#afa',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(100, 200, 100, 0.3)';
+                  e.currentTarget.style.borderColor = 'rgba(100, 200, 100, 0.7)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(100, 200, 100, 0.2)';
+                  e.currentTarget.style.borderColor = 'rgba(100, 200, 100, 0.5)';
+                }}
+                title="Save current camera position and scene state to localStorage"
+              >
+                💾 Save [S]
+              </button>
+              <button
+                onClick={() => {
+                  if ((window as any).restoreSceneState) {
+                    (window as any).restoreSceneState();
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  background: 'rgba(100, 150, 255, 0.2)',
+                  border: '1px solid rgba(100, 150, 255, 0.5)',
+                  borderRadius: '3px',
+                  color: '#aaf',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(100, 150, 255, 0.3)';
+                  e.currentTarget.style.borderColor = 'rgba(100, 150, 255, 0.7)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(100, 150, 255, 0.2)';
+                  e.currentTarget.style.borderColor = 'rgba(100, 150, 255, 0.5)';
+                }}
+                title="Restore saved camera position and scene state from localStorage"
+              >
+                📂 Restore [R]
+              </button>
+            </div>
+            <div style={{ fontSize: '9px', color: '#666', marginTop: '3px' }}>
+              Auto-restores on page reload
+            </div>
+          </div>
         </div>
       )}
       </div>

@@ -184,7 +184,7 @@ export function EntityPoints3D({
           size: { value: pointSize * 0.8 },  // Reduced size for more realistic scale
           sunPosition: { value: sunPosition }
         }}
-        transparent
+        transparent={false}
         depthWrite={false}  // Don't write depth for points
         depthTest={false}   // Disable to prevent planet occlusion
         blending={THREE.NormalBlending}  // Normal blending for proper visibility

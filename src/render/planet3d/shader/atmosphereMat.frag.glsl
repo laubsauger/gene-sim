@@ -58,25 +58,25 @@ void main() {
   float limb = 1.0 - abs(viewDot);
   float atmosphereThickness = pow(limb, 0.8) + 0.1; // Add base to reach surface
   
-  // Use continuous functions for smoother transitions with moderately wider bands
-  float dayFactor = smoothstep(-0.6, 0.6, sunDot);  // Moderate transition from -0.6 to 0.6
-  float sunsetFactor = exp(-3.5 * abs(sunDot)) * 2.2;  // Moderate terminator band (middle ground)
-  float nightFactor = smoothstep(0.6, -0.6, sunDot);  // Match moderate transition
+  // Narrower terminator for more dramatic day/night transition
+  float dayFactor = smoothstep(-0.3, 0.3, sunDot);  // Narrow transition from -0.3 to 0.3
+  float sunsetFactor = exp(-8.0 * abs(sunDot)) * 3.0;  // Much narrower, more intense terminator
+  float nightFactor = smoothstep(0.3, -0.3, sunDot);  // Match narrow transition
   
-  // Define atmosphere colors - reduced brightness for less washout
-  vec3 dayColor = vec3(0.08, 0.25, 0.7);       // Much less bright blue, more subtle
-  vec3 sunsetColor = vec3(0.9, 0.25, 0.05);    // Slightly dimmer orange-red sunset
-  vec3 twilightColor = vec3(0.2, 0.12, 0.35);  // Softer purple twilight
-  vec3 nightColor = vec3(0.02, 0.04, 0.1);     // Darker night with subtle blue tint
+  // Define atmosphere colors - enhanced for glow effect
+  vec3 dayColor = vec3(0.12, 0.35, 0.85);       // Brighter blue for glow
+  vec3 sunsetColor = vec3(1.0, 0.35, 0.08);     // Intense orange-red sunset glow
+  vec3 twilightColor = vec3(0.3, 0.15, 0.5);    // More vibrant purple twilight
+  vec3 nightColor = vec3(0.02, 0.04, 0.1);      // Keep night dark
   
   // Blending with less mixing to preserve color saturation
   vec3 color = dayColor * dayFactor;
-  color += sunsetColor * sunsetFactor * (1.0 - dayFactor * 0.3);  // Less reduction of sunset on day side
-  color += twilightColor * nightFactor * (1.0 - sunsetFactor * 0.5);
-  color = mix(color, nightColor, nightFactor * 0.5);  // Less night color mixing
+  color += sunsetColor * sunsetFactor * (1.0 - dayFactor * 0.2);  // Strong sunset at terminator
+  color += twilightColor * nightFactor * (1.0 - sunsetFactor * 0.3);
+  color = mix(color, nightColor, nightFactor * 0.7);  // Darker night side
   
-  // Reduced intensity to prevent overexposure
-  float intensity = 0.15 + dayFactor * 0.35 + sunsetFactor * 0.15;
+  // Enhanced intensity for glow effect
+  float intensity = 0.2 + dayFactor * 0.5 + sunsetFactor * 0.3;
   
   // Ensure night side has minimum visibility
   intensity = max(intensity, 0.1);

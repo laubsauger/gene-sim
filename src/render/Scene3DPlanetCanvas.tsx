@@ -470,9 +470,9 @@ export function Scene3DPlanetCanvas({
     const mars = makeMars();
     mars.group.position.set(MARS_ORBIT_RADIUS, 0, 0); // Start at orbit position
     scene.add(mars.group);
-    // Add Mars' moons to scene
-    scene.add(mars.phobos);
-    scene.add(mars.deimos);
+    // Add Mars' moons to scene - TEMPORARILY DISABLED FOR DEBUGGING
+    // scene.add(mars.phobos);
+    // scene.add(mars.deimos);
     
     // ---------- MOON (using proper component) ----------
     const moonResult = makeMoon(PLANET_RADIUS);
@@ -705,6 +705,147 @@ export function Scene3DPlanetCanvas({
     
     return () => clearTimeout(timer);
   }, [setupSidebarCollapsed, statsSidebarCollapsed, controlsHidden]);
+
+  // Save/Restore functionality
+  const saveSceneState = useCallback(() => {
+    if (!sceneRef.current) return;
+    
+    const refs = sceneRef.current;
+    const state = {
+      camera: {
+        position: refs.camera.position.toArray(),
+        rotation: refs.camera.rotation.toArray(),
+        fov: refs.camera.fov,
+      },
+      controls: {
+        target: refs.controls.target.toArray(),
+      },
+      earth: {
+        position: refs.earth.group.position.toArray(),
+        rotation: refs.earth.group.rotation.toArray(),
+      },
+      moon: refs.moon ? {
+        position: refs.moon.position.toArray(),
+      } : null,
+      venus: refs.venus ? {
+        position: refs.venus.group.position.toArray(),
+      } : null,
+      mars: refs.mars ? {
+        position: refs.mars.group.position.toArray(),
+      } : null,
+      time: refs.clock.elapsedTime,
+      planet3DSettings: storeRef.current.getState(),
+      timestamp: Date.now(),
+    };
+    
+    // Save to localStorage
+    localStorage.setItem('gene-sim-scene-state', JSON.stringify(state));
+    
+    // Log to console for debugging
+    console.log('Scene state saved:', state);
+    console.log('Camera position:', state.camera.position);
+    console.log('Camera target:', state.controls.target);
+  }, []);
+  
+  const restoreSceneState = useCallback(() => {
+    if (!sceneRef.current) return;
+    
+    const savedState = localStorage.getItem('gene-sim-scene-state');
+    if (!savedState) {
+      console.log('No saved state found');
+      return;
+    }
+    
+    try {
+      const state = JSON.parse(savedState);
+      const refs = sceneRef.current;
+      
+      // Restore camera
+      refs.camera.position.fromArray(state.camera.position);
+      refs.camera.rotation.fromArray(state.camera.rotation);
+      refs.camera.fov = state.camera.fov;
+      refs.camera.updateProjectionMatrix();
+      
+      // Restore controls
+      refs.controls.target.fromArray(state.controls.target);
+      refs.controls.update();
+      
+      // Restore planet positions
+      refs.earth.group.position.fromArray(state.earth.position);
+      refs.earth.group.rotation.fromArray(state.earth.rotation);
+      
+      if (refs.moon && state.moon) {
+        refs.moon.position.fromArray(state.moon.position);
+      }
+      
+      if (refs.venus && state.venus) {
+        refs.venus.group.position.fromArray(state.venus.position);
+      }
+      
+      if (refs.mars && state.mars) {
+        refs.mars.group.position.fromArray(state.mars.position);
+      }
+      
+      // Restore Planet3D settings
+      if (state.planet3DSettings) {
+        const store = storeRef.current.getState();
+        // Only restore view-related settings, not all settings
+        store.setShowEntities(state.planet3DSettings.showEntities);
+        store.setShowAtmosphere(state.planet3DSettings.showAtmosphere);
+        store.setShowClouds(state.planet3DSettings.showClouds);
+        store.setCameraTarget(state.planet3DSettings.cameraTarget);
+        store.setCameraMode(state.planet3DSettings.cameraMode);
+      }
+      
+      console.log('Scene state restored from:', new Date(state.timestamp).toLocaleString());
+      console.log('Camera position:', state.camera.position);
+      console.log('Camera target:', state.controls.target);
+    } catch (error) {
+      console.error('Failed to restore scene state:', error);
+    }
+  }, []);
+  
+  // Auto-restore on mount if state exists
+  useEffect(() => {
+    // Wait for scene to be fully initialized
+    const timer = setTimeout(() => {
+      if (sceneRef.current && localStorage.getItem('gene-sim-scene-state')) {
+        console.log('Auto-restoring saved scene state...');
+        restoreSceneState();
+      }
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, [restoreSceneState]);
+  
+  // Expose functions to parent component and add keyboard shortcuts
+  useEffect(() => {
+    // Store functions in window for global access (temporary solution)
+    (window as any).saveSceneState = saveSceneState;
+    (window as any).restoreSceneState = restoreSceneState;
+    
+    // Add keyboard shortcuts
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        saveSceneState();
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        restoreSceneState();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyPress);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress);
+      delete (window as any).saveSceneState;
+      delete (window as any).restoreSceneState;
+    };
+  }, [saveSceneState, restoreSceneState]);
 
   // Animation loop
   useEffect(() => {
@@ -943,23 +1084,23 @@ export function Scene3DPlanetCanvas({
             // Mars rotation (similar to Earth)
             refs.mars.group.rotation.y = orbitTime * MARS_ROTATION_SPEED;
             
-            // Mars' moons orbits (Phobos and Deimos)
-            if (refs.mars.phobos) {
-              const phobosAngle = orbitTime * 0.8; // Very fast orbit
-              refs.mars.phobos.position.set(
-                marsPos.x + Math.cos(phobosAngle) * MARS_RADIUS * 2.5,
-                marsPos.y,
-                marsPos.z + Math.sin(phobosAngle) * MARS_RADIUS * 2.5
-              );
-            }
-            if (refs.mars.deimos) {
-              const deimosAngle = orbitTime * 0.3; // Slower orbit
-              refs.mars.deimos.position.set(
-                marsPos.x + Math.cos(deimosAngle) * MARS_RADIUS * 4,
-                marsPos.y + Math.sin(deimosAngle) * MARS_RADIUS * 0.5, // Slight inclination
-                marsPos.z + Math.sin(deimosAngle) * MARS_RADIUS * 4
-              );
-            }
+            // Mars' moons orbits (Phobos and Deimos) - TEMPORARILY DISABLED FOR DEBUGGING
+            // if (refs.mars.phobos) {
+            //   const phobosAngle = orbitTime * 0.8; // Very fast orbit
+            //   refs.mars.phobos.position.set(
+            //     marsPos.x + Math.cos(phobosAngle) * MARS_RADIUS * 2.5,
+            //     marsPos.y,
+            //     marsPos.z + Math.sin(phobosAngle) * MARS_RADIUS * 2.5
+            //   );
+            // }
+            // if (refs.mars.deimos) {
+            //   const deimosAngle = orbitTime * 0.3; // Slower orbit
+            //   refs.mars.deimos.position.set(
+            //     marsPos.x + Math.cos(deimosAngle) * MARS_RADIUS * 4,
+            //     marsPos.y + Math.sin(deimosAngle) * MARS_RADIUS * 0.5, // Slight inclination
+            //     marsPos.z + Math.sin(deimosAngle) * MARS_RADIUS * 4
+            //   );
+            // }
           }
         } else {
           // When paused, maintain current positions
@@ -1275,11 +1416,8 @@ export function Scene3DPlanetCanvas({
             world.width,
             world.height
           );
-          // Update entity lighting direction
-          const mat = refs.entities.material as THREE.ShaderMaterial;
-          if (mat.uniforms?.uLightDir) {
-            mat.uniforms.uLightDir.value.copy(refs.earth.uniforms.shared.uLightDir.value);
-          }
+          // Entity material is MeshStandardMaterial, not ShaderMaterial
+          // Lighting is handled automatically by Three.js for standard materials
         }
       }
 
@@ -1302,31 +1440,46 @@ export function Scene3DPlanetCanvas({
     };
   }, [client, world, isPaused]); // Don't add controls to deps to avoid recreating animation loop
   
-  // Handle biome mode changes
+  // Sync props with planet3D store
   useEffect(() => {
-    const unsubscribe = usePlanet3DStore.subscribe(
-      (state) => state.biomeMode,
-      (currentBiomeMode) => {
-        if (!sceneRef.current || !earthRef.current || !seed) return;
-        
-        // Only recreate if mode actually changed
-        if (prevBiomeModeRef.current === currentBiomeMode) return;
-        prevBiomeModeRef.current = currentBiomeMode;
-        
-        const { scene } = sceneRef.current;
-        
-        // Simply update the biome mode on existing earth - no need to recreate!
-        if (earthRef.current?.updateBiomeMode) {
-          earthRef.current.updateBiomeMode(
-            currentBiomeMode === 'highlight' ? 'highlight' : 'natural',
-            biomeGeneratorRef.current || undefined
-          );
-        }
-      }
-    );
+    const store = usePlanet3DStore.getState();
+    // Update store when props change
+    if (biomeMode !== store.biomeMode) {
+      store.setBiomeMode(biomeMode);
+    }
+  }, [biomeMode]);
+  
+  useEffect(() => {
+    const store = usePlanet3DStore.getState();
+    if (showBoundaries !== store.showBiomeBoundaries) {
+      store.setShowBiomeBoundaries(showBoundaries);
+    }
+  }, [showBoundaries]);
+  
+  // Store food visibility state (food rendering in 3D not yet implemented)
+  useEffect(() => {
+    // For now, just store the state for future use
+    // TODO: Implement food particle rendering on planet surface
+    console.log('Food layer visibility:', showFood);
+  }, [showFood]);
+  
+  // Handle biome mode changes (from either props or store)
+  useEffect(() => {
+    if (!sceneRef.current || !earthRef.current || !seed) return;
     
-    return unsubscribe;
-  }, [seed, world]);
+    // Check if mode actually changed
+    if (prevBiomeModeRef.current === biomeMode) return;
+    prevBiomeModeRef.current = biomeMode;
+    
+    // Simply update the biome mode on existing earth
+    if (earthRef.current?.updateBiomeMode) {
+      // Pass 'hidden' directly to updateBiomeMode when biomes are off
+      earthRef.current.updateBiomeMode(
+        biomeMode === 'hidden' ? 'hidden' : (biomeMode === 'highlight' ? 'highlight' : 'natural'),
+        biomeGeneratorRef.current || undefined
+      );
+    }
+  }, [biomeMode, seed]);
 
   // Cinematic zoom functions
   const handleZoomToSurface = useCallback(() => {

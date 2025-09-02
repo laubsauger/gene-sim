@@ -7,6 +7,7 @@ import { BiomeGenerator } from '../../sim/biomes';
 import atmosphereMatVertexShader from './shader/atmosphereMat.vertex.glsl?raw'
 import atmosphereMatFragmentShader from './shader/atmosphereMat.frag.glsl?raw'
 import { createBiomeTexture } from './BiomeTextureGenerator';
+import { createPoleCaps } from './PoleCapsMesh';
 
 export interface PlanetConfig {
   radius?: number;
@@ -98,6 +99,10 @@ export function makePlanet(config: PlanetConfig = {}) {
   const atmosphereMesh = new THREE.Mesh(atmosphereGeo, atmosphereMat);
   atmosphereMesh.frustumCulled = false;
   group.add(atmosphereMesh);
+  
+  // Add pole caps to cover the unused polar regions
+  const poleCaps = createPoleCaps(radius);
+  group.add(poleCaps);
 
   function update({
     delta = 0.016,

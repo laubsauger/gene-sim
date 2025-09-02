@@ -12,9 +12,9 @@ export function createBiomeTexture(
   const grid = biomeGenerator.getBiomeGrid();
   const { width: gridWidth, height: gridHeight } = biomeGenerator.getGridDimensions();
   
-  // Create higher resolution texture for spherical mapping
-  const textureWidth = gridWidth * 4;
-  const textureHeight = gridHeight * 4;
+  // Create higher resolution texture for spherical mapping to reduce pixelation
+  const textureWidth = gridWidth * 8;  // Increased from 4 to 8
+  const textureHeight = gridHeight * 8; // Increased from 4 to 8
   
   const canvas = document.createElement('canvas');
   canvas.width = textureWidth;
@@ -23,8 +23,34 @@ export function createBiomeTexture(
   ctx.imageSmoothingEnabled = true;
   
   // Fill biome texture with proper scaling
+  // Add padding for poles (since we use 85% of latitude range)
+  const poleHeight = Math.floor(textureHeight * 0.075); // 7.5% padding on each pole
+  
+  // Fill pole regions with ice cap colors
+  // North pole - gradient from white to light blue
+  const northGradient = ctx.createLinearGradient(0, 0, 0, poleHeight);
+  northGradient.addColorStop(0, '#ffffff');    // Pure white at top
+  northGradient.addColorStop(0.7, '#f0f8ff');  // Light ice blue
+  northGradient.addColorStop(1, '#e0f0ff');    // Transition to main area
+  ctx.fillStyle = northGradient;
+  ctx.fillRect(0, 0, textureWidth, poleHeight);
+  
+  // South pole - similar gradient
+  const southGradient = ctx.createLinearGradient(0, textureHeight - poleHeight, 0, textureHeight);
+  southGradient.addColorStop(0, '#e0f0ff');    // Transition from main area
+  southGradient.addColorStop(0.3, '#f0f8ff');  // Light ice blue
+  southGradient.addColorStop(1, '#ffffff');    // Pure white at bottom
+  ctx.fillStyle = southGradient;
+  ctx.fillRect(0, textureHeight - poleHeight, textureWidth, poleHeight);
+  
+  // Fill the main biome area (85% of vertical space)
+  const mainAreaStart = poleHeight;
+  const mainAreaHeight = textureHeight - (2 * poleHeight);
+  const scaleY = mainAreaHeight / gridHeight;
+  
   for (let y = 0; y < gridHeight; y++) {
     for (let x = 0; x < gridWidth; x++) {
+      // Don't invert Y here - use grid directly as it matches world coordinates
       const biomeType = grid[y][x];
       const config = BIOME_CONFIGS[biomeType];
       let color = mode === 'highlight' ? 
@@ -38,8 +64,14 @@ export function createBiomeTexture(
       }
       
       ctx.fillStyle = `#${color.getHexString()}`;
-      // Scale up each cell to fill the higher resolution texture
-      ctx.fillRect(x * 4, y * 4, 4, 4);
+      // Scale and position within the 85% band with higher resolution
+      const scaleFactor = 8; // Match the increased texture resolution
+      ctx.fillRect(
+        x * scaleFactor, 
+        mainAreaStart + Math.floor(y * scaleY), 
+        scaleFactor, 
+        Math.ceil(scaleY)
+      );
     }
   }
   
