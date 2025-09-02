@@ -1414,16 +1414,12 @@ export function Scene3DPlanetCanvas({
             world.width,
             world.height
           );
-          // Update entity lighting - use world space light direction directly
+          // Update entity lighting - use the same light direction as atmosphere/clouds
           const entityMaterial = refs.entities.material as THREE.ShaderMaterial;
           if (entityMaterial.uniforms && entityMaterial.uniforms.uLightDir) {
-            // Use the same light direction as the planet (sun to earth vector)
-            entityMaterial.uniforms.uLightDir.value.copy(sunToEarth);
-            
-            // Debug: log once every 60 frames
-            if (frameCount % 60 === 0) {
-              console.log('Entity light dir:', entityMaterial.uniforms.uLightDir.value);
-            }
+            // Use the same light direction that's fed to the planet/atmosphere
+            // This is already in world space and accounts for the tilt properly
+            entityMaterial.uniforms.uLightDir.value.copy(refs.earth.uniforms.shared.uLightDir.value);
           } else if (frameCount % 60 === 0) {
             console.warn('Entity material missing uniforms or uLightDir!', {
               hasUniforms: !!entityMaterial.uniforms,

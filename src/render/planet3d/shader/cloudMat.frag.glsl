@@ -144,7 +144,7 @@ void main(){
   // Cloud coloring with lighting that matches atmosphere
   vec3 dayCol = uDayTint * selfShadow;
   vec3 sunsetCol = mix(uDayTint * 0.8, vec3(1.0, 0.7, 0.4), 0.5); // Warmer sunset clouds
-  vec3 nightCol = uNightTint * 0.2; // Slightly visible night clouds
+  vec3 nightCol = uNightTint * 0.05; // Much darker night clouds, nearly invisible
   
   // Blend colors using same approach as atmosphere
   vec3 col = dayCol * dayFactor;
@@ -156,8 +156,8 @@ void main(){
   // Limb darkening/brightening
   float limb = pow(1.0 - clamp(dot(N,V), 0.0, 1.0), 1.5);
   
-  // Alpha calculation similar to atmosphere - stronger on day side, minimal on night
-  float intensity = 0.3 + dayFactor * 0.6 + sunsetFactor * 0.1;
+  // Alpha calculation - much more transparent on night side
+  float intensity = 0.1 + dayFactor * 0.8 + sunsetFactor * 0.1;  // Much less base intensity
   float alpha = uDensity * mask * intensity * mix(1.0, 0.7, limb);
   if(alpha < 0.01) discard; 
   gl_FragColor = vec4(col, alpha);
