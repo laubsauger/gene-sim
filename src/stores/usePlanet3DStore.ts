@@ -17,6 +17,7 @@ interface Planet3DState {
   // Biome settings
   biomeMode: 'hidden' | 'natural' | 'highlight';
   showBiomeBoundaries: boolean;
+  showFoodOverlay: boolean;
   
   // Visual effects
   showAurora: boolean;
@@ -64,6 +65,7 @@ interface Planet3DState {
   // Biome setters
   setBiomeMode: (mode: 'hidden' | 'natural' | 'highlight') => void;
   setShowBiomeBoundaries: (value: boolean) => void;
+  setShowFoodOverlay: (value: boolean) => void;
 
   // Actions
   toggleShowEntities: () => void;
@@ -142,6 +144,7 @@ export const usePlanet3DStore = create<Planet3DState>()(
   // Biome settings
   biomeMode: 'natural',
   showBiomeBoundaries: false,
+  showFoodOverlay: true, // Default to true like in Scene2D
     showAurora: true,
     showSpaceDust: true,
     showVolumetricDust: true,
@@ -174,6 +177,7 @@ export const usePlanet3DStore = create<Planet3DState>()(
   // Biome setters
   setBiomeMode: (mode) => set({ biomeMode: mode }),
   setShowBiomeBoundaries: (value) => set({ showBiomeBoundaries: value }),
+  setShowFoodOverlay: (value) => set({ showFoodOverlay: value }),
     
     // Toggle actions
     toggleShowEntities: () => set((state) => ({ showEntities: !state.showEntities })),

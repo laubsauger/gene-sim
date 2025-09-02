@@ -45,9 +45,10 @@ export default function App() {
   const [showFood, setShowFood] = useState(true); // Toggle food display
   const [showBoundaries, setShowBoundaries] = useState(true); // Toggle boundary visualization - enabled by default
   
-  // Initialize 3D store boundary state on mount
+  // Initialize 3D store boundary and food state on mount
   useEffect(() => {
     usePlanet3DStore.getState().setShowBiomeBoundaries(showBoundaries);
+    usePlanet3DStore.getState().setShowFoodOverlay(showFood);
   }, []); // Only run once on mount
   
   // Sync boundary state with 3D store when toggled
@@ -55,6 +56,13 @@ export default function App() {
     setShowBoundaries(show);
     // Also update the 3D store
     usePlanet3DStore.getState().setShowBiomeBoundaries(show);
+  };
+  
+  // Sync food overlay state with 3D store when toggled
+  const handleShowFoodChange = (show: boolean) => {
+    setShowFood(show);
+    // Also update the 3D store
+    usePlanet3DStore.getState().setShowFoodOverlay(show);
   };
   const [biomeMode, setBiomeMode] = useState<'hidden' | 'natural' | 'highlight'>('natural'); // Biome display mode
   const [biomeLegendCollapsed, setBiomeLegendCollapsed] = useState(true); // Biome legend collapse state - collapsed by default
@@ -339,7 +347,6 @@ export default function App() {
             world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
             entitySize={entitySize}
             seed={currentSeed}
-            showFood={showFood}
             biomeMode={biomeMode}
             showBoundaries={showBoundaries}
           />
@@ -359,7 +366,7 @@ export default function App() {
             renderMode={renderMode}
             onRenderModeChange={setRenderMode}
             showFood={showFood}
-            onShowFoodChange={setShowFood}
+            onShowFoodChange={handleShowFoodChange}
             showBoundaries={showBoundaries}
             onShowBoundariesChange={handleBoundariesChange}
             biomeMode={biomeMode}

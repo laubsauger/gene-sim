@@ -37,6 +37,7 @@ import { BiomeGenerator } from '../../sim/biomes';
 import { createMultiLayerClouds } from './MultiLayerClouds';
 import { updateEntitiesFromBuffers, makeGroundEntities } from './EntityRenderer';
 import { batchWorldToSphere } from '../utils/coordinateTransform';
+import { createFoodOverlay3D } from './FoodOverlay3D';
 import { makeMoon } from './MoonComponent';
 import { makeVenus } from './VenusComponent';
 import { makeMars } from './MarsComponent';
@@ -57,7 +58,6 @@ import {
   CLOUD_ROTATION_SPEED,
   AXIAL_TILT,
   MOON_ORBITAL_INCLINATION,
-  INITIAL_CAMERA_POSITION,
   CAMERA_CONFIG,
   SUN_RADIUS,
   VENUS_ORBIT_RADIUS,
@@ -75,7 +75,6 @@ export interface Scene3DPlanetCanvasProps {
   world: { width: number; height: number };
   entitySize: number;
   seed?: number;
-  showFood?: boolean;
   biomeMode?: 'hidden' | 'natural' | 'highlight';
   showBoundaries?: boolean;
 }
@@ -85,7 +84,6 @@ export function Scene3DPlanetCanvas({
   world,
   entitySize,
   seed = 1234,
-  showFood = true,
   biomeMode = 'natural',
   showBoundaries = false // Keep as prop for backwards compatibility but use store
 }: Scene3DPlanetCanvasProps) {
@@ -153,6 +151,7 @@ export function Scene3DPlanetCanvas({
     northPoleCylinder?: THREE.Mesh;
     southPoleCylinder?: THREE.Mesh;
     boundaries?: THREE.Group;
+    foodOverlay?: ReturnType<typeof createFoodOverlay3D>;
   } | null>(null);
 
   // Listen for pause state from simulation
@@ -269,27 +268,9 @@ export function Scene3DPlanetCanvas({
       }
     }
 
-    // Create line segments for all edges
-    console.log(`[Boundaries] Creating ${edges.length} boundary edges`);
-    
-    if (edges.length === 0) {
-      console.warn('[Boundaries] No boundary edges found! Check traversability map');
-      // Debug: log some info about the traversability map
-      let traversableCount = 0;
-      let nonTraversableCount = 0;
-      for (let i = 0; i < traversabilityMap.length; i++) {
-        if (traversabilityMap[i] === 1) traversableCount++;
-        else nonTraversableCount++;
-      }
-      console.log(`[Boundaries] Traversable cells: ${traversableCount}, Non-traversable: ${nonTraversableCount}`);
-    }
-    
     // Collect all line segments into a single geometry for better performance
     const allPoints: THREE.Vector3[] = [];
-    edges.forEach((edge, index) => {
-      if (index < 5) { // Log first few edges for debugging
-        console.log(`[Boundaries] Edge ${index}:`, edge.points[0], edge.points[1]);
-      }
+    edges.forEach((edge) => {
       allPoints.push(edge.points[0], edge.points[1]);
     });
     
@@ -316,7 +297,6 @@ export function Scene3DPlanetCanvas({
       group.add(glowLines);
     }
 
-    console.log(`[Boundaries] Created boundary group with ${group.children.length} lines`);
     return group;
   };
 
@@ -366,15 +346,11 @@ export function Scene3DPlanetCanvas({
       CAMERA_CONFIG.near,
       CAMERA_CONFIG.far
     );
-    // Start looking at Earth's initial position
-    camera.position.set(
-      EARTH_ORBIT_RADIUS + INITIAL_CAMERA_POSITION[0],
-      INITIAL_CAMERA_POSITION[1],
-      INITIAL_CAMERA_POSITION[2]
-    );
-    camera.lookAt(EARTH_ORBIT_RADIUS, 0, 0);
+    // Set default camera position from saved view
+    camera.position.set(47.77627964409322, 1.1502508893442907, 7.314353845821846);
+    camera.rotation.set(-0.35978222754560024, -0.5585316946306087, -0.19676065388331593);
 
-    // Controls
+    // Controls with saved target position
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
@@ -383,7 +359,7 @@ export function Scene3DPlanetCanvas({
     controls.maxDistance = CAMERA_CONFIG.maxDistance * 3; // Allow more zoom out for orbital view
     controls.rotateSpeed = 0.5;
     controls.zoomSpeed = 1.0;
-    controls.target.set(EARTH_ORBIT_RADIUS, 0, 0); // Look at Earth's initial position
+    controls.target.set(49.81791285506853, 0, 4.256430394671956); // Saved target position
 
     // Create EffectComposer for post-processing
     const composer = new EffectComposer(renderer);
@@ -588,10 +564,11 @@ export function Scene3DPlanetCanvas({
     });
     earthRef.current = earth; // Store reference for later updates
 
-    // Add the earth group - will be positioned at orbit radius
+    // Add the earth group - will be positioned at saved position
     scene.add(earth.group);
-    // Earth starts at orbit position
-    earth.group.position.set(EARTH_ORBIT_RADIUS, 0, 0);
+    // Earth starts at saved position (close-up view of surface)
+    earth.group.position.set(49.79808714103889, 0, 4.488932734347621);
+    earth.group.rotation.set(0, 0.4494984999999405, 0.41015237421866746);
     // Enable shadow casting and receiving for Earth
     if (earth.meshes.planetMesh) {
       earth.meshes.planetMesh.castShadow = true;
@@ -618,12 +595,12 @@ export function Scene3DPlanetCanvas({
 
     // ---------- VENUS (closer to sun) ----------
     const venus = makeVenus();
-    venus.group.position.set(VENUS_ORBIT_RADIUS, 0, 0); // Start at orbit position
+    venus.group.position.set(27.634201737970393, 0, 4.511196549160116); // Saved position
     scene.add(venus.group);
 
     // ---------- MARS (further from sun) ----------
     const mars = makeMars();
-    mars.group.position.set(MARS_ORBIT_RADIUS, 0, 0); // Start at orbit position
+    mars.group.position.set(74.89092004441893, 0, 4.043525058714209); // Saved position
     scene.add(mars.group);
     // Add Mars' moons to scene - TEMPORARILY DISABLED FOR DEBUGGING
     // scene.add(mars.phobos);
@@ -636,6 +613,8 @@ export function Scene3DPlanetCanvas({
     // Enable shadow casting and receiving for Moon
     moon.castShadow = true;
     moon.receiveShadow = true;
+    // Set initial moon position
+    moon.position.set(50.679984798912, 0.34954035589491184, 8.374814624039942);
     // Add moon directly to scene, not to earth group
     scene.add(moon);
 
@@ -825,12 +804,25 @@ export function Scene3DPlanetCanvas({
       // Create biome boundaries if biome generator exists
       if (biomeGeneratorRef.current) {
         const store = usePlanet3DStore.getState();
-        console.log(`[Boundaries] Creating boundaries, showBiomeBoundaries=${store.showBiomeBoundaries}`);
         const boundaries = createBiomeBoundaries(biomeGeneratorRef.current, world.width, world.height);
         boundaries.visible = store.showBiomeBoundaries;
         sceneRef.current.earth.group.add(boundaries);
         sceneRef.current.boundaries = boundaries;
-        console.log(`[Boundaries] Added to scene, visible=${boundaries.visible}`);
+      }
+
+      // Create food overlay if food buffers exist
+      if (client.buffers.food && client.buffers.foodCols && client.buffers.foodRows) {
+        const store = usePlanet3DStore.getState();
+        const foodOverlay = createFoodOverlay3D({
+          foodData: client.buffers.food,
+          cols: client.buffers.foodCols,
+          rows: client.buffers.foodRows,
+          radius: PLANET_RADIUS,
+          opacity: 0.9 // Higher opacity for better visibility
+        });
+        foodOverlay.mesh.visible = store.showFoodOverlay;
+        sceneRef.current.earth.group.add(foodOverlay.mesh);
+        sceneRef.current.foodOverlay = foodOverlay;
       }
     };
 
@@ -846,7 +838,13 @@ export function Scene3DPlanetCanvas({
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      // Clean up food overlay on unmount
+      if (sceneRef.current?.foodOverlay) {
+        sceneRef.current.foodOverlay.dispose();
+      }
+    };
   }, [client, world]);
 
   // Force resize when sidebar states change
@@ -970,18 +968,18 @@ export function Scene3DPlanetCanvas({
     }
   }, []);
 
-  // Auto-restore on mount if state exists
-  useEffect(() => {
-    // Wait for scene to be fully initialized
-    const timer = setTimeout(() => {
-      if (sceneRef.current && localStorage.getItem('gene-sim-scene-state')) {
-        console.log('Auto-restoring saved scene state...');
-        restoreSceneState();
-      }
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [restoreSceneState]);
+  // Auto-restore disabled - using hardcoded default view instead
+  // useEffect(() => {
+  //   // Wait for scene to be fully initialized
+  //   const timer = setTimeout(() => {
+  //     if (sceneRef.current && localStorage.getItem('gene-sim-scene-state')) {
+  //       console.log('Auto-restoring saved scene state...');
+  //       restoreSceneState();
+  //     }
+  //   }, 1000);
+  //
+  //   return () => clearTimeout(timer);
+  // }, [restoreSceneState]);
 
   // Expose functions to parent component and add keyboard shortcuts
   useEffect(() => {
@@ -1596,6 +1594,13 @@ export function Scene3DPlanetCanvas({
         }
       }
 
+      // Update food overlay if it exists
+      if (refs.foodOverlay && client.buffers?.food) {
+        const showFoodOverlay = storeRef.current.getState().showFoodOverlay;
+        refs.foodOverlay.update(client.buffers.food, refs.clock.elapsedTime);
+        refs.foodOverlay.mesh.visible = showFoodOverlay && planetScreenSize > LOD_THRESHOLDS.entities;
+      }
+
       // Track FPS
       fpsTracker.trackFrame();
 
@@ -1629,7 +1634,6 @@ export function Scene3DPlanetCanvas({
     const unsubscribe = usePlanet3DStore.subscribe(
       (state) => state.showBiomeBoundaries,
       (showBiomeBoundaries) => {
-        console.log(`[Boundaries] Store update: showBiomeBoundaries=${showBiomeBoundaries}`);
         if (sceneRef.current?.boundaries) {
           sceneRef.current.boundaries.visible = showBiomeBoundaries;
         }
@@ -1639,12 +1643,19 @@ export function Scene3DPlanetCanvas({
     return unsubscribe;
   }, []);
 
-  // Store food visibility state (food rendering in 3D not yet implemented)
+  // Subscribe to food overlay visibility changes from store
   useEffect(() => {
-    // For now, just store the state for future use
-    // TODO: Implement food particle rendering on planet surface
-    console.log('Food layer visibility:', showFood);
-  }, [showFood]);
+    const unsubscribe = usePlanet3DStore.subscribe(
+      (state) => state.showFoodOverlay,
+      (showFoodOverlay) => {
+        if (sceneRef.current?.foodOverlay) {
+          sceneRef.current.foodOverlay.mesh.visible = showFoodOverlay;
+        }
+      }
+    );
+    
+    return unsubscribe;
+  }, []);
 
   // Handle biome mode changes (from either props or store)
   useEffect(() => {
