@@ -328,6 +328,7 @@ export default function App() {
             seed={currentSeed}
             showFood={showFood}
             biomeMode={biomeMode}
+            showBoundaries={showBoundaries}
           />
         )}
         <div style={{
