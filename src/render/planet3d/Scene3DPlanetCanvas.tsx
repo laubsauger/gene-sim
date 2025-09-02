@@ -115,7 +115,7 @@ export function Scene3DPlanetCanvas({
   } | null>(null);
   const statsRef = useRef<Stats | null>(null);
   const { controlsHidden, setupSidebarCollapsed, statsSidebarCollapsed } = useUIStore();
-  const geostationaryOffsetRef = useRef<{ angle: number; height: number; distance: number; target: string } | null>(null);
+  const geostationaryOffsetRef = useRef<{ angle: number; height: number; distance: number; target: string; initialRotation: number } | null>(null);
 
   // Store reference for animation loop - we'll use getState() inside the loop
   // to always get the current state values
@@ -1212,9 +1212,16 @@ export function Scene3DPlanetCanvas({
         }
       }
 
-      // Update controls - disabled during both cinematic zoom and camera transitions
-      refs.controls.enabled = !cinematicAnimationRef.current?.active && !cameraTransitionRef.current?.active;
-      refs.controls.update();
+      // Update controls - disabled during animations and geostationary mode
+      const isGeostationary = planet3DState.cameraMode === 'geostationary';
+      refs.controls.enabled = !cinematicAnimationRef.current?.active && 
+                              !cameraTransitionRef.current?.active && 
+                              !isGeostationary;
+      
+      // Only update controls if not in geostationary mode
+      if (!isGeostationary) {
+        refs.controls.update();
+      }
 
       // Planetary orbit mechanics on ecliptic plane (controlled by orbital mode and pause)
       const earthPos = new THREE.Vector3(0, 0, 0);
@@ -1288,92 +1295,10 @@ export function Scene3DPlanetCanvas({
         }
       }
 
-      // Geostationary camera mode - maintains position relative to target planet's surface
+      // Store geostationary state to apply AFTER planet rotations are updated
+      let shouldApplyGeostationary = false;
       if (planet3DState.cameraMode === 'geostationary') {
-        // Get the target planet's position and rotation speed
-        let targetPos = new THREE.Vector3();
-        let rotationSpeed = 0;
-
-        switch (planet3DState.cameraTarget) {
-          case 'earth':
-            targetPos = earthPos;
-            rotationSpeed = EARTH_ROTATION_SPEED;
-            break;
-          case 'mars':
-            targetPos = marsPos;
-            rotationSpeed = MARS_ROTATION_SPEED;
-            break;
-          case 'venus':
-            targetPos = venusPos;
-            rotationSpeed = VENUS_ROTATION_SPEED;
-            break;
-          case 'moon':
-            // Moon is tidally locked, so its rotation matches its orbit
-            targetPos.set(
-              earthPos.x + Math.cos(refs.clock.elapsedTime * MOON_ORBIT_SPEED * planet3DState.orbitalSpeed) * MOON_ORBIT_RADIUS,
-              earthPos.y + Math.sin(refs.clock.elapsedTime * MOON_ORBIT_SPEED * planet3DState.orbitalSpeed) * MOON_ORBIT_RADIUS * Math.sin(MOON_ORBITAL_INCLINATION),
-              earthPos.z + Math.sin(refs.clock.elapsedTime * MOON_ORBIT_SPEED * planet3DState.orbitalSpeed) * MOON_ORBIT_RADIUS * Math.cos(MOON_ORBITAL_INCLINATION)
-            );
-            rotationSpeed = MOON_ORBIT_SPEED; // Moon rotates at same speed as orbit
-            break;
-          case 'sun':
-            targetPos.set(0, 0, 0);
-            rotationSpeed = 0.01; // Sun rotates slowly
-            break;
-          default:
-            targetPos = earthPos;
-            rotationSpeed = EARTH_ROTATION_SPEED;
-        }
-
-        // Calculate current camera position relative to target
-        const cameraRelativePos = refs.camera.position.clone().sub(targetPos);
-        const currentDistance = cameraRelativePos.length();
-
-        // Calculate the current angle of the camera relative to Earth's center
-        const currentAngle = Math.atan2(cameraRelativePos.z, cameraRelativePos.x);
-
-        // If we haven't stored the geostationary offset yet, or if target changed, initialize it
-        if (!geostationaryOffsetRef.current || geostationaryOffsetRef.current.target !== planet3DState.cameraTarget) {
-          const currentRotation = planet3DState.pauseOrbits ? 0 : refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed;
-          geostationaryOffsetRef.current = {
-            angle: currentAngle - currentRotation,
-            height: cameraRelativePos.y,
-            distance: Math.sqrt(cameraRelativePos.x * cameraRelativePos.x + cameraRelativePos.z * cameraRelativePos.z),
-            target: planet3DState.cameraTarget
-          };
-        }
-
-        // Update the stored offset whenever the user moves the camera
-        // This makes the new position the geostationary reference point
-        const currentRotation = planet3DState.pauseOrbits ? 0 : refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed;
-        const expectedAngle = geostationaryOffsetRef.current.angle + currentRotation;
-        const angleDiff = Math.abs(currentAngle - expectedAngle);
-
-        // If camera has moved significantly (user dragged it), update the reference
-        if (angleDiff > 0.01 || Math.abs(currentDistance - geostationaryOffsetRef.current.distance) > 1) {
-          geostationaryOffsetRef.current = {
-            angle: currentAngle - currentRotation,
-            height: cameraRelativePos.y,
-            distance: Math.sqrt(cameraRelativePos.x * cameraRelativePos.x + cameraRelativePos.z * cameraRelativePos.z),
-            target: planet3DState.cameraTarget
-          };
-        }
-
-        // Apply the geostationary rotation for the target planet (only if orbits aren't paused)
-        // The camera needs to rotate WITH the planet to maintain view of the same spot
-        const planetRotation = planet3DState.pauseOrbits ? 0 : refs.clock.elapsedTime * rotationSpeed * planet3DState.orbitalSpeed;
-        const geostationaryAngle = geostationaryOffsetRef.current.angle + planetRotation;
-
-        // Calculate new position that maintains the same relative position to planet's surface
-        const newCameraPos = new THREE.Vector3(
-          targetPos.x + Math.cos(geostationaryAngle) * geostationaryOffsetRef.current.distance,
-          targetPos.y + geostationaryOffsetRef.current.height,
-          targetPos.z + Math.sin(geostationaryAngle) * geostationaryOffsetRef.current.distance
-        );
-
-        // Apply the position (no lerping - direct positioning for precise geostationary orbit)
-        refs.camera.position.copy(newCameraPos);
-        refs.controls.target.copy(targetPos);
+        shouldApplyGeostationary = true;
       } else {
         // Reset geostationary offset when switching to free mode
         geostationaryOffsetRef.current = null;
@@ -1425,6 +1350,9 @@ export function Scene3DPlanetCanvas({
       // Rotate Earth on its tilted axis (pause if orbital mechanics are paused)
       if (!planet3DState.pauseOrbits) {
         refs.earth.group.rotation.y = refs.clock.elapsedTime * EARTH_ROTATION_SPEED * planet3DState.orbitalSpeed;
+      } else {
+        // Keep the last rotation value when paused
+        // refs.earth.group.rotation.y stays at its current value
       }
 
       // Moon orbit around Earth with 5.14° inclination from ecliptic
@@ -1445,6 +1373,98 @@ export function Scene3DPlanetCanvas({
         // Tidal locking - moon rotates once per orbit to always show same face to Earth
         // The rotation needs to match the orbital position
         refs.moon.rotation.y = moonAngle + Math.PI / 2; // PI/2 offset to orient the same face toward Earth
+      }
+
+      // Apply geostationary camera AFTER planet rotations are updated
+      if (shouldApplyGeostationary) {
+        // Get the target planet's position and actual rotation
+        let targetPos = new THREE.Vector3();
+        let targetRotationY = 0; // Actual Y rotation of the target body
+
+        switch (planet3DState.cameraTarget) {
+          case 'earth':
+            targetPos = earthPos;
+            targetRotationY = refs.earth.group.rotation.y;
+            break;
+          case 'mars':
+            targetPos = marsPos;
+            if (refs.mars) {
+              targetRotationY = refs.mars.group.rotation.y;
+            }
+            break;
+          case 'venus':
+            targetPos = venusPos;
+            if (refs.venus) {
+              targetRotationY = refs.venus.group.rotation.y;
+            }
+            break;
+          case 'moon':
+            targetPos.copy(refs.moon.position);
+            targetRotationY = refs.moon.rotation.y;
+            break;
+          case 'sun':
+            targetPos.set(0, 0, 0);
+            targetRotationY = 0;
+            break;
+          default:
+            targetPos = earthPos;
+            targetRotationY = refs.earth.group.rotation.y;
+        }
+
+        // Calculate current camera position relative to target
+        const cameraRelativePos = refs.camera.position.clone().sub(targetPos);
+        const currentAngle = Math.atan2(cameraRelativePos.z, cameraRelativePos.x);
+
+        // Initialize or update geostationary offset
+        if (!geostationaryOffsetRef.current || geostationaryOffsetRef.current.target !== planet3DState.cameraTarget) {
+          // Store the initial camera angle when entering geostationary mode
+          // This angle will be maintained relative to the planet's surface
+          geostationaryOffsetRef.current = {
+            angle: currentAngle, // Store the current camera angle
+            height: cameraRelativePos.y,
+            distance: Math.sqrt(cameraRelativePos.x * cameraRelativePos.x + cameraRelativePos.z * cameraRelativePos.z),
+            target: planet3DState.cameraTarget,
+            initialRotation: targetRotationY // Store the planet's rotation when we started
+          };
+          
+          console.log('Initialized geostationary:', {
+            cameraAngle: (currentAngle * 180 / Math.PI).toFixed(2) + '°',
+            planetRotation: (targetRotationY * 180 / Math.PI).toFixed(2) + '°'
+          });
+        }
+
+        // Calculate how much the planet has rotated since we entered geostationary mode
+        const rotationDelta = targetRotationY - geostationaryOffsetRef.current.initialRotation;
+        
+        // The camera needs to orbit by the same amount to stay above the same spot
+        const geostationaryAngle = geostationaryOffsetRef.current.angle + rotationDelta;
+        
+        // Calculate camera position in orbit around the planet
+        const newCameraPos = new THREE.Vector3(
+          targetPos.x + Math.cos(geostationaryAngle) * geostationaryOffsetRef.current.distance,
+          targetPos.y + geostationaryOffsetRef.current.height,
+          targetPos.z + Math.sin(geostationaryAngle) * geostationaryOffsetRef.current.distance
+        );
+
+        // Debug logging - remove after fixing
+        if (frameCount % 30 === 0) {
+          console.log('Geostationary debug:', {
+            target: planet3DState.cameraTarget,
+            planetRotation: (targetRotationY * 180 / Math.PI).toFixed(2) + '°',
+            rotationDelta: (rotationDelta * 180 / Math.PI).toFixed(2) + '°',
+            initialAngle: (geostationaryOffsetRef.current.angle * 180 / Math.PI).toFixed(2) + '°',
+            finalAngle: (geostationaryAngle * 180 / Math.PI).toFixed(2) + '°',
+            cameraPos: `(${newCameraPos.x.toFixed(1)}, ${newCameraPos.y.toFixed(1)}, ${newCameraPos.z.toFixed(1)})`,
+            paused: planet3DState.pauseOrbits
+          });
+        }
+
+        // Set camera position and make it look at the planet
+        refs.camera.position.copy(newCameraPos);
+        refs.camera.lookAt(targetPos);
+        
+        // Also update controls target so it's correct when switching back to free mode
+        refs.controls.target.copy(targetPos);
       }
 
       // Update sun's light to shine from origin (sun position) toward Earth
