@@ -1,7 +1,7 @@
 import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { batchWorldToSphere } from './utils/coordinateTransform';
+import { batchWorldToSphere } from '../utils/coordinateTransform';
 
 interface EntityPoints3DProps {
   pos: Float32Array;
@@ -99,7 +99,7 @@ export function EntityPoints3D({
   const meshRef = useRef<THREE.Points>(null);
   const geometryRef = useRef<THREE.BufferGeometry>(null);
   const positions3DRef = useRef<Float32Array>(new Float32Array(count * 3));
-  
+
   // Static sun position
   const sunPosition = useMemo(() => {
     const sunDistance = planetRadius * 8;
@@ -109,31 +109,31 @@ export function EntityPoints3D({
   // Initialize geometry
   useEffect(() => {
     if (!geometryRef.current) return;
-    
+
     const geometry = geometryRef.current;
-    
+
     // Set up attributes
     positions3DRef.current = new Float32Array(count * 3);
     geometry.setAttribute('position', new THREE.BufferAttribute(positions3DRef.current, 3));
-    
+
     // Color attribute (normalized RGB)
     const colors = new Float32Array(count * 3);
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    
+
     // Alive attribute
     const aliveAttr = new Float32Array(count);
     geometry.setAttribute('alive', new THREE.BufferAttribute(aliveAttr, 1));
-    
+
     // Set draw range
     geometry.setDrawRange(0, count);
   }, [count]);
-  
+
   // Update positions and attributes every frame
   useFrame(() => {
     if (!geometryRef.current || !meshRef.current) return;
-    
+
     const geometry = geometryRef.current;
-    
+
     // Transform 2D positions to 3D sphere surface
     positions3DRef.current = batchWorldToSphere(
       pos,
@@ -141,12 +141,12 @@ export function EntityPoints3D({
       worldHeight,
       planetRadius * 1.001 // Just slightly above planet surface
     );
-    
+
     // Update position attribute
     const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute;
     posAttr.array = positions3DRef.current;
     posAttr.needsUpdate = true;
-    
+
     // Update colors - already in 0-255 range, shader expects 0-1
     const colorAttr = geometry.getAttribute('color') as THREE.BufferAttribute;
     const colorArray = colorAttr.array as Float32Array;
@@ -158,7 +158,7 @@ export function EntityPoints3D({
       colorArray[idx + 2] = color[idx + 2] / 255.0;
     }
     colorAttr.needsUpdate = true;
-    
+
     // Update alive attribute
     const aliveAttr = geometry.getAttribute('alive') as THREE.BufferAttribute;
     const aliveArray = aliveAttr.array as Float32Array;
@@ -166,14 +166,14 @@ export function EntityPoints3D({
       aliveArray[i] = alive[i];
     }
     aliveAttr.needsUpdate = true;
-    
+
     // Update bounding sphere for proper culling
     geometry.boundingSphere = new THREE.Sphere(
       new THREE.Vector3(0, 0, 0),
       planetRadius * 1.01
     );
   });
-  
+
   return (
     <points ref={meshRef} renderOrder={10}>
       <bufferGeometry ref={geometryRef} />

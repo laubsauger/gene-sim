@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Scene2D } from './render/Scene2D';
-import { Scene3D } from './render/Scene3D';
-import { Scene3DPlanetCanvas } from './render/Scene3DPlanetCanvas';
+import { Scene3DPlanetCanvas } from './render/planet3d/Scene3DPlanetCanvas';
 import { createSimClient, detectBestMode, type SimMode, type SimClient } from './client/setupSimClientHybrid';
 import { Controls } from './ui/Controls';
 import { StatsPanel } from './ui/StatsPanel';
@@ -321,15 +320,6 @@ export default function App() {
               simRestartKey={simRestartKey}
             />
           </>
-        ) : renderMode === '3D' ? (
-          <Scene3D
-            client={client} 
-            world={{ width: WORLD_WIDTH, height: WORLD_HEIGHT }}
-            entitySize={entitySize}
-            seed={currentSeed}
-            biomeMode={biomeMode}
-            showBoundaries={showBoundaries}
-          />
         ) : (
           <Scene3DPlanetCanvas
             client={client} 

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { PLANET_RADIUS, ENTITY_ALTITUDE } from './planetUtils';
+import entityMatVertexShader from './shader/entityMat.vertex.glsl'
+import entityMatFragmentShader from './shader/entityMat.frag.glsl'
 
 // Track frame count for update throttling
 let frameCount = 0;
@@ -124,35 +126,13 @@ export function makeGroundEntities(count: number, colorBuffer?: Uint8Array): THR
   // Use even simpler geometry - tetrahedron is the simplest 3D shape
   const geo = new THREE.TetrahedronGeometry(1, 0); // 0 detail level = 4 faces only
 
-  // Use logarithmic depth buffer for better precision
+  // Shader with lighting similar to clouds
   const mat = new THREE.ShaderMaterial({
-    vertexShader: `
-      #include <common>
-      #include <logdepthbuf_pars_vertex>
-
-      attribute vec3 customColor;
-      varying vec3 vColor;
-      
-      void main() {
-        vColor = customColor;
-        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-
-        #include <logdepthbuf_vertex>
-      }
-    `,
-    fragmentShader: `
-      #include <common>
-      #include <logdepthbuf_pars_fragment>
-
-      varying vec3 vColor;
-      
-      void main() {
-        #include <logdepthbuf_fragment>
-
-        gl_FragColor = vec4(vColor, 1.0);
-      }
-    `,
+    uniforms: {
+      uLightDir: { value: new THREE.Vector3(1, 0, 0) }
+    },
+    vertexShader: entityMatVertexShader,
+    fragmentShader: entityMatFragmentShader,
     transparent: false,
     depthWrite: false,
     depthTest: true

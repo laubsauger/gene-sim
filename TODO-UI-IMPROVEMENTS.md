@@ -68,36 +68,6 @@
 - [ ] Verify biome multipliers affect capacity but not regrowth prevention
 - [ ] Improve debug visualization overlay to confirm regrowth in all areas and show potential for food / thepretica;l capacity ata given spot bsased on bionme in addition to current food distribution
 
-### 14. Distance-Based Culling System
-
-- [x] Implement efficient LOD/culling for distant objects - IF WERE NOT ALREADY DOING THAt. i cam see some saort of LOD happening lready so planet atmosphere is already disappearing at a certain zoom. not sure if thats the coorrect way so investigae bevfore duplicating / getting anything n3q
-  - [ ] Core principle: Cull objects that would be < 1 pixel on screen
-  - [ ] Calculate screen-space size based on:
-    - [ ] Object world size
-    - [ ] Distance from camera
-    - [ ] Camera FOV and viewport dimensions
-  - [ ] Apply to all scene elements:
-    - [ ] Entities (already small, high priority for culling)
-    - [ ] Clouds (transparent layer, expensive to render)
-    - [ ] Atmosphere (transparent, can be culled at distance)
-    - [ ] Planet surface details (textures can be reduced)
-    - [ ] Moon (when very distant)
-- [ ] Implementation approach:
-  - [ ] Use THREE.LOD for multiple detail levels
-  - [ ] Custom frustum culling with size threshold
-  - [ ] visible = false when below pixel threshold
-  - [ ] Consider bounding sphere checks for efficiency
-- [ ] Performance targets:
-  - [ ] Maintain 60 FPS at max zoom out
-  - [ ] Simulation continues regardless of rendering
-  - [ ] Smooth transitions when objects appear/disappear
-  - [ ] No popping artifacts
-- [ ] Specific thresholds:x
-  - [ ] Entities: Cull when < 0.5 pixels
-  - [ ] Clouds: Reduce quality or cull when < 10 pixels
-  - [ ] Atmosphere: Cull when planet < 20 pixels
-  - [ ] Fine details: Switch to low-res when planet < 100 pixels
-
 ## Advanced Visual Effects
 
 ### 13. Weather Systems and Storm Patterns
