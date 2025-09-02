@@ -39,16 +39,14 @@ void main() {
   
   // Use local Y position for pole detection (planet's actual poles)
   float latitude = abs(localNormal.y);
-  float polarMask = smoothstep(0.75, 0.88, latitude); // Narrower aurora zone, closer to poles
+  float polarMask = smoothstep(0.80, 0.92, latitude); // Tighter zone, very close to poles
   
   // Calculate view angle
   vec3 viewDir = normalize(uCameraPos - vPosition);
   float viewAngle = dot(normal, viewDir);
   
-  // Aurora more visible on night side
-  float nightSide = smoothstep(0.2, -0.2, dot(normal, uLightDir));
-  // Increase night side intensity
-  nightSide = pow(nightSide, 0.7);
+  // Aurora emits its own light - not affected by day/night
+  // (Removed night side dependency)
   
   // Aurora visibility - similar approach to clouds
   // Check if we're looking at the front side of the sphere
@@ -81,39 +79,70 @@ void main() {
   // Lower threshold for visibility
   if (currentActivity < 0.02) discard;
   
-  // Animated aurora curtains - slower, more realistic speed
-  float timeOffset = uTime * 0.0003; // Slower, graceful animation
-  // Use local position for stable aurora patterns with much finer detail
-  vec3 auroraPos = vLocalPosition * 0.8 + vec3(timeOffset, timeOffset * 0.5, timeOffset * 0.2);
+  // Calculate position on sphere for noise sampling
+  float azimuth = atan(localNormal.z, localNormal.x);
+  float timeFlow = uTime * 0.0002;
   
-  // Create much finer vertical curtain patterns
-  float curtains = fbm(auroraPos * 3.2 + vec3(0.0, vLocalPosition.y * 4.0, 0.0));
-  curtains = smoothstep(-0.15, 0.15, curtains) * currentActivity;
+  // Create noise that displaces the ring positions with much more variance
+  // Different displacement for each ring to break up circular symmetry
+  vec3 ringDisp1 = vec3(localNormal.x * 2.5, localNormal.z * 2.5, timeFlow * 1.2);
+  vec3 ringDisp2 = vec3(localNormal.x * 3.0 + 1.5, localNormal.z * 3.0 + 1.5, timeFlow * 1.5);
+  vec3 ringDisp3 = vec3(localNormal.x * 2.0 - 1.0, localNormal.z * 2.0 - 1.0, timeFlow * 1.0);
+  vec3 ringDisp4 = vec3(localNormal.x * 3.5 + 0.5, localNormal.z * 3.5 + 0.5, timeFlow * 1.8);
   
-  // Add much finer horizontal bands - slower movement
-  float bands = sin(latitude * 50.0 + uTime * 0.0004) * 0.3 + 0.7;
-  bands *= sin(latitude * 75.0 - uTime * 0.0006) * 0.2 + 0.8;
+  // Much larger displacement for irregular shapes
+  float latOffset1 = fbm(ringDisp1) * 0.12; // Up to 12% latitude variance
+  float latOffset2 = fbm(ringDisp2) * 0.10;
+  float latOffset3 = fbm(ringDisp3) * 0.15; // Even more for outer ring
+  float latOffset4 = fbm(ringDisp4) * 0.08;
   
-  // Combine patterns - ensure aurora is visible at poles
-  float aurora = curtains * bands * polarMask * nightSide;
+  // Define four rings with individual displacement for irregular shapes
+  float ring1 = smoothstep(0.82, 0.83, latitude + latOffset1) * smoothstep(0.845, 0.835, latitude + latOffset1);
+  float ring2 = smoothstep(0.845, 0.855, latitude + latOffset2) * smoothstep(0.87, 0.86, latitude + latOffset2);
+  float ring3 = smoothstep(0.87, 0.88, latitude + latOffset3) * smoothstep(0.895, 0.885, latitude + latOffset3);
+  float ring4 = smoothstep(0.895, 0.905, latitude + latOffset4) * smoothstep(0.92, 0.91, latitude + latOffset4);
   
-  // Add subtle base glow at poles during activity
-  float baseGlow = polarMask * nightSide * 0.2 * currentActivity;
-  aurora = max(aurora * viewVisibility, baseGlow);
+  // Combine rings with different intensities
+  float rings = ring1 * 0.9 + ring2 * 0.8 + ring3 * 0.7 + ring4 * 0.6;
+  
+  // Add temporal variation to ring brightness (not position)
+  float brightnessPulse = sin(timeFlow * 8.0) * 0.2 + 0.8;
+  rings *= brightnessPulse;
+  
+  // Add some flowing brightness variation using 3D noise
+  vec3 flowPos = vec3(localNormal.x, localNormal.y, localNormal.z) * 5.0 + vec3(0.0, 0.0, timeFlow * 3.0);
+  float flowPattern = noise(flowPos) * 0.4 + 0.6;
+  
+  // Final aurora pattern
+  float auroraPattern = rings * flowPattern;
+  
+  // Apply aurora pattern with pole masking only (aurora emits its own light)
+  float aurora = auroraPattern * polarMask * currentActivity;
+  
+  // No base glow - only show the rings themselves
+  aurora = aurora * viewVisibility;
   aurora *= uIntensity * currentActivity * 1.2; // Moderate boost
   
-  // Aurora colors - green to purple gradient
-  vec3 color1 = vec3(0.0, 1.0, 0.4); // Green
-  vec3 color2 = vec3(0.4, 0.0, 1.0); // Purple
-  vec3 color3 = vec3(0.0, 0.6, 1.0); // Cyan
+  // Aurora colors - full spectrum
+  vec3 greenAurora = vec3(0.0, 1.0, 0.3);   // Classic green
+  vec3 purpleAurora = vec3(0.6, 0.0, 1.0);  // Purple/violet
+  vec3 redAurora = vec3(1.0, 0.2, 0.3);     // Red (high altitude)
+  vec3 blueAurora = vec3(0.2, 0.4, 1.0);    // Blue
+  vec3 yellowAurora = vec3(0.9, 1.0, 0.3);  // Yellow-green
   
-  // Vary color based on altitude and pattern
-  float colorMix = curtains + noise(auroraPos * 3.0) * 0.5;
-  vec3 auroraColor = mix(color1, color2, colorMix);
-  auroraColor = mix(auroraColor, color3, bands * 0.5);
+  // Assign different colors to each ring with some mixing
+  vec3 color1 = mix(greenAurora, yellowAurora, noise(vec3(localNormal.x * 5.0, localNormal.z * 5.0, timeFlow)) * 0.5 + 0.5);
+  vec3 color2 = mix(greenAurora, blueAurora, noise(vec3(localNormal.x * 4.0 + 1.0, localNormal.z * 4.0, timeFlow * 1.2)) * 0.6 + 0.4);
+  vec3 color3 = mix(purpleAurora, redAurora, noise(vec3(localNormal.x * 6.0, localNormal.z * 6.0 - 1.0, timeFlow * 0.8)) * 0.7 + 0.3);
+  vec3 color4 = mix(redAurora, purpleAurora, flowPattern);
   
-  // Add subtle shimmer effect
-  float shimmer = sin(uTime * 0.004 + curtains * 8.0) * 0.15 + 0.85;
+  // Combine ring colors based on their intensities
+  vec3 auroraColor = color1 * ring1 + color2 * ring2 * 0.8 + color3 * ring3 * 0.7 + color4 * ring4 * 0.6;
+  auroraColor = normalize(auroraColor + vec3(0.1)) * 1.2; // Normalize and boost
+  
+  // Add gentle shimmer based on time only (no azimuth dependency)
+  float shimmer = sin(uTime * 0.004) * 0.15 + 0.85;
+  shimmer *= cos(uTime * 0.007) * 0.1 + 0.9;
   aurora *= shimmer;
   
   // Balanced final appearance
