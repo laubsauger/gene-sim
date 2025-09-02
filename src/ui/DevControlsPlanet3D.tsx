@@ -32,6 +32,8 @@ export function DevControlsPlanet3D({
   
   // Get all state and setters from store
   const {
+    qualityPreset,
+    setQualityPreset,
     showEntities,
     setShowEntities,
     showAtmosphere,
@@ -141,6 +143,48 @@ export function DevControlsPlanet3D({
           flexDirection: 'column',
           gap: '5px'
         }}>
+      
+      {/* Quality Preset Toggle */}
+      <div style={{ 
+        borderBottom: '1px solid #333', 
+        paddingBottom: '8px', 
+        marginBottom: '8px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
+      }}>
+        <span style={{ fontWeight: 'bold', fontSize: '11px', color: '#ffa500' }}>QUALITY:</span>
+        <button
+          onClick={() => setQualityPreset('low')}
+          style={{
+            padding: '3px 8px',
+            fontSize: '11px',
+            background: qualityPreset === 'low' ? '#4a90e2' : '#333',
+            color: 'white',
+            border: '1px solid #555',
+            borderRadius: '3px',
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          LOW (DEV)
+        </button>
+        <button
+          onClick={() => setQualityPreset('high')}
+          style={{
+            padding: '3px 8px',
+            fontSize: '11px',
+            background: qualityPreset === 'high' ? '#4a90e2' : '#333',
+            color: 'white',
+            border: '1px solid #555',
+            borderRadius: '3px',
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          HIGH
+        </button>
+      </div>
       
       {onCameraTargetChange && (
         <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>

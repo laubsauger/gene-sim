@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
 interface Planet3DState {
+  // Quality preset
+  qualityPreset: 'low' | 'high';
+  
   // Visual elements
   showEntities: boolean;
   showAtmosphere: boolean;
@@ -55,6 +58,9 @@ interface Planet3DState {
   soundVolume: number; // 0-1
   musicVolume: number; // 0-1
 
+  // Quality preset setter
+  setQualityPreset: (preset: 'low' | 'high') => void;
+  
   // Biome setters
   setBiomeMode: (mode: 'hidden' | 'natural' | 'highlight') => void;
   setShowBiomeBoundaries: (value: boolean) => void;
@@ -123,14 +129,15 @@ interface Planet3DState {
 
 export const usePlanet3DStore = create<Planet3DState>()(
   subscribeWithSelector((set) => ({
-    // Initial states
+    // Initial states - DEFAULT TO LOW QUALITY
+    qualityPreset: 'low',
     showEntities: true,
     showAtmosphere: true,
     showClouds: true,
     showMoon: true,
     showSun: true,
-    showVenus: true,
-    showMars: true,
+    showVenus: false, // Disabled in low quality
+    showMars: false, // Disabled in low quality
   
   // Biome settings
   biomeMode: 'natural',
@@ -142,9 +149,9 @@ export const usePlanet3DStore = create<Planet3DState>()(
     bloomIntensity: 0.32,
     bloomThreshold: 0.25,
     atmosphereIntensity: 1.0, // Default atmosphere glow
-    showLensFlare: true, // On by default now that it's more subtle
+    showLensFlare: false, // Disabled in low quality
     lensFlareIntensity: 0.3, // Lower default intensity
-    showStarfield: true,
+    showStarfield: false, // Disabled in low quality
     starCount: 20000, // Default 20k stars
     showTwinkle: true,
     twinkleIntensity: 0.3,
@@ -187,6 +194,37 @@ export const usePlanet3DStore = create<Planet3DState>()(
     toggleFollowEarth: () => set((state) => ({ followEarth: !state.followEarth })),
     togglePauseOrbits: () => set((state) => ({ pauseOrbits: !state.pauseOrbits })),
     togglePauseClouds: () => set((state) => ({ pauseClouds: !state.pauseClouds })),
+    
+    // Quality preset setter
+    setQualityPreset: (preset) => set((state) => {
+      if (preset === 'low') {
+        // Low quality: disable expensive features
+        return {
+          qualityPreset: 'low',
+          showVenus: false,
+          showMars: false,
+          showStarfield: false,
+          showNebulae: false,
+          showLensFlare: false,
+          showVolumetricDust: false,
+          showSpaceDust: false,
+          starCount: 5000, // Reduce star count
+        };
+      } else {
+        // High quality: enable all features
+        return {
+          qualityPreset: 'high',
+          showVenus: true,
+          showMars: true,
+          showStarfield: true,
+          showNebulae: true,
+          showLensFlare: true,
+          showVolumetricDust: true,
+          showSpaceDust: true,
+          starCount: 20000, // Full star count
+        };
+      }
+    }),
     
     // Setter actions
     setShowEntities: (value) => set({ showEntities: value }),

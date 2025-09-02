@@ -661,12 +661,11 @@ export function Scene3DPlanetCanvas({
       if (!client.buffers?.pos || !sceneRef.current) return;
 
       const entityCount = client.buffers.count;
-      const entities = makeGroundEntities(entityCount);
+      // Pass the color buffer directly from SharedArrayBuffer
+      const entities = makeGroundEntities(entityCount, client.buffers.color || undefined);
       // Add entities to earth group for proper layering
       sceneRef.current.earth.group.add(entities);
       sceneRef.current.entities = entities;
-
-      // Entities are already configured in makeGroundEntities
     };
 
     // Check if buffers exist immediately
