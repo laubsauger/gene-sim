@@ -1,77 +1,6 @@
 import * as THREE from 'three';
-
-const foodVertexShader = `
-  varying vec2 vUv;
-  varying vec3 vNormal;
-  varying vec3 vPosition;
-  
-  void main() {
-    vUv = uv;
-    vNormal = normalize(normalMatrix * normal);
-    vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const foodFragmentShader = `
-  uniform sampler2D uFoodTexture;
-  uniform float uOpacity;
-  uniform float uTime;
-  varying vec2 vUv;
-  varying vec3 vNormal;
-  varying vec3 vPosition;
-  
-  void main() {
-    // Sample food texture with proper coordinate transformation
-    // Apply the same transformation as entities and biomes:
-    // 1. Rotate -90 degrees in longitude (X axis)
-    // 2. Map Y to middle 85% of texture for pole padding
-    vec2 adjustedUv = vUv;
-    
-    // Rotate -90 degrees in longitude to match entity/biome alignment
-    adjustedUv.x = mod(adjustedUv.x - 0.25, 1.0); // Subtract 0.25 (90 degrees) and wrap
-    
-    // Map Y to account for pole padding (7.5% top, 85% middle, 7.5% bottom)
-    // This matches the biome texture mapping
-    adjustedUv.y = 0.075 + adjustedUv.y * 0.85;
-    
-    float food = texture2D(uFoodTexture, adjustedUv).r;
-    
-    // Skip completely empty cells for transparency
-    if (food < 0.01) {
-      discard;
-    }
-    
-    // Normalize food value (0-255 to 0-1)
-    float foodLevel = food / 255.0;
-    
-    // Purple gradient for food visualization (matching Scene2D)
-    vec3 depleted = vec3(0.2, 0.1, 0.3);    // Dark purple (consumed)
-    vec3 sparse = vec3(0.4, 0.2, 0.6);      // Medium purple
-    vec3 medium = vec3(0.55, 0.35, 0.85);   // Bright purple
-    vec3 full = vec3(0.7, 0.5, 1.0);        // Light purple
-    
-    vec3 color;
-    float alpha = uOpacity;
-    
-    if (foodLevel < 0.33) {
-      color = mix(depleted, sparse, foodLevel * 3.0);
-      alpha *= (0.7 + foodLevel * 0.3); // Higher base alpha for visibility
-    } else if (foodLevel < 0.66) {
-      color = mix(sparse, medium, (foodLevel - 0.33) * 3.0);
-      alpha *= 0.85;
-    } else {
-      color = mix(medium, full, (foodLevel - 0.66) * 3.0);
-      alpha *= 0.95;
-    }
-    
-    // Fade near edges of the sphere for better blending
-    float edgeFade = 1.0 - pow(1.0 - abs(dot(normalize(vNormal), normalize(-vPosition))), 2.0);
-    alpha *= edgeFade;
-    
-    gl_FragColor = vec4(color, alpha);
-  }
-`;
+import foodOverlayMatVertexShader from './shader/foodOverlayMat.vertex.glsl'
+import foodOverlayMatFragmentShader from './shader/foodOverlayMat.frag.glsl'
 
 export interface FoodOverlay3DConfig {
   foodData: Uint8Array | null;
@@ -102,7 +31,7 @@ export function createFoodOverlay3D(config: FoodOverlay3DConfig): {
   texture.minFilter = THREE.LinearFilter;
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.ClampToEdgeWrapping; // Clamp vertically to avoid pole artifacts
-  texture.flipY = true; // Flip to match biome coordinate system (same as 2D)
+  texture.flipY = false; // Don't flip - biome texture doesn't flip either
   texture.needsUpdate = true;
   
   // Create sphere geometry matching planet
@@ -120,8 +49,8 @@ export function createFoodOverlay3D(config: FoodOverlay3DConfig): {
       uOpacity: { value: opacity },
       uTime: { value: 0 }
     },
-    vertexShader: foodVertexShader,
-    fragmentShader: foodFragmentShader,
+    vertexShader: foodOverlayMatVertexShader,
+    fragmentShader: foodOverlayMatFragmentShader,
     transparent: true,
     depthWrite: false,
     depthTest: false, // Disable depth test like clouds to prevent planet occlusion
