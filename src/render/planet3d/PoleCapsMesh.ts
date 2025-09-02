@@ -43,17 +43,19 @@ export function createPoleCaps(radius: number = PLANET_RADIUS): THREE.Group {
     color: new THREE.Color(0xf0f8ff), // Ice white with slight blue tint
     roughness: 0.4,
     metalness: 0.05,
-    emissive: new THREE.Color(0xe8f4ff), // Slight blue-white glow
-    emissiveIntensity: 0.15,
+    emissive: new THREE.Color(0x304050), // Much darker emissive for better shadow contrast
+    emissiveIntensity: 0.05, // Very low emissive so shadows are visible
   });
   
   // Create meshes
   const northCap = new THREE.Mesh(northCapGeo, poleMaterial);
   const southCap = new THREE.Mesh(southCapGeo, poleMaterial);
   
-  northCap.castShadow = true;
+  // Don't cast shadows (they're part of the planet surface)
+  // but do receive shadows for proper day/night cycle
+  northCap.castShadow = false;
   northCap.receiveShadow = true;
-  southCap.castShadow = true;
+  southCap.castShadow = false;
   southCap.receiveShadow = true;
   
   group.add(northCap);
@@ -106,8 +108,8 @@ export function updatePoleCaps(
 ) {
   poleCaps.children.forEach((cap) => {
     if (cap instanceof THREE.Mesh && cap.material instanceof THREE.MeshStandardMaterial) {
-      // Adjust emissive based on day/night - ice glows slightly in darkness
-      const emissiveIntensity = isDaytime ? 0.05 : 0.15;
+      // Adjust emissive based on day/night - minimal glow to allow shadows
+      const emissiveIntensity = isDaytime ? 0.02 : 0.08;
       cap.material.emissiveIntensity = emissiveIntensity;
       
       // Could add more dynamic effects here (aurora, ice glow, etc.)
