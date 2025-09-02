@@ -35,7 +35,7 @@ export function updateEntitiesFromBuffers(
   
   const planetRadius = PLANET_RADIUS;
   const altitude = planetRadius + ENTITY_ALTITUDE;
-  const scale = 0.01;
+  const scale = 0.0075;
   scaleVec.set(scale, scale, scale);
   
   // Pre-calculate constants
