@@ -113,6 +113,7 @@ export function updateEntitiesFromBuffers(
   if (updateCount > 0) {
     mesh.instanceMatrix.needsUpdate = true;
     // Also update the custom color attribute
+    const colorAttribute = (mesh as any).colorAttribute;
     if (colorAttribute) {
       colorAttribute.needsUpdate = true;
     }
@@ -122,10 +123,13 @@ export function updateEntitiesFromBuffers(
 export function makeGroundEntities(count: number, colorBuffer?: Uint8Array): THREE.InstancedMesh {
   // Use even simpler geometry - tetrahedron is the simplest 3D shape
   const geo = new THREE.TetrahedronGeometry(1, 0); // 0 detail level = 4 faces only
-  
-  // Simple shader without any fancy culling
+
+  // Use logarithmic depth buffer for better precision
   const mat = new THREE.ShaderMaterial({
     vertexShader: `
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+
       attribute vec3 customColor;
       varying vec3 vColor;
       
@@ -133,18 +137,25 @@ export function makeGroundEntities(count: number, colorBuffer?: Uint8Array): THR
         vColor = customColor;
         vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * mvPosition;
+
+        #include <logdepthbuf_vertex>
       }
     `,
     fragmentShader: `
+      #include <common>
+      #include <logdepthbuf_pars_fragment>
+
       varying vec3 vColor;
       
       void main() {
+        #include <logdepthbuf_fragment>
+
         gl_FragColor = vec4(vColor, 1.0);
       }
     `,
-    depthWrite: true,  // Write to depth buffer
-    depthTest: true,   // Test depth to hide behind planet properly
-    transparent: false
+    transparent: false,
+    depthWrite: false,
+    depthTest: true
   });
   
   // Use the SharedArrayBuffer color data directly if provided
@@ -160,10 +171,11 @@ export function makeGroundEntities(count: number, colorBuffer?: Uint8Array): THR
   geo.setAttribute('customColor', colorAttribute);
   
   const mesh = new THREE.InstancedMesh(geo, mat, count);
-  mesh.frustumCulled = true;
+  mesh.frustumCulled = false; // Don't cull
   mesh.castShadow = false;
   mesh.receiveShadow = false;
   mesh.matrixAutoUpdate = false;
+  mesh.renderOrder = 0; // Same as planet
   
   // Store reference for updates
   (mesh as any).colorAttribute = colorAttribute;
