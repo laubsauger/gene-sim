@@ -87,7 +87,7 @@ export function Scene3DPlanetCanvas({
   seed = 1234,
   showFood = true,
   biomeMode = 'natural',
-  showBoundaries = false
+  showBoundaries = false // Keep as prop for backwards compatibility but use store
 }: Scene3DPlanetCanvasProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [isPaused, setIsPaused] = useState(true);
@@ -192,9 +192,10 @@ export function Scene3DPlanetCanvas({
           const rightIdx = y * gridWidth + (x + 1);
           if (traversabilityMap[rightIdx] === 0) {
             const worldX = (x + 1) * cellSize;
+            // Flip Y coordinate to match 2D boundary overlay
             const points2D = new Float32Array([
-              worldX, y * cellSize,
-              worldX, (y + 1) * cellSize
+              worldX, worldHeight - y * cellSize,
+              worldX, worldHeight - (y + 1) * cellSize
             ]);
             const points3D = batchWorldToSphere(points2D, worldWidth, worldHeight, elevationOffset);
             edges.push({
@@ -211,9 +212,10 @@ export function Scene3DPlanetCanvas({
           const leftIdx = y * gridWidth + (x - 1);
           if (traversabilityMap[leftIdx] === 0) {
             const worldX = x * cellSize;
+            // Flip Y coordinate to match 2D boundary overlay
             const points2D = new Float32Array([
-              worldX, y * cellSize,
-              worldX, (y + 1) * cellSize
+              worldX, worldHeight - y * cellSize,
+              worldX, worldHeight - (y + 1) * cellSize
             ]);
             const points3D = batchWorldToSphere(points2D, worldWidth, worldHeight, elevationOffset);
             edges.push({
@@ -225,11 +227,12 @@ export function Scene3DPlanetCanvas({
           }
         }
 
-        // Top edge (in grid coordinates)
+        // Top edge (in grid coordinates, which is bottom in world space due to flip)
         if (y < gridHeight - 1) {
           const topIdx = (y + 1) * gridWidth + x;
           if (traversabilityMap[topIdx] === 0) {
-            const worldY = (y + 1) * cellSize;
+            // Flip Y coordinate to match 2D boundary overlay
+            const worldY = worldHeight - (y + 1) * cellSize;
             const points2D = new Float32Array([
               x * cellSize, worldY,
               (x + 1) * cellSize, worldY
@@ -244,11 +247,12 @@ export function Scene3DPlanetCanvas({
           }
         }
 
-        // Bottom edge (in grid coordinates)
+        // Bottom edge (in grid coordinates, which is top in world space due to flip)
         if (y > 0) {
           const bottomIdx = (y - 1) * gridWidth + x;
           if (traversabilityMap[bottomIdx] === 0) {
-            const worldY = y * cellSize;
+            // Flip Y coordinate to match 2D boundary overlay
+            const worldY = worldHeight - y * cellSize;
             const points2D = new Float32Array([
               x * cellSize, worldY,
               (x + 1) * cellSize, worldY
@@ -267,19 +271,50 @@ export function Scene3DPlanetCanvas({
 
     // Create line segments for all edges
     console.log(`[Boundaries] Creating ${edges.length} boundary edges`);
-    edges.forEach(edge => {
-      const geometry = new THREE.BufferGeometry().setFromPoints(edge.points);
+    
+    if (edges.length === 0) {
+      console.warn('[Boundaries] No boundary edges found! Check traversability map');
+      // Debug: log some info about the traversability map
+      let traversableCount = 0;
+      let nonTraversableCount = 0;
+      for (let i = 0; i < traversabilityMap.length; i++) {
+        if (traversabilityMap[i] === 1) traversableCount++;
+        else nonTraversableCount++;
+      }
+      console.log(`[Boundaries] Traversable cells: ${traversableCount}, Non-traversable: ${nonTraversableCount}`);
+    }
+    
+    // Collect all line segments into a single geometry for better performance
+    const allPoints: THREE.Vector3[] = [];
+    edges.forEach((edge, index) => {
+      if (index < 5) { // Log first few edges for debugging
+        console.log(`[Boundaries] Edge ${index}:`, edge.points[0], edge.points[1]);
+      }
+      allPoints.push(edge.points[0], edge.points[1]);
+    });
+    
+    if (allPoints.length > 0) {
+      const geometry = new THREE.BufferGeometry().setFromPoints(allPoints);
       const material = new THREE.LineBasicMaterial({
         color: 0xff6b35,  // Alert orange like in 2D
-        opacity: 0.8,
-        transparent: true,
-        depthWrite: false,
-        linewidth: 2
+        opacity: 1.0,  // Full opacity for better visibility
+        transparent: false
       });
-      const line = new THREE.Line(geometry, material);
-      line.renderOrder = 15;
-      group.add(line);
-    });
+      const lines = new THREE.LineSegments(geometry, material);
+      lines.renderOrder = 15;
+      group.add(lines);
+      
+      // Also add a thicker, semi-transparent version for better visibility
+      const glowMaterial = new THREE.LineBasicMaterial({
+        color: 0xff6b35,
+        opacity: 0.3,
+        transparent: true
+      });
+      const glowLines = new THREE.LineSegments(geometry, glowMaterial);
+      glowLines.scale.multiplyScalar(1.01); // Slightly larger for glow effect
+      glowLines.renderOrder = 14;
+      group.add(glowLines);
+    }
 
     console.log(`[Boundaries] Created boundary group with ${group.children.length} lines`);
     return group;
@@ -789,9 +824,10 @@ export function Scene3DPlanetCanvas({
 
       // Create biome boundaries if biome generator exists
       if (biomeGeneratorRef.current) {
-        console.log(`[Boundaries] Creating boundaries, showBoundaries=${showBoundaries}`);
+        const store = usePlanet3DStore.getState();
+        console.log(`[Boundaries] Creating boundaries, showBiomeBoundaries=${store.showBiomeBoundaries}`);
         const boundaries = createBiomeBoundaries(biomeGeneratorRef.current, world.width, world.height);
-        boundaries.visible = showBoundaries;
+        boundaries.visible = store.showBiomeBoundaries;
         sceneRef.current.earth.group.add(boundaries);
         sceneRef.current.boundaries = boundaries;
         console.log(`[Boundaries] Added to scene, visible=${boundaries.visible}`);
@@ -1588,17 +1624,20 @@ export function Scene3DPlanetCanvas({
     }
   }, [biomeMode]);
 
+  // Subscribe to boundary visibility changes from store
   useEffect(() => {
-    const store = usePlanet3DStore.getState();
-    if (showBoundaries !== store.showBiomeBoundaries) {
-      store.setShowBiomeBoundaries(showBoundaries);
-    }
-
-    // Update boundary visibility
-    if (sceneRef.current?.boundaries) {
-      sceneRef.current.boundaries.visible = showBoundaries;
-    }
-  }, [showBoundaries]);
+    const unsubscribe = usePlanet3DStore.subscribe(
+      (state) => state.showBiomeBoundaries,
+      (showBiomeBoundaries) => {
+        console.log(`[Boundaries] Store update: showBiomeBoundaries=${showBiomeBoundaries}`);
+        if (sceneRef.current?.boundaries) {
+          sceneRef.current.boundaries.visible = showBiomeBoundaries;
+        }
+      }
+    );
+    
+    return unsubscribe;
+  }, []);
 
   // Store food visibility state (food rendering in 3D not yet implemented)
   useEffect(() => {

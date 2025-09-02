@@ -10,6 +10,7 @@ import { COIStatus } from './ui/COIStatus';
 import { BiomeLegend } from './ui/BiomeLegend';
 import type { SimStats } from './sim/types';
 import { useUIStore } from './stores/useUIStore';
+import { usePlanet3DStore } from './stores/usePlanet3DStore';
 import './App.css';
 
 const WORLD_WIDTH = 8000;
@@ -43,6 +44,18 @@ export default function App() {
   }); // Default entity size
   const [showFood, setShowFood] = useState(true); // Toggle food display
   const [showBoundaries, setShowBoundaries] = useState(true); // Toggle boundary visualization - enabled by default
+  
+  // Initialize 3D store boundary state on mount
+  useEffect(() => {
+    usePlanet3DStore.getState().setShowBiomeBoundaries(showBoundaries);
+  }, []); // Only run once on mount
+  
+  // Sync boundary state with 3D store when toggled
+  const handleBoundariesChange = (show: boolean) => {
+    setShowBoundaries(show);
+    // Also update the 3D store
+    usePlanet3DStore.getState().setShowBiomeBoundaries(show);
+  };
   const [biomeMode, setBiomeMode] = useState<'hidden' | 'natural' | 'highlight'>('natural'); // Biome display mode
   const [biomeLegendCollapsed, setBiomeLegendCollapsed] = useState(true); // Biome legend collapse state - collapsed by default
   const [simRestartKey, setSimRestartKey] = useState(0); // Force re-render on simulation restart
@@ -348,7 +361,7 @@ export default function App() {
             showFood={showFood}
             onShowFoodChange={setShowFood}
             showBoundaries={showBoundaries}
-            onShowBoundariesChange={setShowBoundaries}
+            onShowBoundariesChange={handleBoundariesChange}
             biomeMode={biomeMode}
             onBiomeModeChange={setBiomeMode}
           />
