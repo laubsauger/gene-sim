@@ -14,16 +14,16 @@ void main() {
   float NdotL = dot(normalize(vNormal), L);
   
   // Use tighter light wrap and terminator for sharper shadows
-  float lightWrap = 0.15;  // Less wrap for sharper shadow transition
-  float terminator = 0.25;  // Smaller terminator for sharper cutoff
+  float lightWrap = 0.1;  // Less wrap for sharper shadow transition
+  float terminator = 0.2;  // Smaller terminator for sharper cutoff
   float wrap = clamp((NdotL + lightWrap) / (1.0 + lightWrap), 0.0, 1.0);
   float day = smoothstep(0.0, terminator, wrap);
   
-  // Lighting calculation with steeper falloff
-  // Narrower transition bands for more dramatic shadows
-  float dayFactor = smoothstep(-0.2, 0.3, NdotL);  // Steeper transition
-  float sunsetFactor = exp(-8.0 * abs(NdotL)) * 1.5;  // Narrower terminator band
-  float nightFactor = smoothstep(0.2, -0.2, NdotL);  // Steeper night transition
+  // Lighting calculation with steeper falloff starting earlier
+  // Start darkening when NdotL < 0.5 (60 degrees from sun direction)
+  float dayFactor = smoothstep(-0.1, 0.5, NdotL);  // Start darkening much earlier
+  float sunsetFactor = exp(-6.0 * abs(NdotL - 0.1)) * 1.5;  // Shifted terminator band
+  float nightFactor = smoothstep(0.4, -0.1, NdotL);  // Night starts earlier
   
   // Make the darkest part almost invisible
   // Scale darkness based on how far into shadow we are

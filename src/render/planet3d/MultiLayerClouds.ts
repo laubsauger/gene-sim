@@ -79,8 +79,8 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
   const cumulusLayer = createProceduralCloudLayer({
     baseRadius: planetRadius,
     radius: 1.02,  // Lower altitude cumulus
-    coverage: 0.3,  // Denser for low clouds
-    density: 0.9,   // Slightly lower density for visibility
+    coverage: 0.25,  // Moderate cloud coverage
+    density: 0.92,   // Moderate density
     scale: 3.5,
     speed: 0.02,  // Slow cumulus clouds
     color: new THREE.Color(0.95, 0.95, 0.95)  // Slightly darker for contrast
@@ -102,8 +102,8 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
   const stratusLayer = createProceduralCloudLayer({
     baseRadius: planetRadius,
     radius: 1.0275,  // Middle ground altitude as requested
-    coverage: 0.2,  // Lower threshold for more coverage
-    density: 0.8,   // Slightly transparent
+    coverage: 0.175,  // Moderate coverage
+    density: 0.82,   // Moderate opacity
     scale: 5,       // Different scale for variety
     speed: 0.025,  // Mid-speed stratus
     color: new THREE.Color(1, 1, 1)
@@ -127,8 +127,8 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
   const jetStreamLayer = createProceduralCloudLayer({
     baseRadius: planetRadius,
     radius: 1.035,  // Slightly higher altitude
-    coverage: 0.35,  // Lower threshold for more visible streaks
-    density: 0.6,   // Increased density for better visibility
+    coverage: 0.3,  // Moderate coverage for jet stream
+    density: 0.65,   // Moderate density
     scale: 8.0,     // Much larger scale for long streaks
     speed: 0.06,  // Faster jet stream
     color: new THREE.Color(1.0, 1.0, 0.98)  // Slight yellow tint
@@ -153,8 +153,8 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
   const cirrusLayer = createProceduralCloudLayer({
     baseRadius: planetRadius,
     radius: 1.045,  // Highest altitude layer
-    coverage: 0.55,  // Higher coverage threshold for wispier clouds
-    density: 0.2,    // Very low density
+    coverage: 0.5,   // Moderate cirrus coverage
+    density: 0.25,   // Wispy density
     scale: 3.0,      // Different scale again
     speed: 0.03,  // Fast high-altitude cirrus
     color: new THREE.Color(0.92, 0.92, 1.0)  // More bluish tint for altitude

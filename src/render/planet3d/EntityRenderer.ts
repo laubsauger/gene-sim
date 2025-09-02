@@ -38,9 +38,6 @@ export function updateEntitiesFromBuffers(
   const scale = 0.0075;
   scaleVec.set(scale, scale, scale);
   
-  // Pre-calculate constants
-  const latRange = Math.PI * 0.85;
-  
   // Update all entities positions - alive/dead should be filtered worker-side
   // For now, still check alive status but this should move to worker
   let updateCount = 0;
@@ -62,11 +59,17 @@ export function updateEntitiesFromBuffers(
     const x = pos[i * 2];
     const y = pos[i * 2 + 1];
     
-    // Map 2D coordinates to spherical coordinates
-    // X maps to longitude: 0 to worldWidth -> -PI to PI
-    // Y maps to latitude: 0 to worldHeight -> -latRange/2 to latRange/2
-    const lon = (x / worldWidth - 0.5) * Math.PI * 2;
-    const lat = (y / worldHeight - 0.5) * latRange;
+    // Map 2D coordinates to spherical coordinates matching Three.js sphere UV mapping
+    // Three.js SphereGeometry UV: U (0-1) maps to longitude 0 to 2π (starting from +X)
+    // V (0-1) maps from south pole (π/2) to north pole (-π/2)
+    // Our world: X (0-worldWidth) should map around the sphere
+    // Y (0-worldHeight) should map to the middle 85% of the texture (7.5% padding each side for poles)
+    // Subtract 90 degree rotation to align with texture (-π/2 radians)
+    const lon = (x / worldWidth) * Math.PI * 2 - Math.PI / 2; // Rotate -90 degrees
+    // Map Y to account for pole padding in texture (7.5% top, 85% middle, 7.5% bottom)
+    // Y=0 should map to 7.5% from bottom, Y=worldHeight should map to 92.5% from bottom
+    const textureV = 0.075 + (y / worldHeight) * 0.85; // Map to middle 85% of texture
+    const lat = (textureV - 0.5) * Math.PI; // Convert to latitude (-π/2 to π/2)
     
     // Direct calculation without intermediate vector
     const cosLat = Math.cos(lat);

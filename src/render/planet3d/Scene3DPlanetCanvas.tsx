@@ -36,6 +36,7 @@ import { makePlanet } from './PlanetFactory';
 import { BiomeGenerator } from '../../sim/biomes';
 import { createMultiLayerClouds } from './MultiLayerClouds';
 import { updateEntitiesFromBuffers, makeGroundEntities } from './EntityRenderer';
+import { batchWorldToSphere } from '../utils/coordinateTransform';
 import { makeMoon } from './MoonComponent';
 import { makeVenus } from './VenusComponent';
 import { makeMars } from './MarsComponent';
@@ -151,6 +152,7 @@ export function Scene3DPlanetCanvas({
     southPoleArrow?: THREE.ArrowHelper;
     northPoleCylinder?: THREE.Mesh;
     southPoleCylinder?: THREE.Mesh;
+    boundaries?: THREE.Group;
   } | null>(null);
 
   // Listen for pause state from simulation
@@ -164,6 +166,124 @@ export function Scene3DPlanetCanvas({
     });
     return unsubscribe;
   }, [client]);
+
+  // Function to create biome boundaries using actual traversability data
+  const createBiomeBoundaries = (biomeGenerator: BiomeGenerator, worldWidth: number, worldHeight: number): THREE.Group => {
+    const group = new THREE.Group();
+    const elevationOffset = PLANET_RADIUS * 1.002; // Slightly above surface
+
+    const traversabilityMap = biomeGenerator.getTraversabilityMap();
+    const { width: gridWidth, height: gridHeight } = biomeGenerator.getGridDimensions();
+    const cellSize = biomeGenerator.getCellSize();
+
+    // Extract boundary edges similar to BoundaryOverlay
+    const edges: { points: THREE.Vector3[] }[] = [];
+
+    for (let y = 0; y < gridHeight; y++) {
+      for (let x = 0; x < gridWidth; x++) {
+        const idx = y * gridWidth + x;
+        const isTraversable = traversabilityMap[idx] === 1;
+
+        if (!isTraversable) continue; // Only care about edges of traversable areas
+
+        // Check each neighbor for boundaries
+        // Right edge
+        if (x < gridWidth - 1) {
+          const rightIdx = y * gridWidth + (x + 1);
+          if (traversabilityMap[rightIdx] === 0) {
+            const worldX = (x + 1) * cellSize;
+            const points2D = new Float32Array([
+              worldX, y * cellSize,
+              worldX, (y + 1) * cellSize
+            ]);
+            const points3D = batchWorldToSphere(points2D, worldWidth, worldHeight, elevationOffset);
+            edges.push({
+              points: [
+                new THREE.Vector3(points3D[0], points3D[1], points3D[2]),
+                new THREE.Vector3(points3D[3], points3D[4], points3D[5])
+              ]
+            });
+          }
+        }
+
+        // Left edge
+        if (x > 0) {
+          const leftIdx = y * gridWidth + (x - 1);
+          if (traversabilityMap[leftIdx] === 0) {
+            const worldX = x * cellSize;
+            const points2D = new Float32Array([
+              worldX, y * cellSize,
+              worldX, (y + 1) * cellSize
+            ]);
+            const points3D = batchWorldToSphere(points2D, worldWidth, worldHeight, elevationOffset);
+            edges.push({
+              points: [
+                new THREE.Vector3(points3D[0], points3D[1], points3D[2]),
+                new THREE.Vector3(points3D[3], points3D[4], points3D[5])
+              ]
+            });
+          }
+        }
+
+        // Top edge (in grid coordinates)
+        if (y < gridHeight - 1) {
+          const topIdx = (y + 1) * gridWidth + x;
+          if (traversabilityMap[topIdx] === 0) {
+            const worldY = (y + 1) * cellSize;
+            const points2D = new Float32Array([
+              x * cellSize, worldY,
+              (x + 1) * cellSize, worldY
+            ]);
+            const points3D = batchWorldToSphere(points2D, worldWidth, worldHeight, elevationOffset);
+            edges.push({
+              points: [
+                new THREE.Vector3(points3D[0], points3D[1], points3D[2]),
+                new THREE.Vector3(points3D[3], points3D[4], points3D[5])
+              ]
+            });
+          }
+        }
+
+        // Bottom edge (in grid coordinates)
+        if (y > 0) {
+          const bottomIdx = (y - 1) * gridWidth + x;
+          if (traversabilityMap[bottomIdx] === 0) {
+            const worldY = y * cellSize;
+            const points2D = new Float32Array([
+              x * cellSize, worldY,
+              (x + 1) * cellSize, worldY
+            ]);
+            const points3D = batchWorldToSphere(points2D, worldWidth, worldHeight, elevationOffset);
+            edges.push({
+              points: [
+                new THREE.Vector3(points3D[0], points3D[1], points3D[2]),
+                new THREE.Vector3(points3D[3], points3D[4], points3D[5])
+              ]
+            });
+          }
+        }
+      }
+    }
+
+    // Create line segments for all edges
+    console.log(`[Boundaries] Creating ${edges.length} boundary edges`);
+    edges.forEach(edge => {
+      const geometry = new THREE.BufferGeometry().setFromPoints(edge.points);
+      const material = new THREE.LineBasicMaterial({
+        color: 0xff6b35,  // Alert orange like in 2D
+        opacity: 0.8,
+        transparent: true,
+        depthWrite: false,
+        linewidth: 2
+      });
+      const line = new THREE.Line(geometry, material);
+      line.renderOrder = 15;
+      group.add(line);
+    });
+
+    console.log(`[Boundaries] Created boundary group with ${group.children.length} lines`);
+    return group;
+  };
 
   // Initialize Three.js scene
   useEffect(() => {
@@ -666,6 +786,16 @@ export function Scene3DPlanetCanvas({
       // Add entities to earth group for proper layering
       sceneRef.current.earth.group.add(entities);
       sceneRef.current.entities = entities;
+
+      // Create biome boundaries if biome generator exists
+      if (biomeGeneratorRef.current) {
+        console.log(`[Boundaries] Creating boundaries, showBoundaries=${showBoundaries}`);
+        const boundaries = createBiomeBoundaries(biomeGeneratorRef.current, world.width, world.height);
+        boundaries.visible = showBoundaries;
+        sceneRef.current.earth.group.add(boundaries);
+        sceneRef.current.boundaries = boundaries;
+        console.log(`[Boundaries] Added to scene, visible=${boundaries.visible}`);
+      }
     };
 
     // Check if buffers exist immediately
@@ -831,10 +961,11 @@ export function Scene3DPlanetCanvas({
       if (e.key === 's' || e.key === 'S') {
         e.preventDefault();
         saveSceneState();
-      } else if (e.key === 'r' || e.key === 'R') {
-        e.preventDefault();
-        restoreSceneState();
-      }
+      } 
+      // else if (e.key === 'r' || e.key === 'R') {
+      //   e.preventDefault();
+      //   restoreSceneState();
+      // }
     };
 
     window.addEventListener('keydown', handleKeyPress);
@@ -1461,6 +1592,11 @@ export function Scene3DPlanetCanvas({
     const store = usePlanet3DStore.getState();
     if (showBoundaries !== store.showBiomeBoundaries) {
       store.setShowBiomeBoundaries(showBoundaries);
+    }
+
+    // Update boundary visibility
+    if (sceneRef.current?.boundaries) {
+      sceneRef.current.boundaries.visible = showBoundaries;
     }
   }, [showBoundaries]);
 
