@@ -154,8 +154,8 @@ export const usePlanet3DStore = create<Planet3DState>()(
   // Biome settings
   biomeMode: 'natural',
   showBiomeBoundaries: false,
-  showFoodOverlay: true, // Default to true like in Scene2D
-  useAdvancedBiomeShaders: true, // Enable by default for better visuals
+  showFoodOverlay: false, // Disabled by default for cleaner view
+  useAdvancedBiomeShaders: true, // Enable procedural terrain with vertex displacement
   biomeShaderBlend: 0.8,
   biomeOceanWaves: 0.7,
   biomeShowContours: false,

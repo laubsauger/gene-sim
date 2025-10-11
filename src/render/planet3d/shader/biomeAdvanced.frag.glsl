@@ -175,7 +175,8 @@ void main() {
   float isMountain = step(0.5, biomeData.r) * step(biomeData.r, 0.7) * step(biomeData.g, 0.4);
   float isForest = 1.0 - max(max(max(isOcean, isDesert), isArctic), isMountain);
   
-  vec3 finalColor = vec3(0.0);
+  // Start with a base ground color as fallback
+  vec3 finalColor = grassColor;
   
   // Apply biome-specific shading
   if(isOcean > 0.5) {

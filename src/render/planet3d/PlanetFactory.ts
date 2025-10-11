@@ -8,6 +8,7 @@ import atmosphereMatVertexShader from './shader/atmosphereMat.vertex.glsl?raw'
 import atmosphereMatFragmentShader from './shader/atmosphereMat.frag.glsl?raw'
 import { createBiomeTexture } from './BiomeTextureGenerator';
 import { createPoleCaps } from './PoleCapsMesh';
+import { createAdvancedBiomeSphere } from './AdvancedBiomeRenderer';
 
 export interface PlanetConfig {
   radius?: number;
@@ -19,6 +20,13 @@ export interface PlanetConfig {
   biomeGenerator?: BiomeGenerator;
   biomeMode?: 'natural' | 'highlight' | 'hidden';
   baseColor?: THREE.Color;
+  useAdvancedBiomeShaders?: boolean;
+  biomeShaderConfig?: {
+    biomeBlend?: number;
+    oceanWaveIntensity?: number;
+    showContours?: boolean;
+    satelliteView?: boolean;
+  };
 }
 
 export function makePlanet(config: PlanetConfig = {}) {
@@ -63,6 +71,10 @@ export function makePlanet(config: PlanetConfig = {}) {
     planetMesh = advancedBiome.mesh;
     planetMat = advancedBiome.mesh.material as THREE.ShaderMaterial;
     advancedBiomeControls = advancedBiome;
+    // Ensure consistent mesh properties
+    planetMesh.frustumCulled = false;
+    planetMesh.castShadow = true;
+    planetMesh.receiveShadow = true;
     group.add(planetMesh);
   } else {
     // Use standard material with texture or base color
@@ -75,6 +87,11 @@ export function makePlanet(config: PlanetConfig = {}) {
         metalness: 0.1,
         emissive: new THREE.Color(0x0a0f1a),
         emissiveIntensity: 0.1,
+        transparent: false,
+        opacity: 1.0,
+        side: THREE.FrontSide,
+        depthWrite: true,
+        depthTest: true
       });
     } else {
       planetMat = new THREE.MeshStandardMaterial({
@@ -83,6 +100,11 @@ export function makePlanet(config: PlanetConfig = {}) {
         metalness: 0.1,
         emissive: new THREE.Color(0x0a0f1a),
         emissiveIntensity: 0.1,
+        transparent: false,
+        opacity: 1.0,
+        side: THREE.FrontSide,
+        depthWrite: true,
+        depthTest: true
       });
     }
 
@@ -162,20 +184,30 @@ export function makePlanet(config: PlanetConfig = {}) {
 
   // Method to update biome mode dynamically
   function updateBiomeMode(newMode: 'natural' | 'highlight' | 'hidden', newBiomeGenerator?: BiomeGenerator) {
-    if (biomeTexture) {
-      biomeTexture.dispose();
-      biomeTexture = undefined;
+    // Advanced shaders don't support runtime biome mode changes
+    // They would need to be recreated with new settings
+    if (advancedBiomeControls) {
+      console.warn('Advanced biome shaders do not support runtime biome mode changes. Please toggle off advanced shaders or refresh the page.');
+      return;
     }
 
-    if ((newBiomeGenerator || biomeGenerator) && newMode !== 'hidden') {
-      biomeTexture = createBiomeTexture(newBiomeGenerator || biomeGenerator!, newMode);
-      planetMat.map = biomeTexture;
-      planetMat.color.set(0xffffff);
-    } else {
-      planetMat.map = null;
-      planetMat.color.copy(baseColor);
+    // Standard material biome mode update
+    if (planetMat instanceof THREE.MeshStandardMaterial) {
+      if (biomeTexture) {
+        biomeTexture.dispose();
+        biomeTexture = undefined;
+      }
+
+      if ((newBiomeGenerator || biomeGenerator) && newMode !== 'hidden') {
+        biomeTexture = createBiomeTexture(newBiomeGenerator || biomeGenerator!, newMode);
+        planetMat.map = biomeTexture;
+        planetMat.color.set(0xffffff);
+      } else {
+        planetMat.map = null;
+        planetMat.color.copy(baseColor);
+      }
+      planetMat.needsUpdate = true;
     }
-    planetMat.needsUpdate = true;
   }
 
   function dispose() {

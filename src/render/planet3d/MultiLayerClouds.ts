@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import cloudMatVertexShader from './shader/cloudMat.vertex.glsl';
-import cloudMatFragmentShader from './shader/cloudMat.frag.glsl';
+import cloudMatVertexShader from './shader/cloudMat.vertex.glsl?raw';
+import cloudMatFragmentShader from './shader/cloudMat.frag.glsl?raw';
 
 // Cloud layer configuration
 interface CloudLayerConfig {

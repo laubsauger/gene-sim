@@ -42,8 +42,8 @@ export default function App() {
     console.log('[App] Initializing default entity size to:', defaultSize);
     return defaultSize;
   }); // Default entity size
-  const [showFood, setShowFood] = useState(true); // Toggle food display
-  const [showBoundaries, setShowBoundaries] = useState(true); // Toggle boundary visualization - enabled by default
+  const [showFood, setShowFood] = useState(false); // Toggle food display - off by default
+  const [showBoundaries, setShowBoundaries] = useState(false); // Toggle boundary visualization - off by default
   
   // Initialize 3D store boundary and food state on mount
   useEffect(() => {

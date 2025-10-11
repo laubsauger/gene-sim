@@ -33,6 +33,7 @@ function FPSTracker({ client }: { client: SimClient }) {
   return { trackFrame };
 }
 import { makePlanet } from './PlanetFactory';
+import { hardenPlanetStack } from './hardenPlanetStack';
 import { BiomeGenerator } from '../../sim/biomes';
 import { createMultiLayerClouds } from './MultiLayerClouds';
 import { updateEntitiesFromBuffers, makeGroundEntities } from './EntityRenderer';
@@ -545,7 +546,8 @@ export function Scene3DPlanetCanvas({
     // ---------- EARTH STACK (per architecture) ----------
 
     // Get initial biome settings from store
-    const initialBiomeMode = storeRef.current.getState().biomeMode;
+    const initialState = storeRef.current.getState();
+    const initialBiomeMode = initialState.biomeMode;
     prevBiomeModeRef.current = initialBiomeMode;
 
     // Create biome generator if seed provided
@@ -563,6 +565,13 @@ export function Scene3DPlanetCanvas({
       mieColor: new THREE.Color(0xfff2d1),
       biomeGenerator: biomeGeneratorRef.current || undefined,
       biomeMode: initialBiomeMode === 'highlight' ? 'highlight' : 'natural',
+      useAdvancedBiomeShaders: initialState.useAdvancedBiomeShaders,
+      biomeShaderConfig: {
+        biomeBlend: initialState.biomeShaderBlend,
+        oceanWaveIntensity: initialState.biomeOceanWaves,
+        showContours: initialState.biomeShowContours,
+        satelliteView: initialState.biomeSatelliteView,
+      },
     });
     earthRef.current = earth; // Store reference for later updates
 
@@ -591,6 +600,14 @@ export function Scene3DPlanetCanvas({
     if (earth.meshes.atmosphereMesh) {
       earth.meshes.atmosphereMesh.visible = storeRef.current.getState().showAtmosphere;
     }
+    
+    // Harden the planet stack to ensure proper depth ordering
+    hardenPlanetStack({
+      planetMesh: earth.meshes.planetMesh,
+      entitiesMesh: null, // Will be set later when entities are created
+      cloudMesh: clouds,
+      atmosphereMesh: earth.meshes.atmosphereMesh
+    });
 
     // Skip atmosphere depth prepass for now - focus on getting basic rendering working
     let atmoDepth: THREE.Mesh | undefined;
@@ -1426,18 +1443,14 @@ export function Scene3DPlanetCanvas({
             target: planet3DState.cameraTarget,
             initialRotation: targetRotationY // Store the planet's rotation when we started
           };
-          
-          console.log('Initialized geostationary:', {
-            cameraAngle: (currentAngle * 180 / Math.PI).toFixed(2) + '°',
-            planetRotation: (targetRotationY * 180 / Math.PI).toFixed(2) + '°'
-          });
         }
 
         // Calculate how much the planet has rotated since we entered geostationary mode
         const rotationDelta = targetRotationY - geostationaryOffsetRef.current.initialRotation;
         
-        // The camera needs to orbit by the same amount to stay above the same spot
-        const geostationaryAngle = geostationaryOffsetRef.current.angle + rotationDelta;
+        // The camera needs to orbit in the OPPOSITE direction to compensate for planet rotation
+        // If planet rotates +30°, camera needs to rotate -30° to stay above the same spot
+        const geostationaryAngle = geostationaryOffsetRef.current.angle - rotationDelta;
         
         // Calculate camera position in orbit around the planet
         const newCameraPos = new THREE.Vector3(
@@ -1446,18 +1459,6 @@ export function Scene3DPlanetCanvas({
           targetPos.z + Math.sin(geostationaryAngle) * geostationaryOffsetRef.current.distance
         );
 
-        // Debug logging - remove after fixing
-        if (frameCount % 30 === 0) {
-          console.log('Geostationary debug:', {
-            target: planet3DState.cameraTarget,
-            planetRotation: (targetRotationY * 180 / Math.PI).toFixed(2) + '°',
-            rotationDelta: (rotationDelta * 180 / Math.PI).toFixed(2) + '°',
-            initialAngle: (geostationaryOffsetRef.current.angle * 180 / Math.PI).toFixed(2) + '°',
-            finalAngle: (geostationaryAngle * 180 / Math.PI).toFixed(2) + '°',
-            cameraPos: `(${newCameraPos.x.toFixed(1)}, ${newCameraPos.y.toFixed(1)}, ${newCameraPos.z.toFixed(1)})`,
-            paused: planet3DState.pauseOrbits
-          });
-        }
 
         // Set camera position and make it look at the planet
         refs.camera.position.copy(newCameraPos);
@@ -1701,6 +1702,9 @@ export function Scene3DPlanetCanvas({
       );
     }
   }, [biomeMode, seed]);
+
+  // For now, advanced shader changes require a page refresh
+  // TODO: Implement runtime shader switching without breaking the scene
 
   // Cinematic zoom functions
   const handleZoomToSurface = useCallback(() => {

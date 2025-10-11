@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import foodOverlayMatVertexShader from './shader/foodOverlayMat.vertex.glsl'
-import foodOverlayMatFragmentShader from './shader/foodOverlayMat.frag.glsl'
+import foodOverlayMatVertexShader from './shader/foodOverlayMat.vertex.glsl?raw'
+import foodOverlayMatFragmentShader from './shader/foodOverlayMat.frag.glsl?raw'
 
 export interface FoodOverlay3DConfig {
   foodData: Uint8Array | null;

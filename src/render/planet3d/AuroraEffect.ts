@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import auroraMatVertexShader from './shader/auroraMat.vertex.glsl'
-import auroraMatFragmentShader from './shader/auroraMat.frag.glsl'
+import auroraMatVertexShader from './shader/auroraMat.vertex.glsl?raw'
+import auroraMatFragmentShader from './shader/auroraMat.frag.glsl?raw'
 
 export function createAuroraEffect(planetRadius: number) {
   const geometry = new THREE.SphereGeometry(

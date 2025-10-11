@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { BiomeGenerator, BIOME_CONFIGS } from '../../sim/biomes';
-import biomeVertexShader from './shader/biomeAdvanced.vertex.glsl?raw';
-import biomeFragmentShader from './shader/biomeAdvanced.frag.glsl?raw';
+// Use terrain shaders with vertex displacement for 3D geometry
+import biomeVertexShader from './shader/biomeTerrain.vert.glsl?raw';
+import biomeFragmentShader from './shader/biomeTerrain.frag.glsl?raw';
 
 export interface AdvancedBiomeConfig {
   biomeGenerator: BiomeGenerator;
@@ -14,15 +15,9 @@ export interface AdvancedBiomeConfig {
 }
 
 export function createAdvancedBiomeMaterial(config: AdvancedBiomeConfig) {
-  const {
-    biomeGenerator,
-    radius,
-    biomeBlend = 0.8,
-    oceanWaveIntensity = 0.7,
-    terrainDetail = 1.0,
-    showContours = false,
-    satelliteView = true
-  } = config;
+  const { biomeGenerator } = config;
+  // These will be used when we implement advanced controls
+  // const { biomeBlend = 0.8, oceanWaveIntensity = 0.7, terrainDetail = 1.0, showContours = false, satelliteView = true } = config;
 
   // Create biome texture from generator
   const grid = biomeGenerator.getBiomeGrid();
@@ -32,6 +27,10 @@ export function createAdvancedBiomeMaterial(config: AdvancedBiomeConfig) {
   canvas.width = gridWidth;
   canvas.height = gridHeight;
   const ctx = canvas.getContext('2d')!;
+
+  // Fill with default grass color first as fallback
+  ctx.fillStyle = '#58982D';
+  ctx.fillRect(0, 0, gridWidth, gridHeight);
 
   // Create texture with biome data
   for (let y = 0; y < gridHeight; y++) {
@@ -52,17 +51,11 @@ export function createAdvancedBiomeMaterial(config: AdvancedBiomeConfig) {
   biomeTexture.wrapT = THREE.ClampToEdgeWrapping;
   biomeTexture.needsUpdate = true;
 
-  // Create shader material with advanced rendering
+  // Create shader material with simplified uniforms
   const uniforms = {
     uBiomeTexture: { value: biomeTexture },
     uLightDir: { value: new THREE.Vector3(1, 0.5, 0.3).normalize() },
-    uTime: { value: 0 },
-    uPlanetRadius: { value: radius },
-    uBiomeBlend: { value: biomeBlend },
-    uOceanWaveIntensity: { value: oceanWaveIntensity },
-    uTerrainDetail: { value: terrainDetail },
-    uShowContours: { value: showContours ? 1.0 : 0.0 },
-    uSatelliteView: { value: satelliteView ? 1.0 : 0.0 }
+    uTime: { value: 0 }
   };
 
   const material = new THREE.ShaderMaterial({
@@ -70,7 +63,9 @@ export function createAdvancedBiomeMaterial(config: AdvancedBiomeConfig) {
     vertexShader: biomeVertexShader,
     fragmentShader: biomeFragmentShader,
     side: THREE.FrontSide,
-    transparent: false
+    transparent: false,
+    depthWrite: true,
+    depthTest: true
   });
 
   return {
@@ -86,18 +81,6 @@ export function createAdvancedBiomeMaterial(config: AdvancedBiomeConfig) {
       if (lightDir) {
         uniforms.uLightDir.value.copy(lightDir);
       }
-    },
-    setBlend: (blend: number) => {
-      uniforms.uBiomeBlend.value = Math.max(0, Math.min(1, blend));
-    },
-    setOceanWaves: (intensity: number) => {
-      uniforms.uOceanWaveIntensity.value = Math.max(0, Math.min(1, intensity));
-    },
-    setContours: (show: boolean) => {
-      uniforms.uShowContours.value = show ? 1.0 : 0.0;
-    },
-    setSatelliteView: (enabled: boolean) => {
-      uniforms.uSatelliteView.value = enabled ? 1.0 : 0.0;
     }
   };
 }
@@ -106,6 +89,7 @@ export function createAdvancedBiomeSphere(config: AdvancedBiomeConfig) {
   const { radius } = config;
   
   // Create higher detail geometry for better shader effects
+  // Use exact radius - no offset needed for base planet layer
   const geometry = new THREE.SphereGeometry(radius, 256, 192);
   
   const { material, ...controls } = createAdvancedBiomeMaterial(config);
@@ -113,6 +97,8 @@ export function createAdvancedBiomeSphere(config: AdvancedBiomeConfig) {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
+  mesh.frustumCulled = false; // Don't cull - planet should always render
+  mesh.renderOrder = 0; // Explicitly set to render first (base layer)
   
   return {
     mesh,

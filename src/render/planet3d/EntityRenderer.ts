@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PLANET_RADIUS, ENTITY_ALTITUDE } from './planetUtils';
-import entityMatVertexShader from './shader/entityMat.vertex.glsl'
-import entityMatFragmentShader from './shader/entityMat.frag.glsl'
+import entityMatVertexShader from './shader/entityMat.vertex.glsl?raw'
+import entityMatFragmentShader from './shader/entityMat.frag.glsl?raw'
 
 // Track frame count for update throttling
 let frameCount = 0;

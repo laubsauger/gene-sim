@@ -17,6 +17,7 @@ export function hardenPlanetStack({
     mat.transparent = false;
     mat.depthTest = true;
     mat.depthWrite = true;
+    mat.needsUpdate = true; // Force material update for shader materials
     planetMesh.renderOrder = 0;
   }
 

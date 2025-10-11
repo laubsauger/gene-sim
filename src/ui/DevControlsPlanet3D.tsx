@@ -24,6 +24,7 @@ export function DevControlsPlanet3D({
     starfield: false,
     debug: false,
     orbitalMechanics: false,
+    audio: false,
   });
 
   const toggleSection = (section: keyof typeof sectionsCollapsed) => {
@@ -100,6 +101,26 @@ export function DevControlsPlanet3D({
     setShowLensFlare,
     lensFlareIntensity,
     setLensFlareIntensity,
+    useAdvancedBiomeShaders,
+    setUseAdvancedBiomeShaders,
+    biomeShaderBlend,
+    setBiomeShaderBlend,
+    biomeOceanWaves,
+    setBiomeOceanWaves,
+    biomeShowContours,
+    setBiomeShowContours,
+    biomeSatelliteView,
+    setBiomeSatelliteView,
+    showFoodOverlay,
+    setShowFoodOverlay,
+    soundEnabled,
+    setSoundEnabled,
+    musicEnabled,
+    setMusicEnabled,
+    soundVolume,
+    setSoundVolume,
+    musicVolume,
+    setMusicVolume,
   } = usePlanet3DStore();
   
   return (
@@ -470,6 +491,76 @@ export function DevControlsPlanet3D({
               />
               Show Boundaries
             </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={showFoodOverlay}
+                onChange={(e) => setShowFoodOverlay(e.target.checked)}
+              />
+              Food Overlay
+            </label>
+
+            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #444' }}>
+              <div style={{ fontSize: '10px', color: '#888', marginBottom: '5px' }}>Advanced Shaders:</div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={useAdvancedBiomeShaders}
+                  onChange={(e) => setUseAdvancedBiomeShaders(e.target.checked)}
+                />
+                Enable Advanced
+              </label>
+
+              {useAdvancedBiomeShaders && (
+                <>
+                  <div style={{ marginTop: '5px', marginLeft: '20px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <label style={{ fontSize: '9px', color: '#888', minWidth: '60px' }}>Blend: {biomeShaderBlend.toFixed(2)}</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={biomeShaderBlend}
+                      onChange={(e) => setBiomeShaderBlend(parseFloat(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+
+                  <div style={{ marginLeft: '20px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <label style={{ fontSize: '9px', color: '#888', minWidth: '60px' }}>Waves: {biomeOceanWaves.toFixed(2)}</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={biomeOceanWaves}
+                      onChange={(e) => setBiomeOceanWaves(parseFloat(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', marginLeft: '20px', marginTop: '3px' }}>
+                    <input
+                      type="checkbox"
+                      checked={biomeShowContours}
+                      onChange={(e) => setBiomeShowContours(e.target.checked)}
+                    />
+                    Show Contours
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', marginLeft: '20px' }}>
+                    <input
+                      type="checkbox"
+                      checked={biomeSatelliteView}
+                      onChange={(e) => setBiomeSatelliteView(e.target.checked)}
+                    />
+                    Satellite View
+                  </label>
+                </>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -644,7 +735,65 @@ export function DevControlsPlanet3D({
               </>
             )}
       </div>
-      
+
+      <div style={{ borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
+        <div
+          style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa', cursor: 'pointer', userSelect: 'none' }}
+          onClick={() => toggleSection('audio')}
+        >
+          {sectionsCollapsed.audio ? '▶' : '▼'} Audio
+        </div>
+        {!sectionsCollapsed.audio && (
+          <>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={soundEnabled}
+                onChange={(e) => setSoundEnabled(e.target.checked)}
+              />
+              Sound Effects
+            </label>
+            {soundEnabled && (
+              <div style={{ marginTop: '5px', marginLeft: '20px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <label style={{ fontSize: '9px', color: '#888', minWidth: '60px' }}>Volume: {(soundVolume * 100).toFixed(0)}%</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={soundVolume}
+                  onChange={(e) => setSoundVolume(parseFloat(e.target.value))}
+                  style={{ flex: 1 }}
+                />
+              </div>
+            )}
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', marginTop: '5px' }}>
+              <input
+                type="checkbox"
+                checked={musicEnabled}
+                onChange={(e) => setMusicEnabled(e.target.checked)}
+              />
+              Background Music
+            </label>
+            {musicEnabled && (
+              <div style={{ marginTop: '5px', marginLeft: '20px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <label style={{ fontSize: '9px', color: '#888', minWidth: '60px' }}>Volume: {(musicVolume * 100).toFixed(0)}%</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={musicVolume}
+                  onChange={(e) => setMusicVolume(parseFloat(e.target.value))}
+                  style={{ flex: 1 }}
+                />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       <div style={{ paddingBottom: '5px', marginBottom: '5px' }}>
             <div
               style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '3px', color: '#aaa', cursor: 'pointer', userSelect: 'none' }}
