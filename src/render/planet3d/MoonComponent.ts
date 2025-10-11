@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MOON_RADIUS, MOON_COLOR, MOON_EMISSIVE, MOON_ORBIT_RADIUS, MOON_ORBIT_SPEED } from './planetUtils';
+import { MOON_RADIUS, MOON_EMISSIVE, MOON_ORBIT_RADIUS, MOON_ORBIT_SPEED } from './planetUtils';
 
 // Create procedural crater texture with proper spherical mapping
 function createMoonTextures() {

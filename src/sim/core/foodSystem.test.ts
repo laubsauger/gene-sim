@@ -12,7 +12,7 @@ const TEST_CONFIG = {
 
 // Helper to calculate actual food values for a biome
 function calculateFoodValues(biomeType: BiomeType, initialRoll: number) {
-  const biomeConfig = BIOME_CONFIGS[biomeType];
+  const biomeConfig = BIOME_CONFIGS[biomeType as keyof typeof BIOME_CONFIGS];
   const baseCapacity = TEST_CONFIG.foodCapacity;
   
   // Calculate variance based on initial roll (0-1)
@@ -21,20 +21,20 @@ function calculateFoodValues(biomeType: BiomeType, initialRoll: number) {
   const variance = varianceMin + initialRoll * (varianceMax - varianceMin);
   
   // Initial food amount
-  const initialFood = baseCapacity * variance * biomeConfig.foodCapacity;
-  
+  const initialFood = baseCapacity * variance * (biomeConfig.foodCapacity ?? 1);
+
   // Max capacity (fixed based on biome, not initial roll)
-  const maxCapacity = baseCapacity * varianceMax * biomeConfig.foodCapacity;
-  
+  const maxCapacity = baseCapacity * varianceMax * (biomeConfig.foodCapacity ?? 1);
+
   // Regen rate with biome multiplier
-  const regenRate = TEST_CONFIG.foodRegen * biomeConfig.foodRegenRate;
+  const regenRate = TEST_CONFIG.foodRegen * (biomeConfig.foodRegenRate ?? 1);
   
   return {
     initialFood,
     maxCapacity,
     regenRate,
-    biomeMultiplier: biomeConfig.foodCapacity,
-    regenMultiplier: biomeConfig.foodRegenRate,
+    biomeMultiplier: biomeConfig.foodCapacity ?? 1,
+    regenMultiplier: biomeConfig.foodRegenRate ?? 1,
   };
 }
 
@@ -96,17 +96,17 @@ console.log('=== FOOD SYSTEM MATH TESTS ===\n');
 // Test each biome type
 for (const [biomeName, biomeType] of Object.entries(BiomeType)) {
   if (typeof biomeType !== 'number') continue;
-  
-  const biomeConfig = BIOME_CONFIGS[biomeType];
+
+  const biomeConfig = BIOME_CONFIGS[biomeType as unknown as keyof typeof BIOME_CONFIGS];
   
   // Skip non-traversable biomes
-  if (biomeConfig.foodCapacity === 0) {
+  if ((biomeConfig.foodCapacity ?? 1) === 0) {
     console.log(`${biomeName}: Non-traversable (no food)\n`);
     continue;
   }
-  
+
   console.log(`=== ${biomeName} ===`);
-  console.log(`Base multipliers: foodCap=${biomeConfig.foodCapacity}, regenRate=${biomeConfig.foodRegenRate}`);
+  console.log(`Base multipliers: foodCap=${biomeConfig.foodCapacity ?? 1}, regenRate=${biomeConfig.foodRegenRate ?? 1}`);
   
   // Test with different initial rolls
   const rolls = [0.1, 0.5, 0.9];  // Low, medium, high initial food
@@ -192,13 +192,13 @@ for (const time of desiredTimes) {
 console.log('\n3. Biome-specific recommendations:');
 for (const [biomeName, biomeType] of Object.entries(BiomeType)) {
   if (typeof biomeType !== 'number') continue;
-  const biomeConfig = BIOME_CONFIGS[biomeType];
-  if (biomeConfig.foodCapacity === 0) continue;
-  
+  const biomeConfig = BIOME_CONFIGS[biomeType as unknown as keyof typeof BIOME_CONFIGS];
+  if ((biomeConfig.foodCapacity ?? 1) === 0) continue;
+
   // Calculate what base rate would give 3s regen for this biome
   const targetTime = 3;  // seconds
-  const biomeRate = 1 / (targetTime * biomeConfig.foodRegenRate);
-  
+  const biomeRate = 1 / (targetTime * (biomeConfig.foodRegenRate ?? 1));
+
   console.log(`   ${biomeName}: base rate = ${biomeRate.toFixed(3)} for ${targetTime}s regen`);
 }
 

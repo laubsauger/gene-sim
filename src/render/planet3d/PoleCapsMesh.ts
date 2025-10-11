@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { PLANET_RADIUS } from './planetUtils';
+import poleCapVertexShader from './shader/poleCap.vert.glsl?raw';
+import poleCapFragmentShader from './shader/poleCap.frag.glsl?raw';
 
 /**
  * Creates pole cap meshes to cover the unused polar regions
@@ -8,10 +10,7 @@ import { PLANET_RADIUS } from './planetUtils';
  */
 export function createPoleCaps(radius: number = PLANET_RADIUS): THREE.Group {
   const group = new THREE.Group();
-  
-  // Calculate the latitude cutoff (85% of π/2 = 0.425π)
-  const latCutoff = Math.PI * 0.425; // 85% of hemisphere
-  
+
   // Create geometry for pole caps
   // Using sphere geometry with carefully chosen phi angles
   const capAngle = Math.PI * 0.075; // 7.5% of sphere for each cap
@@ -38,16 +37,19 @@ export function createPoleCaps(radius: number = PLANET_RADIUS): THREE.Group {
     capAngle
   );
   
-  // Ice cap material with white/light blue appearance
-  const poleMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(0xf0f8ff), // Ice white with slight blue tint
-    roughness: 0.4,
-    metalness: 0.05,
-    emissive: new THREE.Color(0x304050), // Much darker emissive for better shadow contrast
-    emissiveIntensity: 0.05, // Very low emissive so shadows are visible
-    // polygonOffset: true,
-    // polygonOffsetFactor: -1,
-    // polygonOffsetUnits: -1,
+  // Create ice texture for more realistic appearance
+  const iceTexture = createIceTexture();
+
+  // Use custom shader material to match terrain lighting
+  const poleMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      uIceTexture: { value: iceTexture },
+      uLightDir: { value: new THREE.Vector3(1, 0.5, 0.3).normalize() }
+    },
+    vertexShader: poleCapVertexShader,
+    fragmentShader: poleCapFragmentShader,
+    side: THREE.FrontSide,
+    transparent: false,
     depthWrite: true,
     depthTest: true
   });
@@ -65,59 +67,69 @@ export function createPoleCaps(radius: number = PLANET_RADIUS): THREE.Group {
   
   group.add(northCap);
   group.add(southCap);
-  
+
+  // Store material reference for light updates
+  (group as any).poleMaterial = poleMaterial;
+
   return group;
 }
 
 /**
- * Creates a more realistic ice cap texture
+ * Creates a realistic ice cap texture with variation
  */
 function createIceTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
+  canvas.width = 1024;
+  canvas.height = 1024;
   const ctx = canvas.getContext('2d')!;
-  
-  // Create gradient for ice variation
-  const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
-  gradient.addColorStop(0, '#ffffff');     // Pure white at center
-  gradient.addColorStop(0.3, '#f8fcff');   // Very light blue-white
-  gradient.addColorStop(0.6, '#e8f4ff');   // Light ice blue
-  gradient.addColorStop(0.85, '#d0e8ff');  // Slightly darker ice blue
-  gradient.addColorStop(1, '#c0dfff');     // Ice blue at edges
-  
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 512, 512);
-  
-  // Add some noise/texture for realism
-  const imageData = ctx.getImageData(0, 0, 512, 512);
+
+  // Base ice color - bright white with blue tint
+  ctx.fillStyle = '#f5f8ff';
+  ctx.fillRect(0, 0, 1024, 1024);
+
+  // Add multiple layers of noise for ice texture detail
+  const imageData = ctx.getImageData(0, 0, 1024, 1024);
   const data = imageData.data;
-  for (let i = 0; i < data.length; i += 4) {
-    const noise = (Math.random() - 0.5) * 10;
-    data[i] = Math.min(255, Math.max(0, data[i] + noise));     // R
-    data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise)); // G
-    data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise)); // B
+
+  for (let y = 0; y < 1024; y++) {
+    for (let x = 0; x < 1024; x++) {
+      const idx = (y * 1024 + x) * 4;
+
+      // Multi-scale noise for ice detail
+      const noise1 = (Math.sin(x * 0.02) * Math.cos(y * 0.02)) * 0.5 + 0.5;
+      const noise2 = (Math.sin(x * 0.1 + noise1 * 10) * Math.cos(y * 0.1)) * 0.3 + 0.5;
+      const noise3 = (Math.random() - 0.5) * 0.15; // Fine grain
+
+      const combined = noise1 * 0.4 + noise2 * 0.4 + noise3 * 0.2;
+
+      // Apply to RGB channels with blue-white tint
+      data[idx] = Math.min(255, Math.max(240, 245 + combined * 20));     // R - high
+      data[idx + 1] = Math.min(255, Math.max(245, 248 + combined * 15)); // G - higher
+      data[idx + 2] = Math.min(255, 255);                                 // B - max (blue tint)
+    }
   }
+
   ctx.putImageData(imageData, 0, 0);
-  
-  return new THREE.CanvasTexture(canvas);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.needsUpdate = true;
+
+  return texture;
 }
 
 /**
- * Updates pole cap colors based on lighting/time of day
+ * Updates pole cap lighting based on sun direction
  */
 export function updatePoleCaps(
   poleCaps: THREE.Group,
   sunDirection: THREE.Vector3,
-  isDaytime: boolean
+  _isDaytime: boolean
 ) {
-  poleCaps.children.forEach((cap) => {
-    if (cap instanceof THREE.Mesh && cap.material instanceof THREE.MeshStandardMaterial) {
-      // Adjust emissive based on day/night - minimal glow to allow shadows
-      const emissiveIntensity = isDaytime ? 0.02 : 0.08;
-      cap.material.emissiveIntensity = emissiveIntensity;
-      
-      // Could add more dynamic effects here (aurora, ice glow, etc.)
-    }
-  });
+  // Update the shader material light direction
+  const material = (poleCaps as any).poleMaterial as THREE.ShaderMaterial;
+  if (material && material.uniforms && material.uniforms.uLightDir) {
+    material.uniforms.uLightDir.value.copy(sunDirection);
+  }
 }

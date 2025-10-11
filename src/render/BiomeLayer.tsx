@@ -14,7 +14,7 @@ export function BiomeLayer({ biomeGenerator, worldWidth, worldHeight, highlightM
   
   const { geometry, material } = useMemo(() => {
     const grid = biomeGenerator.getBiomeGrid();
-    const cellSize = biomeGenerator.getCellSize();
+    // const cellSize = biomeGenerator.getCellSize();
     const { width: gridWidth, height: gridHeight } = biomeGenerator.getGridDimensions();
     
     const canvas = document.createElement('canvas');

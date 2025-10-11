@@ -35,7 +35,7 @@ export function StyledButton({
   title,
 }: StyledButtonProps) {
   const baseColor = colorMap[color as keyof typeof colorMap] || color;
-  const isActive = variant === 'toggle' ? active : true;
+  // const isActive = variant === 'toggle' ? active : true;
 
   const sizeStyles = {
     small: { padding: '6px 10px', fontSize: '12px', height: '32px' },
@@ -109,7 +109,7 @@ export function ButtonGroup({ children, style = {} }: { children: React.ReactNod
           const isLast = index === childCount - 1;
 
           // Get the existing border from child props to avoid conflicts
-          const childStyle = child.props.style || {};
+          const childStyle = (child.props as any).style || {};
           const borderStyle = {
             borderTopWidth: '1px',
             borderRightWidth: '1px',

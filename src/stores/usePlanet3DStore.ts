@@ -220,7 +220,7 @@ export const usePlanet3DStore = create<Planet3DState>()(
     togglePauseClouds: () => set((state) => ({ pauseClouds: !state.pauseClouds })),
     
     // Quality preset setter
-    setQualityPreset: (preset) => set((state) => {
+    setQualityPreset: (preset) => set(() => {
       if (preset === 'low') {
         // Low quality: disable expensive features
         return {

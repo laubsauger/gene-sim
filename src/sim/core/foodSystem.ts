@@ -18,12 +18,12 @@ export class FoodSystem {
   private isShared: boolean;
   private capacityParameter: number = 1; // Store the original capacity parameter for rendering
   private biomeGenerator: BiomeGenerator | null = null;
-  private externalBiomeData?: {
-    traversabilityMap: Uint8Array;
-    gridWidth: number;
-    gridHeight: number;
-    cellSize: number;
-  };
+  // private externalBiomeData?: {
+  //   traversabilityMap: Uint8Array;
+  //   gridWidth: number;
+  //   gridHeight: number;
+  //   cellSize: number;
+  // };
   private globalMaxFood: number = 10; // Track the actual max food value for scaling
   private updateCount: number = 0; // Track update count for debugging
   private consumptionCount: number = 0; // Track consumption for debugging
@@ -80,8 +80,9 @@ export class FoodSystem {
           
           // Use biomeGridArray if available, otherwise use traversability
           if (existingBiomeData.biomeGridArray && existingBiomeData.biomeGridArray[idx] !== undefined) {
-            const biomeType = existingBiomeData.biomeGridArray[idx];
-            return BIOME_CONFIGS[biomeType]?.foodCapacity || 0;
+            const biomeType = existingBiomeData.biomeGridArray[idx] as unknown as keyof typeof BIOME_CONFIGS;
+            const config = BIOME_CONFIGS[biomeType];
+            return config?.foodCapacity || 0;
           }
           
           // Fallback to traversability - traversable areas get default food
@@ -108,8 +109,8 @@ export class FoodSystem {
     
     // Use distribution config or defaults - now for variance within biomes
     const varianceScale = distribution?.scale || 3;  // Smaller scale for more visible patches
-    const minVariance = 0.5;  // Minimum 50% of biome capacity
-    const maxVariance = 1.2;  // Maximum 120% of biome capacity
+    // const minVariance = 0.5;  // Minimum 50% of biome capacity
+    // const maxVariance = 1.2;  // Maximum 120% of biome capacity
     
     for (let y = 0; y < this.rows; y++) {
       for (let x = 0; x < this.cols; x++) {
@@ -120,7 +121,7 @@ export class FoodSystem {
         // Get world coordinates for biome lookup
         const worldX = (x / this.cols) * this.worldWidth;
         const worldY = (y / this.rows) * this.worldHeight;
-        const biomeMultiplier = this.biomeGenerator.getFoodMultiplier(worldX, worldY);
+        const biomeMultiplier = this.biomeGenerator!.getFoodMultiplier(worldX, worldY);
         
         // If biome has no food (ocean/mountain), skip
         if (biomeMultiplier === 0) {
@@ -144,7 +145,7 @@ export class FoodSystem {
             if (checkX >= 0 && checkX < this.cols && checkY >= 0 && checkY < this.rows) {
               const checkWorldX = (checkX / this.cols) * this.worldWidth;
               const checkWorldY = (checkY / this.rows) * this.worldHeight;
-              const checkMultiplier = this.biomeGenerator.getFoodMultiplier(checkWorldX, checkWorldY);
+              const checkMultiplier = this.biomeGenerator!.getFoodMultiplier(checkWorldX, checkWorldY);
               if (checkMultiplier === 0) {
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 minDistToBarrier = Math.min(minDistToBarrier, dist);
@@ -227,9 +228,9 @@ export class FoodSystem {
         
         // Store biome-specific regen rate multiplier
         // Get the biome regen multiplier from BIOME_CONFIGS
-        const biomeType = this.biomeGenerator.getBiomeAt(worldX, worldY);
-        const biomeConfig = BIOME_CONFIGS[biomeType];
-        this.foodBiomeRegenRate[idx] = biomeConfig?.foodRegenRate || 1.0;
+        const biomeType = this.biomeGenerator!.getBiomeAt(worldX, worldY);
+        const biomeConfig = BIOME_CONFIGS[biomeType as keyof typeof BIOME_CONFIGS];
+        this.foodBiomeRegenRate[idx] = biomeConfig?.foodRegenRate ?? 1.0;
         
         if (val > 0) {
           // Start food at 50-80% of max capacity for better initial availability
@@ -257,10 +258,10 @@ export class FoodSystem {
         if (this.foodGrid[idx] > 0) {
           // Track global max for scaling
           this.globalMaxFood = Math.max(this.globalMaxFood, this.foodMaxCapacity[idx]);
-          
+
           const worldX = (x / this.cols) * this.worldWidth;
           const worldY = (y / this.rows) * this.worldHeight;
-          const biomeType = this.biomeGenerator.getBiomeAt(worldX, worldY);
+          const biomeType = this.biomeGenerator!.getBiomeAt(worldX, worldY);
           
           if (!foodByBiome[biomeType]) {
             foodByBiome[biomeType] = { count: 0, total: 0, max: 0 };
@@ -358,7 +359,7 @@ export class FoodSystem {
           // At regen=1.0, biome multiplier=1.0: 1 second to full
           // At regen=0.5, biome multiplier=1.0: 2 seconds to full
           // Desert (0.5x) takes 2x longer, Forest (1.2x) is 20% faster
-          const totalRegenTime = effectiveRegen > 0 ? 1 / effectiveRegen : Number.MAX_VALUE;
+          // const totalRegenTime = effectiveRegen > 0 ? 1 / effectiveRegen : Number.MAX_VALUE;
           
           // Handle very fast regrowth case
           if (effectiveRegen >= 1.0) {

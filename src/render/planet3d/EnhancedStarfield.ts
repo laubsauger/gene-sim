@@ -112,7 +112,7 @@ export function createEnhancedStarfield(config: Partial<StarfieldConfig> = {}) {
     { distance: 0, count: settings.starCount, sizeMultiplier: 1.0 }
   ];
   
-  layers.forEach((layer, layerIndex) => {
+  layers.forEach((layer) => {
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(layer.count * 3);
     const colors = new Float32Array(layer.count * 3);

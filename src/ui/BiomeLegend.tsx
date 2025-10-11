@@ -98,12 +98,12 @@ export function BiomeLegend({ biomeMode, collapsed = false, onToggleCollapse, po
           flexDirection: 'column',
           gap: '6px',
         }}>
-          {biomeTypes.map(type => {
+          {biomeTypes.map((type: BiomeType) => {
           const info = BIOME_INFO[type];
-          const colorConfig = biomeMode === 'highlight' ? 
-            colors[type] : 
-            colors[type as keyof typeof BIOME_CONFIGS].color;
-          const colorHex = `#${colorConfig.getHexString()}`;
+          const colorConfig = biomeMode === 'highlight' ?
+            colors[type] :
+            (colors[type as keyof typeof BIOME_CONFIGS] as any).color;
+          const colorHex = `#${(colorConfig as { getHexString: () => string }).getHexString()}`;
           
           return (
             <div

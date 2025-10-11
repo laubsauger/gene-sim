@@ -255,7 +255,7 @@ export function createVolumetricDust(options: {
 } = {}) {
   const {
     count = 8000,
-    sunRadius = 100,
+    // sunRadius = 100,
     spread = 1000,
     intensity = 0.3
   } = options;

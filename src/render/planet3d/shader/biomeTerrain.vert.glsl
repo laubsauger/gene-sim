@@ -71,9 +71,21 @@ float fbm(vec2 uv, int octaves) {
   return value;
 }
 
+// Convert sphere UV to cylindrical coordinates for seamless wrapping
+vec2 uvToCylindrical(vec2 uv, vec3 pos) {
+  vec3 normPos = normalize(pos);
+  // Use atan for horizontal wrapping (naturally periodic)
+  float theta = atan(normPos.z, normPos.x) / (2.0 * 3.14159265359); // -0.5 to 0.5
+  float y = uv.y;
+  return vec2(theta + 0.5, y); // Shift to 0-1 range
+}
+
 void main() {
   vUv = uv;
   vPosition = position;
+
+  // Get seamless cylindrical coordinates for noise sampling
+  vec2 cylUV = uvToCylindrical(uv, position);
 
   // Sample biome texture to determine terrain type
   vec4 biomeData = texture2D(uBiomeTexture, uv);
@@ -91,28 +103,28 @@ void main() {
   float elevation = 0.0;
 
   if (isMountain > 0.5) {
-    // Mountain terrain - significant displacement
-    float mountainBase = fbm(uv * 8.0, 4);
-    float mountainPeaks = fbm(uv * 16.0, 3);
-    float ridges = abs(snoise(uv * 12.0)) * 0.5;
+    // Mountain terrain - significant displacement (use cylindrical coords for seamless wrapping)
+    float mountainBase = fbm(cylUV * 8.0, 4);
+    float mountainPeaks = fbm(cylUV * 16.0, 3);
+    float ridges = abs(snoise(cylUV * 12.0)) * 0.5;
 
     elevation = mountainBase * 0.03 + mountainPeaks * 0.02 + ridges * 0.015;
-    elevation *= 1.0 + snoise(uv * 4.0) * 0.3; // Vary mountain heights
+    elevation *= 1.0 + snoise(cylUV * 4.0) * 0.3; // Vary mountain heights
   } else if (isDesert > 0.5) {
     // Desert dunes - gentle rolling hills
-    float dunes = sin(uv.x * 30.0 + snoise(uv * 10.0)) * sin(uv.y * 30.0 + snoise(uv * 12.0));
-    elevation = dunes * 0.005 + fbm(uv * 20.0, 2) * 0.003;
+    float dunes = sin(cylUV.x * 30.0 + snoise(cylUV * 10.0)) * sin(cylUV.y * 30.0 + snoise(cylUV * 12.0));
+    elevation = dunes * 0.005 + fbm(cylUV * 20.0, 2) * 0.003;
   } else if (isForest > 0.5) {
     // Forest - small bumps for tree canopy
-    elevation = fbm(uv * 40.0, 3) * 0.008;
+    elevation = fbm(cylUV * 40.0, 3) * 0.008;
   } else if (isOcean > 0.5) {
     // Ocean - animated waves
-    float wave1 = sin(uv.x * 50.0 + uTime * 2.0) * sin(uv.y * 50.0 + uTime * 1.5);
-    float wave2 = sin(uv.x * 80.0 - uTime * 1.8) * sin(uv.y * 80.0 - uTime * 2.2);
+    float wave1 = sin(cylUV.x * 50.0 + uTime * 2.0) * sin(cylUV.y * 50.0 + uTime * 1.5);
+    float wave2 = sin(cylUV.x * 80.0 - uTime * 1.8) * sin(cylUV.y * 80.0 - uTime * 2.2);
     elevation = (wave1 * 0.003 + wave2 * 0.002) * 0.5;
   } else {
     // Default terrain - gentle variation
-    elevation = fbm(uv * 15.0, 2) * 0.005;
+    elevation = fbm(cylUV * 15.0, 2) * 0.005;
   }
 
   // Apply displacement along normal

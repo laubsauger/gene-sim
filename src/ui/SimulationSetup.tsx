@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { SimClient, SimMode } from '../client/setupSimClientHybrid';
 import type { SimInit, TribeInit, SpawnPattern } from '../sim/types';
 import { throttle } from '../utils/throttle';
@@ -19,6 +19,7 @@ interface SimulationSetupProps {
 
 
 // Custom slider with styled track
+/*
 interface StyledSliderProps {
   min: number;
   max: number;
@@ -27,7 +28,9 @@ interface StyledSliderProps {
   step?: number;
   style?: React.CSSProperties;
 }
+*/
 
+/*
 const StyledSlider = ({ min, max, value, onChange, step = 1, style = {} }: StyledSliderProps) => {
   const percentage = ((value - min) / (max - min)) * 100;
   return (
@@ -50,6 +53,7 @@ const StyledSlider = ({ min, max, value, onChange, step = 1, style = {} }: Style
     />
   );
 };
+*/
 
 // Simple seeded random number generator
 function seededRandom(seed: number) {
@@ -292,7 +296,7 @@ export function SimulationSetup({ client, onStart, isRunning, onSeedChange, onCo
   const [seed, setSeed] = useState(Date.now());
   const [worldWidth, setWorldWidth] = useState(8000);
   const [worldHeight, setWorldHeight] = useState(8000);
-  const [collapsed, setCollapsed] = useState(false);
+  // const [collapsed, setCollapsed] = useState(false);
   
   // Cache biome data - only regenerate when seed or world size changes
   const biomeData = useMemo(() => {

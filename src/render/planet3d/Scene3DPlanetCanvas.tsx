@@ -83,10 +83,10 @@ export interface Scene3DPlanetCanvasProps {
 export function Scene3DPlanetCanvas({
   client,
   world,
-  entitySize,
+  // entitySize,
   seed = 1234,
   biomeMode = 'natural',
-  showBoundaries = false // Keep as prop for backwards compatibility but use store
+  // showBoundaries = false // Keep as prop for backwards compatibility but use store
 }: Scene3DPlanetCanvasProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [isPaused, setIsPaused] = useState(true);

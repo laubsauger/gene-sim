@@ -7,7 +7,7 @@ import { BiomeGenerator } from '../../sim/biomes';
 import atmosphereMatVertexShader from './shader/atmosphereMat.vertex.glsl?raw'
 import atmosphereMatFragmentShader from './shader/atmosphereMat.frag.glsl?raw'
 import { createBiomeTexture } from './BiomeTextureGenerator';
-import { createPoleCaps } from './PoleCapsMesh';
+import { createPoleCaps, updatePoleCaps } from './PoleCapsMesh';
 import { createAdvancedBiomeSphere } from './AdvancedBiomeRenderer';
 
 export interface PlanetConfig {
@@ -174,6 +174,11 @@ export function makePlanet(config: PlanetConfig = {}) {
     // Update advanced biome shader if present
     if (advancedBiomeControls) {
       advancedBiomeControls.update(time, lightDir);
+    }
+
+    // Update pole cap lighting
+    if (lightDir) {
+      updatePoleCaps(poleCaps, lightDir, true);
     }
 
     const cloudMesh = group.children.find(child => child.userData.isCloud);

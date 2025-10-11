@@ -1,14 +1,16 @@
-import { createRng, type Rng } from './random';
+// import { type Rng } from './random';
 import * as THREE from 'three';
 
-export enum BiomeType {
-  OCEAN = 'ocean',
-  MOUNTAIN = 'mountain',
-  FOREST = 'forest',
-  GRASSLAND = 'grassland',
-  DESERT = 'desert',
-  SAVANNA = 'savanna'
-}
+export const BiomeType = {
+  OCEAN: 'ocean',
+  MOUNTAIN: 'mountain',
+  FOREST: 'forest',
+  GRASSLAND: 'grassland',
+  DESERT: 'desert',
+  SAVANNA: 'savanna'
+} as const;
+
+export type BiomeType = typeof BiomeType[keyof typeof BiomeType];
 
 export interface Biome {
   type: BiomeType;
@@ -72,19 +74,20 @@ export const BIOME_HIGHLIGHT_COLORS: Record<BiomeType, THREE.Color> = {
 };
 
 export class BiomeGenerator {
-  private rng: Rng;
+  // private rng: Rng;
   private biomeGrid: BiomeType[][];
   private cellSize: number;
   private gridWidth: number;
   private gridHeight: number;
 
   constructor(
-    seed: number,
+    _seed: number,
     worldWidth: number,
     worldHeight: number,
     cellSize: number = 50
   ) {
-    this.rng = createRng(seed);
+    // this.rng = createRng(seed);
+    // createRng(seed); // Create RNG but don't store (currently unused)
     this.cellSize = cellSize;
     this.gridWidth = Math.ceil(worldWidth / cellSize);
     this.gridHeight = Math.ceil(worldHeight / cellSize);

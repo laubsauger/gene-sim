@@ -23,14 +23,15 @@ export function createAdvancedBiomeMaterial(config: AdvancedBiomeConfig) {
   const grid = biomeGenerator.getBiomeGrid();
   const { width: gridWidth, height: gridHeight } = biomeGenerator.getGridDimensions();
 
+  // Add +1 to width to duplicate first column for seamless wrapping
   const canvas = document.createElement('canvas');
-  canvas.width = gridWidth;
+  canvas.width = gridWidth + 1;
   canvas.height = gridHeight;
   const ctx = canvas.getContext('2d')!;
 
   // Fill with default grass color first as fallback
   ctx.fillStyle = '#58982D';
-  ctx.fillRect(0, 0, gridWidth, gridHeight);
+  ctx.fillRect(0, 0, gridWidth + 1, gridHeight);
 
   // Create texture with biome data
   for (let y = 0; y < gridHeight; y++) {
@@ -38,10 +39,15 @@ export function createAdvancedBiomeMaterial(config: AdvancedBiomeConfig) {
       const biomeType = grid[y][x];
       const biomeConfig = BIOME_CONFIGS[biomeType];
       const color = biomeConfig.color;
-      
+
       ctx.fillStyle = `#${color.getHexString()}`;
       ctx.fillRect(x, y, 1, 1);
     }
+    // Duplicate first column to last column for seamless wrap
+    const firstColBiome = grid[y][0];
+    const firstColConfig = BIOME_CONFIGS[firstColBiome];
+    ctx.fillStyle = `#${firstColConfig.color.getHexString()}`;
+    ctx.fillRect(gridWidth, y, 1, 1);
   }
 
   const biomeTexture = new THREE.CanvasTexture(canvas);

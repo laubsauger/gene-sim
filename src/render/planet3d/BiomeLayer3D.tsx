@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { BiomeType, BIOME_CONFIGS, BiomeGenerator } from '../../sim/biomes';
+import { BIOME_CONFIGS, BiomeGenerator } from '../../sim/biomes';
 
 interface BiomeLayer3DProps {
   biomeGenerator: BiomeGenerator;

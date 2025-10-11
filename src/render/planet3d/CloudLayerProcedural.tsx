@@ -11,7 +11,7 @@ interface CloudLayerProceduralProps {
   sunRotation?: number;
 }
 
-export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, type, sunRotation = 0 }: CloudLayerProceduralProps) {
+export function CloudLayerProcedural({ planetRadius, altitude, opacity, speed, type }: CloudLayerProceduralProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   
   // Static sun position

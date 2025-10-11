@@ -91,7 +91,7 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
   layers.push({
     mesh: cumulusLayer.mesh,
     update: (time: number, lightDir?: THREE.Vector3, paused?: boolean) => {
-      cumulusLayer.update(time, lightDir, paused);
+      cumulusLayer.update(time, lightDir || new THREE.Vector3(1, 0, 0), paused || false);
       // Slow eastward rotation for low cumulus
       cumulusLayer.mesh.rotation.y = time * 0.008;
     },
@@ -115,7 +115,7 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
   layers.push({
     mesh: stratusLayer.mesh,
     update: (time: number, lightDir?: THREE.Vector3, paused?: boolean) => {
-      stratusLayer.update(time, lightDir, paused);
+      stratusLayer.update(time, lightDir || new THREE.Vector3(1, 0, 0), paused || false);
       // Moderate speed westward with slight north drift
       stratusLayer.mesh.rotation.y = -time * 0.012;
       stratusLayer.mesh.rotation.z = Math.sin(time * 0.001) * 0.02; // Gentle wobble
@@ -141,7 +141,7 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
   layers.push({
     mesh: jetStreamLayer.mesh,
     update: (time: number, lightDir?: THREE.Vector3, paused?: boolean) => {
-      jetStreamLayer.update(time, lightDir, paused);
+      jetStreamLayer.update(time, lightDir || new THREE.Vector3(1, 0, 0), paused || false);
       // Fast counter-rotation for jet stream effect
       jetStreamLayer.mesh.rotation.y = time * 0.025; // Fast eastward
       jetStreamLayer.mesh.rotation.x = Math.PI * 0.15 + Math.sin(time * 0.002) * 0.03; // Undulating
@@ -166,7 +166,7 @@ export function createMultiLayerClouds(planetRadius: number): CloudSystem {
   layers.push({
     mesh: cirrusLayer.mesh,
     update: (time: number, lightDir?: THREE.Vector3, paused?: boolean) => {
-      cirrusLayer.update(time, lightDir, paused);
+      cirrusLayer.update(time, lightDir || new THREE.Vector3(1, 0, 0), paused || false);
       // Slow northward drift with cross-flow
       cirrusLayer.mesh.rotation.y = time * 0.018; // Different speed
       cirrusLayer.mesh.rotation.x = -Math.PI * 0.08 + Math.cos(time * 0.0015) * 0.04; // Oscillating tilt

@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import * as THREE from 'three';
 import { Line } from '@react-three/drei';
 import { BiomeGenerator } from '../../sim/biomes';
@@ -19,15 +19,15 @@ export function BiomeBoundaries3D({
 }: BiomeBoundaries3DProps) {
 
   const boundaryLines = useMemo(() => {
-    const boundaries = biomeGenerator.getBiomeBoundaries();
+    const boundaries = (biomeGenerator as any).getBiomeBoundaries?.() || [];
     const lines: THREE.Vector3[][] = [];
     const elevationOffset = planetRadius * 1.002; // Slightly above surface
 
-    boundaries.forEach(boundary => {
+    boundaries.forEach((boundary: { points: Array<{ x: number; y: number }> }) => {
       const points2D = new Float32Array(boundary.points.length * 2);
 
       // Convert boundary points to flat array
-      boundary.points.forEach((point, i) => {
+      boundary.points.forEach((point: { x: number; y: number }, i: number) => {
         points2D[i * 2] = point.x;
         points2D[i * 2 + 1] = point.y;
       });

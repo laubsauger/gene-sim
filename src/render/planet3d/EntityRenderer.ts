@@ -5,12 +5,12 @@ import entityMatFragmentShader from './shader/entityMat.frag.glsl?raw'
 
 // Track frame count for update throttling
 let frameCount = 0;
-let aliveCount = 0;
+// let aliveCount = 0;
 const hiddenMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
 
 // Cache for tracking which entities need updates
 const prevAlive = new Uint8Array(196000);
-const aliveIndices = new Uint32Array(196000);
+// const aliveIndices = new Uint32Array(196000);
 
 // Reusable objects to avoid allocation
 const mat4 = new THREE.Matrix4();

@@ -11,8 +11,8 @@ interface DebugArrowsProps {
 
 export function DebugArrows({ planetRadius, sunRotation, staticSunPosition }: DebugArrowsProps) {
   const lastLogTime = useRef(0);
-  const arrowRef = useRef<any>(null);
-  const sphereRef = useRef<THREE.Mesh>(null);
+  // const arrowRef = useRef<any>(null);
+  // const sphereRef = useRef<THREE.Mesh>(null);
   
   // Use static sun position if provided, otherwise calculate from rotation
   const sunPosition = useMemo(() => {
