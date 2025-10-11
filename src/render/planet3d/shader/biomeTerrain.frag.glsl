@@ -64,10 +64,14 @@ void main() {
   vec3 baseColor = vec3(0.4, 0.6, 0.3); // Default green-ish color
   
   // Determine biome type from texture color
-  float isOcean = step(0.5, biomeData.b) * step(biomeData.r + biomeData.g, 0.8);
-  float isDesert = step(0.7, biomeData.r) * step(biomeData.g, 0.5);
-  float isMountain = step(0.4, biomeData.r) * step(biomeData.r, 0.7) * step(biomeData.g, 0.5);
-  float isForest = step(0.3, biomeData.g) * step(biomeData.r, 0.5);
+  // Ocean: dark blue (0x0d2438) - low RGB, blue is highest
+  float isOcean = step(biomeData.b, 0.3) * step(biomeData.r + biomeData.g, 0.25) * step(0.1, biomeData.b);
+  // Desert: sandy yellow (0xe8c170) - high R, moderate G, low B
+  float isDesert = step(0.7, biomeData.r) * step(0.5, biomeData.g) * step(biomeData.b, 0.5);
+  // Mountain: dark grey (0x2a2a2a) - very low RGB, all similar
+  float isMountain = step(biomeData.r, 0.2) * step(biomeData.g, 0.2) * step(biomeData.b, 0.2);
+  // Forest: dark green (0x2d5a2d) - low R, moderate G, low B
+  float isForest = step(0.25, biomeData.g) * step(biomeData.g, 0.45) * step(biomeData.r, 0.25);
   
   if (isOcean > 0.5) {
     // Ocean coloring based on depth
